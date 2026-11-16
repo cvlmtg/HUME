@@ -10,9 +10,10 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 ```
 
 - **Depends on:** `core:stdlib`, for config validation.
-- **Activates on:** the first buffer whose language is `markdown`, or either command
-  (`manifest.scm`). The manifest lists no events: a `#:languages` manifest may list no
-  buffer event, and the language is the trigger.
+- **Activates on:** the first buffer whose language is `markdown`, or any of its three
+  commands (`manifest.scm`), the first Markdown popup's `format-text/markdown` call
+  included. The manifest lists no events: a `#:languages` manifest may list no buffer
+  event, and the language is the trigger.
 - **Grammars:** `markdown` and `markdown.inline`. The first buffer opened without one of
   them logs one warning per missing grammar per session, naming the
   `:plum-install-grammar` command that installs it.
@@ -21,7 +22,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `'enabled` | bool | `#t` | Whether the preview starts on for each buffer |
+| `'enabled` | bool | `#t` | Whether the preview starts on for each buffer. Popups are drawn either way |
 | `'rule-width` | integer ≥ 1 | `40` | How many `─` a horizontal rule draws. Plugins cannot read the pane width |
 
 ## Commands
@@ -30,6 +31,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 |---|---|
 | `:toggle-markdown-preview` | Turn the preview off for the current buffer, clearing everything it drew, or back on, rendering at once |
 | `markdown-preview/toggle` | The same function, bindable |
+| `format-text/markdown` | `(format-text/markdown text parsed)`: what the preview draws for a Markdown text, given the text and its parsed tree, as the hash a text formatter returns. The editor calls it for every Markdown popup and the completion documentation box, and `call!` reaches it |
 
 ## Decisions
 
@@ -55,8 +57,12 @@ The choices the plugin and the Rust surface under it are built on:
   inlay hints, virtual lines, line backgrounds or selections.
 - **Viewport:** a render covers the visible lines widened to whole syntax nodes (see
   [Widening by query roots](#widening-by-query-roots)), not the whole buffer.
+- **Popups:** a Markdown popup and the completion documentation box draw every element a
+  buffer does, tables included. A popup has no selection, so nothing in it reveals, and the
+  popup wraps the drawn text, so a table wider than the box breaks its grid.
 - **Rust surface:** the editor functions `set-conceals!` and `syntax-captures` (with its
-  `#:ranges`) and the `on-syntax-changed` hook. There is no query handle.
+  `#:ranges`), the `on-syntax-changed` hook, and for popups the `format-text/<lang>`
+  command the editor calls and `parsed-text-captures`. There is no query handle.
 
 ## Limitations
 
@@ -93,7 +99,8 @@ The choices the plugin and the Rust surface under it are built on:
 | `lib/table.scm` | Table captures to conceals, and the line spans of the tables, which the inline query also covers. Reads no buffer either: lines come in as procedures, and cells are measured with `string-width` |
 | `lib/inline.scm` | Inline captures to conceals. Calls no editor builtin either |
 | `lib/entities.scm` | The named entities the plugin replaces, and the numeric references it accepts |
-| `lib/render.scm` | The render funnel: the pane ranges, the two `syntax-captures` calls, the fenced-block filter, the conceal order, the three setters |
+| `lib/render.scm` | The render funnel: `md-preview/elements` (the fenced-block filter, the inline captures' ranges, the conceal order) over the captures and line procedures it is handed, and for a buffer the pane ranges, the two `syntax-captures` calls and the three setters |
+| `lib/text.scm` | `md-preview/elements` over a popup's text: its lines, the two `parsed-text-captures` calls, and the result `format-text/markdown` returns |
 
 ### Rendering
 
@@ -138,6 +145,16 @@ apart are not fetched, and lines outside every range are drawn raw until a rende
 them. The line above a range is in it so that a table ending just above a pane's first
 shown line comes back: the empty line after it, at the top of the pane, carries that
 table's bottom border (see [Tables](#tables)).
+
+### Popups
+
+The editor calls `format-text/markdown` once per popup text, with the text and its parsed
+tree, and draws what it returns. `text.scm` reads the lines from the string, queries the
+tree with `parsed-text-captures` over every line, and returns the elements a buffer render
+would set as its result's `'conceals`, `'line-backgrounds` and `'highlights`, with
+`'overlaps 'drop` (see [Overlapping conceals](#overlapping-conceals)). Nothing is stored
+and no hook runs: the call reads the editor and cannot change it. `'rule-width` applies,
+and `'enabled` does not.
 
 ### Widening by query roots
 

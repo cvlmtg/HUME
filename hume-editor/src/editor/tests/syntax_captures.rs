@@ -404,3 +404,128 @@ fn entries_of_one_capture_name_share_one_string() {
     );
     assert_eq!(value_of(&mut ed, tmp.path(), &expr), "(#true #false)");
 }
+
+// ── parsed-text-captures ─────────────────────────────────────────────────
+
+/// Defines `format-text/markdown`, which logs what `call` returns for its
+/// `parsed` argument as `captures-text` renders it, then shows `text` as a
+/// markdown popup through it. What it logged, and the errors logged.
+fn popup_captures(ed: &mut Editor, tmp: &std::path::Path, text: &str, call: &str) -> String {
+    run(
+        ed,
+        tmp,
+        &format!(
+            r#"{CAPTURES_TEXT}
+               (define-command! "format-text/markdown" "" (lambda (text parsed)
+                 (log! 'info (captures-text {call}))
+                 (hash)))
+               (define-typed-command! "go" "" (lambda (pane) (show-popup! pane {text:?} #:lang "markdown")))"#
+        ),
+    );
+    type_cmd(ed, ":go");
+    frame(ed, 80, 24);
+    assert_eq!(error_log(ed), Vec::<String>::new());
+    status(ed)
+}
+
+/// The errors logged when the popup's formatter runs `call`.
+fn popup_capture_errors(ed: &mut Editor, tmp: &std::path::Path, call: &str) -> Vec<String> {
+    run(
+        ed,
+        tmp,
+        &format!(
+            r##"(define-command! "format-text/markdown" "" (lambda (text parsed) {call} (hash)))
+               (define-typed-command! "go" "" (lambda (pane) (show-popup! pane "# A" #:lang "markdown")))"##
+        ),
+    );
+    type_cmd(ed, ":go");
+    frame(ed, 80, 24);
+    error_log(ed)
+}
+
+#[test]
+fn a_parsed_text_yields_the_root_layers_captures() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor("x\n");
+    let call = r#"(parsed-text-captures parsed "markdown" "(atx_heading) @h")"#;
+    // The heading node ends after the line break the parsed text ends with.
+    assert_eq!(
+        popup_captures(&mut ed, tmp.path(), "a\n\n# B", call),
+        "[h 3..7;]"
+    );
+}
+
+#[test]
+fn a_parsed_text_yields_an_injected_layers_captures() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor("x\n");
+    let call = r#"(parsed-text-captures parsed "markdown.inline" "(emphasis) @e")"#;
+    assert_eq!(
+        popup_captures(&mut ed, tmp.path(), "a *e* b", call),
+        "[e 2..5;]"
+    );
+}
+
+#[test]
+fn a_parsed_text_query_for_a_language_without_a_grammar_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor("x\n");
+    let call = r#"(parsed-text-captures parsed "nope" "(x) @x")"#;
+    let errors = popup_capture_errors(&mut ed, tmp.path(), call);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].contains("no grammar for language 'nope'"),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn a_parsed_text_query_that_does_not_compile_raises() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor("x\n");
+    let call = r#"(parsed-text-captures parsed "markdown" "(no_such_node) @x")"#;
+    let errors = popup_capture_errors(&mut ed, tmp.path(), call);
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(errors[0].contains("'markdown' query"), "{errors:?}");
+}
+
+#[test]
+fn a_parsed_text_kept_past_its_call_names_nothing() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor("x\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r##"(define kept #f)
+            (define-command! "format-text/markdown" "" (lambda (text parsed) (set! kept parsed) (hash)))
+            (define-typed-command! "show" "" (lambda (pane) (show-popup! pane "# A" #:lang "markdown")))"##,
+    );
+    type_cmd(&mut ed, ":show");
+    frame(&mut ed, 80, 24);
+    let errors = errors_of(
+        &mut ed,
+        tmp.path(),
+        r#"(parsed-text-captures kept "markdown" "(atx_heading) @h")"#,
+    );
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].contains("only valid during its format-text call"),
+        "{errors:?}"
+    );
+}
+
+#[test]
+fn parsed_text_captures_refuses_a_value_that_is_not_a_parsed_text() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor("x\n");
+    let errors = errors_of(
+        &mut ed,
+        tmp.path(),
+        r#"(parsed-text-captures bid "markdown" "(atx_heading) @h")"#,
+    );
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(
+        errors[0].contains("expected a format-text command's parsed text"),
+        "{errors:?}"
+    );
+}

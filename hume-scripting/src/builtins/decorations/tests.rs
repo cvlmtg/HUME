@@ -628,7 +628,7 @@ fn reveal(start: isize, end: isize) -> (&'static str, SteelVal) {
 }
 
 fn decode_conceal(entry: SteelVal) -> Result<Vec<ConcealSpec>, String> {
-    conceal_specs(list(vec![entry]), 10).map_err(|e| e.to_string())
+    conceal_specs(list(vec![entry]), CONCEALS, 10).map_err(|e| e.to_string())
 }
 
 #[test]
@@ -823,14 +823,14 @@ fn a_hidden_entry_without_text_decodes_with_no_replacement() {
 fn conceal_overlaps_decode_to_their_policy() {
     let symbol = |name: &str| SteelVal::SymbolV(name.into());
     assert_eq!(
-        conceal_overlaps_arg(symbol("error")).unwrap(),
+        conceal_overlaps_arg(symbol("error"), "#:overlaps").unwrap(),
         ConcealOverlaps::Refuse
     );
     assert_eq!(
-        conceal_overlaps_arg(symbol("drop")).unwrap(),
+        conceal_overlaps_arg(symbol("drop"), "#:overlaps").unwrap(),
         ConcealOverlaps::DropLater
     );
-    let err = conceal_overlaps_arg(symbol("merge"))
+    let err = conceal_overlaps_arg(symbol("merge"), "#:overlaps")
         .unwrap_err()
         .to_string();
     assert!(

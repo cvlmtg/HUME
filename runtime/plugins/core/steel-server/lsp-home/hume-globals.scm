@@ -286,6 +286,7 @@
 (#%register-global "pane-vsplit")
 (#%register-global "pane?")
 (#%register-global "panes")
+(#%register-global "parsed-text-captures")
 (#%register-global "paste-after")
 (#%register-global "paste-before")
 (#%register-global "paste-ring-newer")

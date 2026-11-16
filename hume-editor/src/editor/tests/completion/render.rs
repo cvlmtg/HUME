@@ -442,7 +442,9 @@ fn ctrl_d_after_tab_before_a_frame_scrolls_the_newly_selected_doc() {
     insert_with_source(&mut ed, tmp.path(), &items);
     frame(&mut ed, 60, 30);
 
+    // A macro's replay settles after each key and draws no frame.
     ed.feed_key(key_tab());
+    ed.settle();
     ed.feed_key(key_ctrl('d'));
 
     frame(&mut ed, 60, 30);
@@ -480,15 +482,21 @@ fn doc_box_fences_detail_in_the_buffers_language() {
         .languages
         .register_identity("rust", &["rs"], &[], &[])
         .unwrap();
-    insert_with_source(
+    run(
         &mut ed,
         tmp.path(),
-        r#"(list (hash "label" "foo" "detail" "fn foo()"
-                        "documentation" (hash "kind" "markdown" "value" "Does foo.")))"#,
+        &completion_source(
+            "test",
+            r#"(list (hash "label" "foo" "detail" "fn foo()"
+                            "documentation" (hash "kind" "markdown" "value" "Does foo.")))"#,
+            "",
+        ),
     );
     let bid = ed.focused_buffer_id();
     ed.set_buffer_language_explicit(bid, Some(rust), hume_core::ConfigOrigin::User)
         .expect_open();
+    ed.feed_key(key('i'));
+    trigger(&mut ed);
 
     frame(&mut ed, 60, 10);
     let view = ed.state.views.completion_doc.read();
@@ -524,6 +532,35 @@ fn markdown_documentation_is_highlighted_below_a_fenced_detail() {
         state.rows.lines.styled().is_some(),
         "markdown content is styled"
     );
+}
+
+/// Markdown documentation goes through `format-text/markdown`, once per
+/// text: going back to a candidate shows the format its text got first.
+#[test]
+fn markdown_documentation_is_formatted_once_per_text() {
+    test_fixtures::require_grammars(&["markdown"]);
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = open_headless(None);
+    register_markdown(&mut ed);
+    // Each call draws its own count before the text.
+    insert_with_source_and(
+        &mut ed,
+        tmp.path(),
+        r##"(list (hash "label" "foo" "documentation" (hash "kind" "markdown" "value" "*a*"))
+                  (hash "label" "foobar" "documentation" (hash "kind" "markdown" "value" "*b*")))"##,
+        r#"(define calls 0)
+           (define-command! "format-text/markdown" "" (lambda (text parsed)
+             (set! calls (+ calls 1))
+             (hash 'conceals (list (hash 'start-char 0 'end-char 0 'text (number->string calls))))))"#,
+    );
+    let mut shown = Vec::new();
+    for _ in 0..4 {
+        frame(&mut ed, 60, 10);
+        shown.push(doc_box(&ed).expect("doc box showing").1);
+        ed.feed_key(key_tab());
+    }
+    assert_eq!(shown, [["1*a*"], ["2*b*"], ["1*a*"], ["2*b*"]]);
+    assert_eq!(error_log(&ed), Vec::<String>::new());
 }
 
 // ── The anchor reuses the scroll pass's cached cursor cell ──────────────────

@@ -165,6 +165,20 @@ pub struct ConcealSpecText {
     pub scope: Option<String>,
 }
 
+/// What a `format-text/<lang>` command returns for its text: the entries
+/// `set-conceals!`, `set-line-backgrounds!` and `set-extra-highlights!` take,
+/// in char offsets and content lines of that text rather than of a buffer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TextFormatSpec {
+    pub conceals: Vec<ConcealSpec>,
+    /// What an overlapping conceal does, as `set-conceals!`'s `#:overlaps`.
+    pub overlaps: ConcealOverlaps,
+    /// Each entry's lines and scope name.
+    pub line_backgrounds: Vec<(MarkedLines, String)>,
+    /// Each entry's `(start-char, end-char, scope)`.
+    pub highlights: Vec<(usize, usize, String)>,
+}
+
 /// A side effect a Steel builtin queues during an eval because it needs
 /// `&mut Editor` state the eval-time `EditorHost` doesn't hold.
 ///

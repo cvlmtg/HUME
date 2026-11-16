@@ -9,7 +9,9 @@ use std::ops::Bound;
 
 use hume_core::{BufferId, DiagSeverity, Side};
 use hume_decorations::{ConcealEntry, ConcealEntrySpan};
+use hume_editing::text::BufferText;
 use hume_engine::providers::{ConcealText, conceal_ranges_overlap};
+use hume_engine::theme::ScopeRegistry;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
@@ -135,7 +137,8 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         spans: Vec<(usize, usize, String)>,
     ) -> Result<(), SetError> {
-        let entries = self.extra_highlight_entries(bid, spans)?;
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = extra_highlight_entries(text, &mut self.view.registry, spans)?;
         self.state
             .config
             .decorations
@@ -150,7 +153,8 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         entries: Vec<ConcealSpec>,
         overlaps: ConcealOverlaps,
     ) -> Result<(), SetError> {
-        let entries = self.conceal_entries(bid, entries, overlaps)?;
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = conceal_entries(text, &mut self.view.registry, entries, overlaps)?;
         self.state
             .config
             .decorations
@@ -187,12 +191,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         entries: Vec<(MarkedLines, String)>,
     ) -> Result<(), SetError> {
-        let entries = entries
-            .into_iter()
-            .map(|(lines, scope)| (lines, self.view.registry.intern(&scope)));
-        let entries = each_line(entries)
-            .map(|(line, scope)| hume_decorations::LineBgEntry { line, scope })
-            .collect();
+        let entries = line_background_entries(&mut self.view.registry, entries);
         self.state
             .config
             .decorations
@@ -254,124 +253,138 @@ impl EditorHostImpl<'_> {
         bid: BufferId,
         spans: Vec<(usize, usize, S)>,
     ) -> Result<(), SetError> {
-        let entries = self.extra_highlight_entries(bid, spans)?;
+        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
+        let entries = extra_highlight_entries(text, &mut self.view.registry, spans)?;
         self.state
             .config
             .decorations
             .add_extra_highlights(source, bid, entries);
         Ok(())
     }
+}
 
-    /// `specs` as conceals of `bid`'s text, in position order. Each entry's
-    /// range is checked and widened to whole clusters and must stay on one
-    /// line without covering its `\n`; an `Inserted` may sit before a line's
-    /// `\n` but not at the text's end. An entry overlapping another
-    /// ([`conceal_ranges_overlap`]) is refused or left out, as `overlaps`
-    /// says.
-    fn conceal_entries(
-        &mut self,
-        bid: BufferId,
-        specs: Vec<ConcealSpec>,
-        overlaps: ConcealOverlaps,
-    ) -> Result<Vec<ConcealEntry>, SetError> {
-        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        let placed = each_entry(specs.into_iter().enumerate().collect(), |(index, spec)| {
-            let mut shown = |t: ConcealSpecText| ConcealText {
-                text: t.text.into(),
-                scope: t.scope.map(|name| self.view.registry.intern(&name)),
-            };
-            let fail = |e: String| format!("range {e}");
-            let span = match spec.span {
-                ConcealSpecSpan::Hidden {
-                    start,
-                    end,
-                    text: replacement,
-                } => ConcealEntrySpan::Hidden {
-                    chars: checked_cluster_range(text, start, end)
-                        .map_err(fail)?
-                        .chars(),
-                    text: replacement.map(&mut shown),
-                },
-                ConcealSpecSpan::Inserted { at, text: drawn } => {
-                    let at = checked_char_offset(text, at).map_err(fail)?;
-                    if at == text.end() {
-                        return Err(format!("offset {} is past the last line break", at.index()));
-                    }
-                    ConcealEntrySpan::Inserted {
-                        at: text.snap(at).offset(),
-                        text: shown(drawn),
-                    }
+/// `specs` as conceals of `text`, in position order, their scopes interned
+/// in `registry`. Each entry's range is checked and widened to whole
+/// clusters and must stay on one line without covering its `\n`; an
+/// `Inserted` may sit before a line's `\n` but not at the text's end. An
+/// entry overlapping another ([`conceal_ranges_overlap`]) is refused or left
+/// out, as `overlaps` says.
+pub(in crate::editor) fn conceal_entries(
+    text: &BufferText,
+    registry: &mut ScopeRegistry,
+    specs: Vec<ConcealSpec>,
+    overlaps: ConcealOverlaps,
+) -> Result<Vec<ConcealEntry>, SetError> {
+    let placed = each_entry(specs.into_iter().enumerate().collect(), |(index, spec)| {
+        let mut shown = |t: ConcealSpecText| ConcealText {
+            text: t.text.into(),
+            scope: t.scope.map(|name| registry.intern(&name)),
+        };
+        let fail = |e: String| format!("range {e}");
+        let span = match spec.span {
+            ConcealSpecSpan::Hidden {
+                start,
+                end,
+                text: replacement,
+            } => ConcealEntrySpan::Hidden {
+                chars: checked_cluster_range(text, start, end)
+                    .map_err(fail)?
+                    .chars(),
+                text: replacement.map(&mut shown),
+            },
+            ConcealSpecSpan::Inserted { at, text: drawn } => {
+                let at = checked_char_offset(text, at).map_err(fail)?;
+                if at == text.end() {
+                    return Err(format!("offset {} is past the last line break", at.index()));
                 }
-            };
-            let reveal = spec.reveal.map(|marked| {
-                let lines = marked.lines();
-                text.lines()
-                    .span(lines.start, lines.end.retreat_saturating(1))
-                    .chars()
-            });
-            let entry = ConcealEntry { span, reveal };
-            if !entry.within_line(text) {
-                let chars = entry.chars();
-                return Err(fail(format!(
-                    "{}..{} must stay within one line and not cover its newline",
-                    chars.start.index(),
-                    chars.end.index()
-                )));
+                ConcealEntrySpan::Inserted {
+                    at: text.snap(at).offset(),
+                    text: shown(drawn),
+                }
             }
-            Ok((index, entry))
-        })?;
-        let mut kept: BTreeMap<(CharOffset, CharOffset), (usize, ConcealEntry)> = BTreeMap::new();
-        for (index, entry) in placed {
+        };
+        let reveal = spec.reveal.map(|marked| {
+            let lines = marked.lines();
+            text.lines()
+                .span(lines.start, lines.end.retreat_saturating(1))
+                .chars()
+        });
+        let entry = ConcealEntry { span, reveal };
+        if !entry.within_line(text) {
             let chars = entry.chars();
-            let key = (chars.start, chars.end);
-            // Kept entries are disjoint, so their order by start is their
-            // order by end too, and an entry overlapping any kept one
-            // overlaps the kept entry just before or just after its own
-            // place in that order.
-            let before = kept.range(..=key).next_back();
-            let after = kept.range((Bound::Excluded(key), Bound::Unbounded)).next();
-            let earlier = before
-                .into_iter()
-                .chain(after)
-                .find(|(_, (_, k))| conceal_ranges_overlap(k.chars(), chars))
-                .map(|(_, (earlier, _))| *earlier);
-            match (earlier, overlaps) {
-                (None, _) => {
-                    kept.insert(key, (index, entry));
-                }
-                (Some(_), ConcealOverlaps::DropLater) => {}
-                (Some(earlier), ConcealOverlaps::Refuse) => {
-                    return Err(SetError::Entry {
-                        index,
-                        message: format!("overlaps entry {earlier}"),
-                    });
-                }
+            return Err(fail(format!(
+                "{}..{} must stay within one line and not cover its newline",
+                chars.start.index(),
+                chars.end.index()
+            )));
+        }
+        Ok((index, entry))
+    })?;
+    let mut kept: BTreeMap<(CharOffset, CharOffset), (usize, ConcealEntry)> = BTreeMap::new();
+    for (index, entry) in placed {
+        let chars = entry.chars();
+        let key = (chars.start, chars.end);
+        // Kept entries are disjoint, so their order by start is their
+        // order by end too, and an entry overlapping any kept one
+        // overlaps the kept entry just before or just after its own
+        // place in that order.
+        let before = kept.range(..=key).next_back();
+        let after = kept.range((Bound::Excluded(key), Bound::Unbounded)).next();
+        let earlier = before
+            .into_iter()
+            .chain(after)
+            .find(|(_, (_, k))| conceal_ranges_overlap(k.chars(), chars))
+            .map(|(_, (earlier, _))| *earlier);
+        match (earlier, overlaps) {
+            (None, _) => {
+                kept.insert(key, (index, entry));
+            }
+            (Some(_), ConcealOverlaps::DropLater) => {}
+            (Some(earlier), ConcealOverlaps::Refuse) => {
+                return Err(SetError::Entry {
+                    index,
+                    message: format!("overlaps entry {earlier}"),
+                });
             }
         }
-        Ok(kept.into_values().map(|(_, entry)| entry).collect())
     }
+    Ok(kept.into_values().map(|(_, entry)| entry).collect())
+}
 
-    /// Each `(start, end, scope)` char range of `bid`'s text as an extra
-    /// highlight. Errors on a range outside the text or an empty one.
-    fn extra_highlight_entries<S: AsRef<str>>(
-        &mut self,
-        bid: BufferId,
-        spans: Vec<(usize, usize, S)>,
-    ) -> Result<Vec<hume_decorations::ExtraHighlightEntry>, SetError> {
-        let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        each_entry(spans, |(start, end, scope)| {
-            let fail = |e: String| format!("range {e}");
-            // Whole clusters: the renderer paints a cluster at a time.
-            let range = checked_cluster_range(text, start, end)
-                .map_err(fail)?
-                .chars();
-            Ok(hume_decorations::ExtraHighlightEntry {
-                start: range.start,
-                end: range.end,
-                scope: self.view.registry.intern(scope.as_ref()),
-            })
+/// Each `(start, end, scope)` char range of `text` as an extra highlight,
+/// its scope interned in `registry`. Errors on a range outside the text or
+/// an empty one.
+pub(in crate::editor) fn extra_highlight_entries<S: AsRef<str>>(
+    text: &BufferText,
+    registry: &mut ScopeRegistry,
+    spans: Vec<(usize, usize, S)>,
+) -> Result<Vec<hume_decorations::ExtraHighlightEntry>, SetError> {
+    each_entry(spans, |(start, end, scope)| {
+        let fail = |e: String| format!("range {e}");
+        // Whole clusters: the renderer paints a cluster at a time.
+        let range = checked_cluster_range(text, start, end)
+            .map_err(fail)?
+            .chars();
+        Ok(hume_decorations::ExtraHighlightEntry {
+            start: range.start,
+            end: range.end,
+            scope: registry.intern(scope.as_ref()),
         })
-    }
+    })
+}
+
+/// One line background per line each entry marks, its scope interned in
+/// `registry`.
+pub(in crate::editor) fn line_background_entries(
+    registry: &mut ScopeRegistry,
+    entries: Vec<(MarkedLines, String)>,
+) -> Vec<hume_decorations::LineBgEntry> {
+    let entries = entries
+        .into_iter()
+        .map(|(lines, scope)| (lines, registry.intern(&scope)));
+    each_line(entries)
+        .map(|(line, scope)| hume_decorations::LineBgEntry { line, scope })
+        .collect()
 }
 
 /// The live text for `bid`, or `Err` if `bid` doesn't name

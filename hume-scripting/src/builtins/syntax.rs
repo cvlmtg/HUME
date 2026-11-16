@@ -9,6 +9,7 @@ use hume_core::{
 };
 use steel::rerrs::SteelErr;
 
+use crate::host::Captures;
 use crate::{Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 
 use super::SteelResult;
@@ -19,6 +20,7 @@ use super::args::{
 };
 use super::buffers::{line_ranges_arg, live_line_count};
 use super::errors::{generic_err, require_cap};
+use super::ids::{ParsedText, downcast};
 
 /// `(%define-language! name extensions globs shebangs)`: init-only.
 ///
@@ -301,18 +303,48 @@ pub(crate) fn syntax_captures(
     let captures = require_cap(ctx.host.syntax())?
         .syntax_captures(bid, &language, &query, &ranges)
         .map_err(generic_err)?;
+    Ok(captures_list(&captures))
+}
+
+/// `(parsed-text-captures parsed language query-source)`: the
+/// [`syntax_captures`] result for the text `parsed` names, a
+/// `format-text/<lang>` command's second argument, over every one of its
+/// lines, as [`crate::host::LanguageHost::parsed_text_captures`] gives them.
+/// It reads the tree the editor parsed the text into and never parses.
+///
+/// Raises when `parsed` is not a parsed text or its call has returned,
+/// `language` has no grammar, or `query-source` does not compile.
+pub(crate) fn parsed_text_captures(
+    ctx: &mut SteelCtx,
+    parsed: SteelVal,
+    language: String,
+    query: String,
+) -> SteelResult {
+    let ParsedText(token) = downcast(&parsed)
+        .ok_or_else(|| generic_err("parsed: expected a format-text command's parsed text"))?;
+    let captures = ctx
+        .host
+        .language()
+        .parsed_text_captures(token, &language, &query)
+        .map_err(generic_err)?;
+    Ok(captures_list(&captures))
+}
+
+/// `captures` as a list of `(list name start-char end-char)`, `name` one
+/// string shared by every entry of that name.
+fn captures_list(captures: &Captures) -> SteelVal {
     let names: Vec<SteelVal> = captures
         .names
         .iter()
         .map(|name| SteelVal::StringV(name.as_ref().into()))
         .collect();
-    Ok(list_of(captures.entries.iter().map(|entry| {
+    list_of(captures.entries.iter().map(|entry| {
         list_of([
             names[entry.name as usize].clone(),
             SteelVal::IntV(entry.start_char as isize),
             SteelVal::IntV(entry.end_char as isize),
         ])
-    })))
+    }))
 }
 
 #[cfg(test)]

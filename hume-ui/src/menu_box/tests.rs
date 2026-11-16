@@ -687,3 +687,54 @@ fn a_menu_rows_selected_scope_replaces_ui_menu_selected() {
         assert_eq!(grid[(x, 2)].style().bg, Some(MENU_BG), "bg at x={x}");
     }
 }
+
+#[test]
+fn a_styled_rows_fill_covers_its_inner_width() {
+    let colors = |bg| ResolvedStyle {
+        bg: Some(bg),
+        ..Default::default()
+    };
+    let rows = [
+        StyledRow {
+            runs: vec![("ab".to_string(), colors(MENU_BG))],
+            fill: Some(ROW_BG),
+        },
+        StyledRow {
+            runs: vec![("ab".to_string(), colors(MENU_BG))],
+            fill: None,
+        },
+    ];
+    let mut grid = Grid::new(10, 4);
+    let theme = Theme::default();
+    let mut canvas = Canvas::new(&mut grid, theme.ui.invisible, None);
+    draw_menu_box(
+        &mut canvas,
+        Rect::new(0, 0, 10, 4),
+        BoxRows::Styled(&rows),
+        2,
+        0,
+        false,
+        MenuBoxStyles {
+            base: colors(MENU_SELECTED_BG),
+            scroll: style(),
+        },
+    );
+
+    for x in [1, 2] {
+        assert_eq!(grid[(x, 1)].style().bg, Some(MENU_BG), "run bg at x={x}");
+        assert_eq!(grid[(x, 2)].style().bg, Some(MENU_BG), "run bg at x={x}");
+    }
+    for x in 3..9 {
+        assert_eq!(grid[(x, 1)].style().bg, Some(ROW_BG), "fill at x={x}");
+        assert_eq!(
+            grid[(x, 2)].style().bg,
+            Some(MENU_SELECTED_BG),
+            "base at x={x}"
+        );
+    }
+    assert_eq!(
+        grid[(9, 1)].style().bg,
+        Some(MENU_SELECTED_BG),
+        "the frame keeps the base"
+    );
+}

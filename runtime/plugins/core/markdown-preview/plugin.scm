@@ -2,6 +2,7 @@
 
 (require "lib/state.scm")
 (require "lib/render.scm")
+(require "lib/text.scm")
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
@@ -69,3 +70,12 @@
 (define-command! "markdown-preview/toggle" md-preview/toggle-doc md-preview/toggle!)
 
 (define-typed-command! "toggle-markdown-preview" md-preview/toggle-doc md-preview/toggle!)
+
+(define (md-preview/format-text! text parsed)
+  (unless (string? text)
+    (error "markdown-preview: format-text/markdown takes a text and its parsed tree"))
+  (md-preview/format-text text parsed md-preview/rule-width))
+
+(define-command! "format-text/markdown"
+  "Given a Markdown text and its parsed tree, the conceals, line backgrounds and highlights that draw the text without its syntax. The editor calls it for every Markdown popup and the completion documentation box."
+  md-preview/format-text!)

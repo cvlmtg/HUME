@@ -17,7 +17,7 @@
 //! Display uses the slotmap `as_ffi` u64 so that `(log! "info" pane)` prints
 //! something readable without revealing internal structure.
 
-use hume_core::{BufferId, PaneHandle};
+use hume_core::{BufferId, HostToken, PaneHandle};
 use hume_editing::text::{BufferText, TextVersion};
 use slotmap::Key as _;
 use steel::{
@@ -142,6 +142,17 @@ steel_value!(pub(crate) fn into_steel_val for JobHandle => |h| format!("#<job {}
 steel_value!(
     pub(crate) fn into_steel_val for SupersedeKey => |k| format!("#<supersede-key {}>", k.raw())
 );
+
+/// A `format-text/<lang>` call's parsed text: the editor lends that call
+/// the tree it parsed the text into, and this value names the loan. Once the
+/// call returns it names nothing, so a value a plugin keeps reads no tree.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct ParsedText(pub(crate) HostToken);
+
+steel_value!(pub(crate) fn into_steel_val for ParsedText => |p| format!(
+    "#<parsed-text {}>",
+    p.0.raw()
+));
 
 /// `(buffer-generation pane)`'s value: the generation of `buffer`'s text
 /// when it was read. It names its buffer because generations are counted

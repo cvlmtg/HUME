@@ -65,8 +65,8 @@ pub use types::{
     Effect, EvalError, GrammarReg, LspErrKind, LspRoute, LspServerStatusEntry, LspServerTarget,
     Params, PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
     PendingLspServerReg, RequestMode, RequestParams, RouteSpec, SteelCmdBody, SteelCmdDef,
-    SteelTypedCmdBody, SteelTypedCmdDef, TriggerScope, VirtualLineSpec, WhenUnavailable,
-    lsp_err_value,
+    SteelTypedCmdBody, SteelTypedCmdDef, TextFormatSpec, TriggerScope, VirtualLineSpec,
+    WhenUnavailable, lsp_err_value,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than

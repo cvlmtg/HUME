@@ -1,7 +1,8 @@
 //! Grammar attachment and trigger-char registration.
 
-use hume_core::GrammarSource;
+use hume_core::{GrammarSource, HostToken};
 
+use super::Captures;
 use crate::types::GrammarReg;
 
 /// Grammar attachment and trigger-char registration, accessed through
@@ -24,4 +25,17 @@ pub trait LanguageHost {
     /// Whether `language` has a grammar, loaded or yet to load. A grammar
     /// whose load failed does not count.
     fn has_grammar(&self, language: &str) -> bool;
+
+    /// The captures of `query`, compiled against `language`'s grammar, over
+    /// every layer of that grammar in the text `parsed` names, sorted as
+    /// [`super::SyntaxHost::syntax_captures`] sorts them, with char offsets
+    /// into that text. `parsed` names a text only while the call it was lent
+    /// to runs; `Err` otherwise, when `language` has no grammar, or when
+    /// `query` does not compile.
+    fn parsed_text_captures(
+        &mut self,
+        parsed: HostToken,
+        language: &str,
+        query: &str,
+    ) -> Result<Captures, String>;
 }

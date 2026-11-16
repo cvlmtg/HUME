@@ -26,10 +26,10 @@ use crate::builtins::lsp::LSP_NOTIFICATION_EVENT;
 use crate::command_name::fold;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, ClaimRefused, CommandHolder, CommandHost, CommandKind, CursorHost, EditorHost,
-    EventHost, EventShape, EventSubject, LanguageHost, LocationPlace, LspHost, OutputHost,
-    PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost, ShownHandle,
-    StoredLanguage, TrackedHold, check_lazy_claim,
+    BufferHost, Captures, ClaimRefused, CommandHolder, CommandHost, CommandKind, CursorHost,
+    EditorHost, EventHost, EventShape, EventSubject, LanguageHost, LocationPlace, LspHost,
+    OutputHost, PositionParams, RangeParams, RangesParams, SelectionInfo, SettingsHost,
+    ShownHandle, StoredLanguage, TrackedHold, check_lazy_claim,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -275,6 +275,14 @@ impl LanguageHost for NullHost {
     }
     fn has_grammar(&self, _language: &str) -> bool {
         false
+    }
+    fn parsed_text_captures(
+        &mut self,
+        _parsed: HostToken,
+        _language: &str,
+        _query: &str,
+    ) -> Result<Captures, String> {
+        Err("NullHost: parsed_text_captures not available".into())
     }
 }
 

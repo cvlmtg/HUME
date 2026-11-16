@@ -11,13 +11,13 @@ use crate::SteelCtx;
 use crate::host::{DiagnosticEntry, DiagnosticRange, MarkedLines, SetError, each_entry};
 use crate::json::{WireOrigin, to_steel_handle};
 use crate::types::{
-    ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText, VirtualLineSpec,
+    ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText, TextFormatSpec, VirtualLineSpec,
 };
 
 use super::SteelResult;
 use super::args::{
     ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_CHAR_COL, END_LINE, HashEntry, START_CHAR,
-    START_CHAR_COL, START_LINE, bool_arg, hash_list, int_arg, item_label, list_of,
+    START_CHAR_COL, START_LINE, bool_arg, hash_entry, hash_list, int_arg, item_label, list_of,
     optional_hash_entry, optional_symbol_arg, spanned_text, string_arg, symbol_arg,
     symbol_enum_arg, symbol_hash,
 };
@@ -307,30 +307,33 @@ pub(crate) fn set_conceals(
     entries: SteelVal,
     overlaps: SteelVal,
 ) -> SteelResult {
-    let overlaps = conceal_overlaps_arg(overlaps)?;
+    let overlaps = conceal_overlaps_arg(overlaps, "#:overlaps")?;
     let line_count = decorated_line_count(ctx, bid)?;
-    let parsed = conceal_specs(entries, line_count)?;
+    let parsed = conceal_specs(entries, CONCEALS, line_count)?;
     require_cap(ctx.host.decorations())?
         .set_conceals(source, bid, parsed, overlaps)
         .map_err(set_err(CONCEALS))?;
     Ok(SteelVal::Void)
 }
 
-fn conceal_overlaps_arg(overlaps: SteelVal) -> Result<ConcealOverlaps, SteelErr> {
-    const LABEL: &str = "#:overlaps";
+fn conceal_overlaps_arg(overlaps: SteelVal, label: &str) -> Result<ConcealOverlaps, SteelErr> {
     symbol_enum_arg(
-        symbol_arg(&overlaps, LABEL, "a symbol")?,
-        LABEL,
+        symbol_arg(&overlaps, label, "a symbol")?,
+        label,
         &ConcealOverlaps::NAMED,
     )
 }
 
-/// Decodes `entries` for a buffer of `line_count` content lines. The one
-/// place a conceal's variant is chosen: an empty range with `'text` is
-/// `Inserted`, a non-empty one `Hidden`, and every other combination of
-/// range, `'text` and `'scope` is refused here.
-fn conceal_specs(entries: SteelVal, line_count: usize) -> Result<Vec<ConcealSpec>, SteelErr> {
-    hash_list(entries, CONCEALS, CONCEAL_KEYS, |entry| {
+/// Decodes `entries`, labelled `list`, for a text of `line_count` content
+/// lines. The one place a conceal's variant is chosen: an empty range with
+/// `'text` is `Inserted`, a non-empty one `Hidden`, and every other
+/// combination of range, `'text` and `'scope` is refused here.
+fn conceal_specs(
+    entries: SteelVal,
+    list: &str,
+    line_count: usize,
+) -> Result<Vec<ConcealSpec>, SteelErr> {
+    hash_list(entries, list, CONCEAL_KEYS, |entry| {
         conceal_spec(entry, line_count)
     })
 }
@@ -444,18 +447,73 @@ pub(crate) fn set_line_backgrounds(
     entries: SteelVal,
 ) -> SteelResult {
     let list = "entries";
-    let parsed = hash_list(entries, list, &["line", END_LINE, "scope"], |entry| {
-        Ok((entry.line_and_end_line()?, entry.string("scope")?))
-    })?;
+    let parsed = hash_list(entries, list, LINE_BACKGROUND_KEYS, line_background)?;
     let line_count = decorated_line_count(ctx, bid)?;
-    let parsed = each_entry(parsed, |(lines, scope)| {
-        Ok((marked_lines(lines, line_count)?, scope))
-    })
-    .map_err(set_err(list))?;
+    let parsed = line_backgrounds_within(parsed, list, line_count)?;
     require_cap(ctx.host.decorations())?
         .set_line_backgrounds(source, bid, parsed)
         .map_err(set_err(list))?;
     Ok(SteelVal::Void)
+}
+
+const LINE_BACKGROUND_KEYS: &[&str] = &["line", END_LINE, "scope"];
+
+/// One line-background entry's lines and scope, its lines not yet checked
+/// against a text.
+fn line_background(entry: &HashEntry) -> Result<((usize, Option<usize>), String), SteelErr> {
+    Ok((entry.line_and_end_line()?, entry.string("scope")?))
+}
+
+/// `entries`, decoded by [`line_background`] from the list `list` labels,
+/// each checked against a text of `line_count` content lines.
+fn line_backgrounds_within(
+    entries: Vec<((usize, Option<usize>), String)>,
+    list: &str,
+    line_count: usize,
+) -> Result<Vec<(MarkedLines, String)>, SteelErr> {
+    each_entry(entries, |(lines, scope)| {
+        Ok((marked_lines(lines, line_count)?, scope))
+    })
+    .map_err(set_err(list))
+}
+
+const TEXT_FORMAT_KEYS: &[&str] = &["conceals", "overlaps", "line-backgrounds", "highlights"];
+
+/// What a `format-text/<lang>` command returned for a text of `line_count`
+/// content lines: a hash whose `'conceals`, `'line-backgrounds` and
+/// `'highlights` are the lists `set-conceals!`, `set-line-backgrounds!` and
+/// `set-extra-highlights!` take, and whose `'overlaps` is `set-conceals!`'s
+/// `#:overlaps`. A missing list is empty and a missing `'overlaps` is
+/// `'error`. A conceal's `'reveal` is decoded and has no use in a text.
+pub(crate) fn text_format(val: SteelVal, line_count: usize) -> Result<TextFormatSpec, SteelErr> {
+    let entry = hash_entry(val, "result", TEXT_FORMAT_KEYS)?;
+    let list = |key: &str| {
+        let label = entry.label(key);
+        (entry.optional(key).unwrap_or_else(|| list_of([])), label)
+    };
+    let (conceals, conceals_label) = list("conceals");
+    let (line_backgrounds, line_backgrounds_label) = list("line-backgrounds");
+    let (highlights, highlights_label) = list("highlights");
+    let line_backgrounds = hash_list(
+        line_backgrounds,
+        &line_backgrounds_label,
+        LINE_BACKGROUND_KEYS,
+        line_background,
+    )?;
+    Ok(TextFormatSpec {
+        conceals: conceal_specs(conceals, &conceals_label, line_count)?,
+        overlaps: entry
+            .optional("overlaps")
+            .map(|v| conceal_overlaps_arg(v, &entry.label("overlaps")))
+            .transpose()?
+            .unwrap_or(ConcealOverlaps::Refuse),
+        line_backgrounds: line_backgrounds_within(
+            line_backgrounds,
+            &line_backgrounds_label,
+            line_count,
+        )?,
+        highlights: char_range_scopes(highlights, &highlights_label)?,
+    })
 }
 
 /// `(set-statusline-text! pane source text)`: replaces `source`'s

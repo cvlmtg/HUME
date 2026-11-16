@@ -14,8 +14,8 @@ use hume_rope::offset::ExclusiveRange;
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
 use crate::host::{
-    BufferHost, CommandHolder, CommandHost, CursorHost, EditorHost, EventHost, EventShape,
-    LanguageHost, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage, UndoNode,
+    BufferHost, Captures, CommandHolder, CommandHost, CursorHost, EditorHost, EventHost,
+    EventShape, LanguageHost, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage, UndoNode,
 };
 use crate::types::{GrammarReg, SteelCmdDef, SteelTypedCmdDef};
 
@@ -173,6 +173,17 @@ impl LanguageHost for ReadOnlyHost<'_> {
     }
     fn has_grammar(&self, language: &str) -> bool {
         self.inner.borrow_mut().language().has_grammar(language)
+    }
+    fn parsed_text_captures(
+        &mut self,
+        parsed: HostToken,
+        language: &str,
+        query: &str,
+    ) -> Result<Captures, String> {
+        self.inner
+            .borrow_mut()
+            .language()
+            .parsed_text_captures(parsed, language, query)
     }
 }
 

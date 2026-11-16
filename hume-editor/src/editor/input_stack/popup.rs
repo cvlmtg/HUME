@@ -12,6 +12,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::commands::half_page;
 use super::super::error::CommandError;
+use super::super::popup_syntax::{Markup, MarkupSyntax};
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
 use super::placement::{focused_cursor, popup_placement};
@@ -36,7 +37,6 @@ pub(in crate::editor) enum ResolvedPopupLayout {
 /// in a mode layer's slot untouched) or is itself gated on the stack being
 /// settled, so `close-popup!`/`popup()` never need to look past `top()`.
 pub(in crate::editor) struct PopupLayer {
-    pub(in crate::editor) text: String,
     /// First visible wrapped row, for a `Scrollable` popup. Clamped against
     /// `max_scroll` in [`scroll_box`] before each delta is applied, since
     /// content height (and so `max_scroll`) can shrink between key presses
@@ -45,19 +45,16 @@ pub(in crate::editor) struct PopupLayer {
     /// additionally clamp a *copy* of this value for rendering; that clamp
     /// is view-only and never writes back to the model.
     pub(in crate::editor) scroll: usize,
-    /// `#:lang`, rebuilt fresh on every `show-popup!`, dropped with the
-    /// popup on close. No separate invalidation path: the popup's lifetime
-    /// IS the syntax's (SSOT).
-    pub(in crate::editor) syntax: Option<super::super::popup_syntax::MarkupSyntax>,
     pub(in crate::editor) layout: hume_core::PopupLayout,
-    /// Built from `text`/`syntax` against the view's theme when the popup is
-    /// created. Its own internal wrap cache is keyed by width, so an
-    /// unchanged width across frames is O(1), not a re-wrap. Rebuilt by
-    /// [`Layer::theme_changed`] (reached from `theme::set_theme`, the one
-    /// chokepoint every `view.theme` write goes through), since the baked
-    /// styles are the one input here that can change out from under an open
-    /// popup, unlike `text`/`syntax`.
-    content: hume_ui::popup::PopupContent,
+    /// The text, its `#:lang` parse and format, and the content built from
+    /// them against the view's theme, rebuilt fresh on every `show-popup!`
+    /// and dropped with the popup on close. The content's own wrap cache is
+    /// keyed by width, so an unchanged width across frames is O(1), not a
+    /// re-wrap. Rebuilt by [`Layer::theme_changed`] (reached from
+    /// `theme::set_theme`, the one chokepoint every `view.theme` write goes
+    /// through), since the baked styles are the one input here that can
+    /// change out from under an open popup.
+    markup: Markup,
     /// Identifies which `show-popup!` call opened this popup; see
     /// [`Self::token`]'s doc.
     token: HostToken,
@@ -68,19 +65,15 @@ impl PopupLayer {
     /// minting site, same as `DrawerLayer::new`.
     pub(in crate::editor) fn new(
         text: String,
-        syntax: Option<super::super::popup_syntax::MarkupSyntax>,
+        syntax: Option<MarkupSyntax>,
         layout: hume_core::PopupLayout,
         theme: &mut Theme,
         registry: &ScopeRegistry,
     ) -> Self {
-        let content =
-            super::super::popup_syntax::popup_content(&text, syntax.as_ref(), theme, registry);
         Self {
-            text,
             scroll: 0,
-            syntax,
             layout,
-            content,
+            markup: Markup::new(text, syntax, theme, registry),
             token: HostToken::mint(),
         }
     }
@@ -91,15 +84,24 @@ impl PopupLayer {
         self.token
     }
 
+    #[cfg(test)]
+    pub(in crate::editor) fn markup(&self) -> &Markup {
+        &self.markup
+    }
+
+    pub(in crate::editor) fn markup_mut(&mut self) -> &mut Markup {
+        &mut self.markup
+    }
+
     /// The popup's styled text, built against the current theme.
     pub(in crate::editor) fn content(&self) -> &hume_ui::popup::PopupContent {
-        &self.content
+        self.markup.content()
     }
 
     /// Wrapped lines this popup has when docked on a terminal `area_width`
     /// columns wide: what its band's height and its paging are measured from.
     pub(in crate::editor) fn docked_total_rows(&self, area_width: u16) -> usize {
-        hume_ui::popup::band_total_rows(&self.content, area_width)
+        hume_ui::popup::band_total_rows(self.content(), area_width)
     }
 }
 
@@ -109,12 +111,7 @@ impl Layer for PopupLayer {
     }
 
     fn theme_changed(&mut self, theme: &mut Theme, registry: &ScopeRegistry) {
-        self.content = super::super::popup_syntax::popup_content(
-            &self.text,
-            self.syntax.as_ref(),
-            theme,
-            registry,
-        );
+        self.markup.rebuild(theme, registry);
     }
 
     fn handler(&self) -> LayerHandler {

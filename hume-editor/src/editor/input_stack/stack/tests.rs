@@ -148,7 +148,7 @@ fn popup_prefers_a_popup_layer_over_a_lower_sticky_slot() {
     *stack.sticky_popup_slot_mut().expect("Base has a slot") = Some(popup_model("sticky on base"));
     stack.push(popup_model("scrollable layer"));
     assert_eq!(
-        stack.popup().map(|p| p.text.as_str()),
+        stack.popup().map(|p| p.markup().text()),
         Some("scrollable layer")
     );
 }
@@ -193,7 +193,7 @@ fn clear_popup_layer_leaves_the_sticky_slot_intact() {
     stack.clear_popup_layer();
     assert!(stack.is::<BaseLayer>(stack.top()), "the layer home is gone");
     assert_eq!(
-        stack.popup().map(|p| p.text.as_str()),
+        stack.popup().map(|p| p.markup().text()),
         Some("sticky"),
         "the sticky slot must survive"
     );

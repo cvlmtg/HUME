@@ -23,7 +23,7 @@
 //! clipped defensively to `pane_rect`.
 
 use hume_engine::types::{ResolvedStyle, Scope};
-use hume_grid::Rect;
+use hume_grid::{Rect, Rgb};
 use std::cell::{Cell, Ref, RefCell};
 use std::sync::Arc;
 
@@ -55,8 +55,8 @@ const MAX_POPUP_WIDTH: u16 = 120;
 ///
 /// [`Self::plain`]/[`Self::styled`] both resolve through the same
 /// `wrap_styled` call internally. There is one wrap algorithm, not two;
-/// `plain` is a single default-style run. `styled` takes
-/// pre-resolved `(text, style)` runs rather than a grammar name: this crate
+/// each `plain` line is a single default-style run. `styled` takes
+/// pre-resolved lines of `(text, style)` runs rather than a grammar name: this crate
 /// has no tree-sitter dependency of its own, so `hume-editor` (which does,
 /// via `MarkupSyntax`) resolves spans against its own baked `Theme` before
 /// handing them over: `Theme::resolve` debug-asserts on an unbaked
@@ -70,10 +70,18 @@ pub struct PopupContent {
     counted: Cell<Option<(u16, usize)>>,
 }
 
-/// A popup's text: plain, painted in one style, or styled runs.
+/// A popup's text: plain, painted in one style, or styled lines.
 enum PopupSource {
     Plain(String),
-    Styled(Vec<(String, ResolvedStyle)>),
+    Styled(Vec<StyledLine>),
+}
+
+/// One line of a [`PopupContent::styled`] popup: its runs, none holding a
+/// `\n`, and the background the rest of each of its wrapped rows is filled
+/// with, `None` for the box's own.
+pub struct StyledLine {
+    pub runs: Vec<(String, ResolvedStyle)>,
+    pub fill: Option<Rgb>,
 }
 
 struct Wrapped {
@@ -161,7 +169,7 @@ impl WrappedLines {
 
 /// A wrapped row's text, its runs joined.
 fn row_text(row: &StyledRow) -> String {
-    row.iter().map(|(text, _)| text.as_str()).collect()
+    row.runs.iter().map(|(text, _)| text.as_str()).collect()
 }
 
 impl PopupContent {
@@ -173,12 +181,12 @@ impl PopupContent {
         }
     }
 
-    /// `runs`: pre-highlighted `(text, style)` spans in source order. See
-    /// this type's own doc for why the caller resolves these rather than
+    /// `lines`: the text's lines in order, each its pre-highlighted runs.
+    /// See this type's own doc for why the caller resolves these rather than
     /// handing over a grammar name.
-    pub fn styled(runs: Vec<(String, ResolvedStyle)>) -> Self {
+    pub fn styled(lines: Vec<StyledLine>) -> Self {
         Self {
-            source: PopupSource::Styled(runs),
+            source: PopupSource::Styled(lines),
             cache: RefCell::new(None),
             counted: Cell::new(None),
         }
@@ -243,13 +251,23 @@ impl PopupContent {
     fn wrap(&self, width: u16) -> WrappedLines {
         match &self.source {
             PopupSource::Plain(text) => WrappedLines::Plain(
-                wrap_styled([(text.as_str(), ResolvedStyle::default())], width)
-                    .iter()
-                    .map(row_text)
-                    .collect(),
+                wrap_styled(
+                    text.split('\n')
+                        .map(|line| ([(line, ResolvedStyle::default())], None)),
+                    width,
+                )
+                .iter()
+                .map(row_text)
+                .collect(),
             ),
-            PopupSource::Styled(runs) => WrappedLines::Styled(wrap_styled(
-                runs.iter().map(|(text, style)| (text.as_str(), *style)),
+            PopupSource::Styled(lines) => WrappedLines::Styled(wrap_styled(
+                lines.iter().map(|line| {
+                    let runs = line
+                        .runs
+                        .iter()
+                        .map(|(text, style)| (text.as_str(), *style));
+                    (runs, line.fill)
+                }),
                 width,
             )),
         }
@@ -821,10 +839,13 @@ fn clamp_x_to_pane(x: u16, width: u16, pane_rect: Rect) -> u16 {
 }
 
 /// One wrapped popup row's content, as contiguous same-style runs: the
-/// styled counterpart of a plain-wrapped row (a `Vec<StyledRun>` instead of
-/// a bare `String`).
-pub(in crate::popup) type StyledRun = (String, ResolvedStyle);
-pub type StyledRow = Vec<StyledRun>;
+/// styled counterpart of a plain-wrapped row (a list of runs instead of a
+/// bare `String`), with its line's [`StyledLine::fill`].
+#[derive(Clone, Debug, PartialEq)]
+pub struct StyledRow {
+    pub runs: Vec<(String, ResolvedStyle)>,
+    pub fill: Option<Rgb>,
+}
 
 /// Merge adjacent `(text, style)` pairs sharing the same `ResolvedStyle`:
 /// [`coalesce_atoms`]'s own primitive, merging wrapped *output* graphemes
@@ -839,56 +860,51 @@ fn push_run(runs: &mut Vec<(String, ResolvedStyle)>, text: &str, style: Resolved
     }
 }
 
-/// Merge adjacent atoms sharing the same `ResolvedStyle` into `StyledRun`s.
-fn coalesce_atoms(atoms: Vec<(&str, ResolvedStyle)>) -> StyledRow {
-    let mut out: StyledRow = Vec::new();
+/// Merge adjacent atoms sharing the same `ResolvedStyle` into a row filled
+/// with `fill`.
+fn coalesce_atoms(atoms: Vec<(&str, ResolvedStyle)>, fill: Option<Rgb>) -> StyledRow {
+    let mut runs = Vec::new();
     for (g, style) in atoms {
-        push_run(&mut out, g, style);
+        push_run(&mut runs, g, style);
     }
-    out
+    StyledRow { runs, fill }
 }
 
-/// Word-wrap `runs` (contiguous same-style chunks of source text; `\n` acts
-/// as a paragraph delimiter, and may appear anywhere inside a run) to
-/// `max_width` display columns, breaking on grapheme-cluster boundaries.
-/// A line's leading spaces stay on its first row; continuation rows start
-/// at column 0. Unbounded height: [`PopupContent::wrapped`]'s caller windows the result
-/// (`scroll`) rather than truncating it here; a `Scrollable` popup needs
-/// every row reachable, not just the first screenful.
+/// Word-wrap `lines` (each its contiguous same-style chunks of source text,
+/// none holding a `\n`, and its fill) to `max_width` display columns,
+/// breaking on grapheme-cluster boundaries. Every row a line wraps to
+/// carries that line's fill. A line's leading spaces stay on its first row;
+/// continuation rows start at column 0. Unbounded height:
+/// [`PopupContent::wrapped`]'s caller windows the result (`scroll`) rather
+/// than truncating it here; a `Scrollable` popup needs every row reachable,
+/// not just the first screenful.
 ///
-/// Operates on a flat per-grapheme stream, never on `runs`' original chunk
-/// boundaries. A style change (e.g. a `**bold**` span) can land anywhere,
-/// including mid-word, so wrapping must not coarsen past grapheme
-/// granularity. Plain popup text is a single default-style run, so
-/// there is one wrap algorithm here, not a separate one for plain text.
-fn wrap_styled<'a>(
-    runs: impl IntoIterator<Item = (&'a str, ResolvedStyle)>,
+/// Operates on a flat per-grapheme stream per line, never on the runs'
+/// original chunk boundaries. A style change (e.g. a `**bold**` span) can
+/// land anywhere, including mid-word, so wrapping must not coarsen past
+/// grapheme granularity. A plain popup line is a single default-style run,
+/// so there is one wrap algorithm here, not a separate one for plain text.
+fn wrap_styled<'a, R>(
+    lines: impl IntoIterator<Item = (R, Option<Rgb>)>,
     max_width: u16,
-) -> Vec<StyledRow> {
+) -> Vec<StyledRow>
+where
+    R: IntoIterator<Item = (&'a str, ResolvedStyle)>,
+{
     use unicode_segmentation::UnicodeSegmentation;
-
-    let atoms: Vec<(&str, ResolvedStyle)> = runs
-        .into_iter()
-        .flat_map(|(text, style)| text.graphemes(true).map(move |g| (g, style)))
-        .collect();
 
     let max_width = max_width.max(1) as usize;
     let mut out: Vec<StyledRow> = Vec::new();
-    let mut pos = 0;
 
-    loop {
-        let para_start = pos;
-        while pos < atoms.len() && atoms[pos].0 != "\n" {
-            pos += 1;
-        }
-        let paragraph = &atoms[para_start..pos];
-        let had_newline = pos < atoms.len();
-        if had_newline {
-            pos += 1; // skip the "\n" atom itself
-        }
+    for (runs, fill) in lines {
+        let paragraph: Vec<(&str, ResolvedStyle)> = runs
+            .into_iter()
+            .flat_map(|(text, style)| text.graphemes(true).map(move |g| (g, style)))
+            .collect();
+        let paragraph = paragraph.as_slice();
 
         if paragraph.is_empty() {
-            out.push(Vec::new());
+            out.push(coalesce_atoms(Vec::new(), fill));
         } else {
             let mut current: Vec<(&str, ResolvedStyle)> = Vec::new();
             let mut current_w = 0usize;
@@ -913,7 +929,7 @@ fn wrap_styled<'a>(
                 };
 
                 if would_be_w > max_width && !current.is_empty() {
-                    out.push(coalesce_atoms(std::mem::take(&mut current)));
+                    out.push(coalesce_atoms(std::mem::take(&mut current), fill));
                     current_w = 0;
                 }
 
@@ -921,14 +937,14 @@ fn wrap_styled<'a>(
                     // A single word wider than the line: hard-break it on
                     // grapheme boundaries rather than overflow.
                     if !current.is_empty() {
-                        out.push(coalesce_atoms(std::mem::take(&mut current)));
+                        out.push(coalesce_atoms(std::mem::take(&mut current), fill));
                     }
                     let mut piece: Vec<(&str, ResolvedStyle)> = Vec::new();
                     let mut piece_w = 0usize;
                     for &(g, style) in word {
                         let gw = chrome_cluster_width(g);
                         if piece_w + gw > max_width && !piece.is_empty() {
-                            out.push(coalesce_atoms(std::mem::take(&mut piece)));
+                            out.push(coalesce_atoms(std::mem::take(&mut piece), fill));
                             piece_w = 0;
                         }
                         piece.push((g, style));
@@ -958,11 +974,7 @@ fn wrap_styled<'a>(
                 word_start = word_end + 1; // skip the delimiting space atom
                 word_end = word_start;
             }
-            out.push(coalesce_atoms(current));
-        }
-
-        if !had_newline {
-            break;
+            out.push(coalesce_atoms(current, fill));
         }
     }
 

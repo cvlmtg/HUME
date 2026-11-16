@@ -618,6 +618,7 @@ builtins! {
     cmd "buffer-changes-since" diff::buffer_changes_since(pane: args::LiveBuffer, generation: SteelVal);
     open "language-has-grammar?" syntax::language_has_grammar(name: SteelVal);
     cmd "%syntax-captures" => "syntax-captures" syntax::syntax_captures(pane: args::LiveBuffer, language: String, query: String, ranges: SteelVal);
+    cmd "parsed-text-captures" syntax::parsed_text_captures(parsed: SteelVal, language: String, query: String);
 
     // Editor-integration directory info, read from `ctx.dirs` (computed
     // once by `ScriptingHost::new`). Callable from anywhere (`open`).

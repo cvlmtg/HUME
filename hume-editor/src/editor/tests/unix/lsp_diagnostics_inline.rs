@@ -220,7 +220,8 @@ fn goto_next_diagnostic_opens_a_dismiss_on_key_popup_with_the_full_message() {
 
     let popup = ed.state.input.popup().expect("popup must be shown");
     assert_eq!(
-        popup.text, "problem A\nsecond line of detail",
+        popup.markup().text(),
+        "problem A\nsecond line of detail",
         "the overlay must show the FULL message, not just its first line \
          (unlike the inline summary and the :diagnostics drawer row)"
     );

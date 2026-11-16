@@ -251,7 +251,9 @@ Draws Markdown without its syntax, in the style of a rendered preview, right in 
 (load-plugin! "core:markdown-preview")
 ```
 
-Requires `core:stdlib` loaded first. It starts when you open a Markdown file.
+Requires `core:stdlib` loaded first. It starts when you open a Markdown file or a Markdown popup opens.
+
+It also draws Markdown popups, such as a language server's hover, and Markdown documentation in the completion menu's documentation box. A popup shows no source, since no selection is in it, and a table wider than the popup breaks its grid.
 
 It needs the `markdown` and `markdown.inline` grammars: install them with `:plum-install-grammar` if HUME warns that one is missing. Without `markdown.inline`, the headings, lists, quotes, rules, code blocks and tables are drawn and the emphasis, links and escapes stay as written.
 

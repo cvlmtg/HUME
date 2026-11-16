@@ -47,7 +47,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
     type_cmd(&mut ed, ":go");
 
     assert!(
-        ed.state.input.popup().unwrap().syntax.is_some(),
+        ed.state.input.popup().unwrap().markup().syntax().is_some(),
         "a registered markdown grammar must attach synchronous syntax to the popup"
     );
 
@@ -58,7 +58,7 @@ fn markdown_popup_highlights_when_the_grammar_is_registered() {
 
     let rows = styled_rows(&ed).expect("markdown popup must resolve styled rows");
     assert_eq!(rows.len(), 1, "single-line content wraps to one row");
-    let runs = &rows[0];
+    let runs = &rows[0].runs;
     // The ATX heading marker ("#") and the heading text carry different
     // scopes in the real markdown grammar's highlights.scm, so a correctly
     // highlighted line must coalesce into at least two distinct-style runs.
@@ -126,7 +126,7 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
     type_cmd(&mut ed, ":go");
 
     assert!(
-        ed.state.input.popup().unwrap().syntax.is_some(),
+        ed.state.input.popup().unwrap().markup().syntax().is_some(),
         "a registered markdown grammar must attach synchronous syntax to a docked popup"
     );
 
@@ -137,7 +137,7 @@ fn docked_popup_highlights_when_the_grammar_is_registered() {
 
     let rows = band_styled_rows(&ed).expect("docked markdown popup must resolve styled rows");
     assert_eq!(rows.len(), 1, "single-line content wraps to one row");
-    let runs = &rows[0];
+    let runs = &rows[0].runs;
     assert!(
         runs.len() > 1,
         "a heading line highlighted by a real grammar must not come back as \
@@ -195,7 +195,7 @@ fn popup_without_markdown_flag_stays_plain_even_with_the_grammar_registered() {
     type_cmd(&mut ed, ":go");
 
     assert!(
-        ed.state.input.popup().unwrap().syntax.is_none(),
+        ed.state.input.popup().unwrap().markup().syntax().is_none(),
         "without #:lang, the popup must stay plain even when a markdown \
          grammar is registered"
     );
@@ -223,7 +223,7 @@ fn markdown_flag_without_a_registered_grammar_falls_back_to_plain() {
     type_cmd(&mut ed, ":go");
 
     assert!(
-        ed.state.input.popup().unwrap().syntax.is_none(),
+        ed.state.input.popup().unwrap().markup().syntax().is_none(),
         "#:lang \"markdown\" with no markdown grammar registered must fall \
          back to plain, not error"
     );
@@ -275,8 +275,8 @@ fn a_markdown_popup_loads_the_grammars_its_fences_need() {
 
     let popup = ed.state.input.popup().expect("the popup shows");
     let layers = popup
-        .syntax
-        .as_ref()
+        .markup()
+        .syntax()
         .expect("markdown loads for the popup")
         .syntax
         .layers()

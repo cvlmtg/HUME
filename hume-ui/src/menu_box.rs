@@ -264,7 +264,7 @@ pub(crate) enum BoxRows<'a> {
     Plain(&'a [String]),
     /// A styled popup's wrapped text (a markdown popup with a `markdown`
     /// grammar registered): each line is its runs, each in its own absolute
-    /// style. No row is selected.
+    /// style, over its fill. No row is selected.
     Styled(&'a [StyledRow]),
     /// A menu's rows, `selected` (an index into `rows`) highlighted in
     /// `selected_style`. A row's spans name theme scopes, layered over the
@@ -352,14 +352,18 @@ pub(crate) fn draw_menu_box(
         let y = inner.y + i as u16;
         match rows {
             BoxRows::Styled(lines) => {
-                // The box's base fill already covers the row. Runs are
-                // contiguous and together span the whole line, so there are
-                // no gaps left for `styles.base` to show through.
+                // The box's base fill already covers a row without a fill of
+                // its own. Runs are contiguous and together span the whole
+                // line, so a row's fill shows only past its text.
+                let row = &lines[i];
+                if let Some(fill) = row.fill {
+                    canvas.fill_row_bg(text_x, text_right, y, Some(fill));
+                }
                 paint_styled_row(
                     canvas,
                     text_x,
                     y,
-                    lines[i].iter().map(|(text, style)| (text.as_str(), *style)),
+                    row.runs.iter().map(|(text, style)| (text.as_str(), *style)),
                     text_right,
                 );
             }

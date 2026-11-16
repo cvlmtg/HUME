@@ -22,7 +22,7 @@ use super::super::completion::{
 };
 use super::super::error::CommandError;
 use super::super::keymap::WalkResult;
-use super::super::popup_syntax::{build_markup_syntax, popup_content};
+use super::super::popup_syntax::{Markup, build_markup_syntax};
 use super::super::syntax::GrammarLoads;
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
@@ -38,9 +38,11 @@ use super::stack::{
 /// beneath).
 pub(in crate::editor) struct BufferCompletionLayer {
     pub(in crate::editor) session: BufferSession,
-    /// The documentation box's content, built the first time the box is
-    /// resolved (by a frame, or by Ctrl-d/Ctrl-u paging it), since its
-    /// styled runs need the baked theme.
+    /// The documentation box's content for the selected item, brought up
+    /// to the selection by the settle pass
+    /// ([`EditorState::sync_completion_doc_model`]), so a frame and the
+    /// box's paging read a model that is already current, and a formatter
+    /// for the text runs before the frame.
     doc: DocView,
 }
 
@@ -69,17 +71,17 @@ impl BufferCompletionLayer {
 #[derive(Default)]
 struct DocView {
     /// The item the box last showed, and whether its docs were known then:
-    /// while both hold, resolving the box reuses `current` without asking
-    /// the item again.
+    /// while both hold, the box keeps `current` without asking the item
+    /// again.
     shown: Option<(ItemKey, bool)>,
     /// The index in `built` of what the box shows for `shown`, `None` for
     /// an item with nothing to show.
     current: Option<usize>,
     /// Content per text this session: going back to an item, or meeting it
-    /// again in its source's next answer, reuses it, markdown parse
-    /// included. One entry per distinct text visited, so a linear search
-    /// on a selection change is enough.
-    built: Vec<(Documentation, hume_ui::popup::PopupContent)>,
+    /// again in its source's next answer, reuses it, markdown parse and
+    /// format included. One entry per distinct text visited, so a linear
+    /// search on a selection change is enough.
+    built: Vec<(Documentation, Markup)>,
     /// First visible wrapped row of `current`, back to 0 whenever `shown`
     /// changes. Rendering clamps a copy; [`scroll_box`] clamps
     /// it before each step.
@@ -104,9 +106,24 @@ impl DocView {
             .markdown
             .then(|| build_markup_syntax(loads, "markdown", &text.text))
             .flatten();
-        let content = popup_content(&text.text, syntax.as_ref(), theme, loads.scopes());
-        self.built.push((text, content));
+        let markup = Markup::new(text.text.clone(), syntax, theme, loads.scopes());
+        self.built.push((text, markup));
         self.built.len() - 1
+    }
+
+    /// What the box shows for the selected item, `None` for an item with
+    /// nothing to show.
+    fn current_mut(&mut self) -> Option<&mut Markup> {
+        let current = self.current?;
+        self.built.get_mut(current).map(|(_, markup)| markup)
+    }
+}
+
+impl BufferCompletionLayer {
+    /// What the documentation box shows for the selected item: see
+    /// [`DocView::current_mut`].
+    pub(in crate::editor) fn doc_markup_mut(&mut self) -> Option<&mut Markup> {
+        self.doc.current_mut()
     }
 }
 
@@ -219,12 +236,12 @@ impl Editor {
 
     /// The Insert-mode completion menu and its documentation box resolved
     /// against the focused pane's current rect and viewport: what a frame
-    /// paints and what Ctrl-d/Ctrl-u page the box against. Resolving the box
-    /// also brings the box's model up to the selection (see
-    /// [`Self::resolve_completion_doc`]), so paging after a selection move
-    /// pages the new candidate's documentation. `None` with no session open
-    /// or its anchor out of view. `screen` and `cursor_cell` are
-    /// [`popup_placement`]'s.
+    /// paints and what Ctrl-d/Ctrl-u page the box against. The box places
+    /// the model the settle pass brought up to the selection
+    /// ([`EditorState::sync_completion_doc_model`]), and every key is
+    /// followed by a settle, so paging after a selection move pages the new
+    /// candidate's documentation. `None` with no session open or its anchor
+    /// out of view. `screen` and `cursor_cell` are [`popup_placement`]'s.
     fn resolve_completion_overlays(
         &mut self,
         screen: &ScreenLayout,
@@ -279,41 +296,63 @@ impl Editor {
         Some((menu, doc))
     }
 
-    /// The documentation box in `slot` for the selected item, recording
-    /// whether there was room for it: `None` with nothing to show or no
-    /// room beside the menu.
+    /// The documentation box in `slot` for the selected item, as its model
+    /// holds it, recording whether there was room for it: `None` with
+    /// nothing to show or no room beside the menu.
     fn resolve_completion_doc(
         &mut self,
         slot: Option<SideSlot>,
     ) -> Option<hume_ui::popup::PopupState> {
-        let (_, bid) = self.state.input.completion_owner()?;
-        let BufferCompletionLayer { session, doc } =
+        let BufferCompletionLayer { doc, .. } =
             self.state.input.find_mut::<BufferCompletionLayer>()?;
         doc.fits = Some(slot.is_some());
         let slot = slot?;
-        let (key, item) = session.selected_keyed()?;
-        let shown = Some((key, item.docs_known()));
-        if doc.shown != shown {
-            let fence_lang = self
-                .state
-                .buffers
-                .get(bid)
-                .language_name(&self.state.config.languages)
-                .unwrap_or("");
-            let text = item.doc_box_text(fence_lang);
-            let mut loads =
-                GrammarLoads::new(&mut self.state.config.languages, &mut self.view.registry);
-            doc.current = text.map(|text| doc.content_for(text, &mut loads, &mut self.view.theme));
-            doc.shown = shown;
-            doc.scroll = 0;
-        }
-        let (_, content) = doc.built.get_mut(doc.current?)?;
+        let (_, markup) = doc.built.get(doc.current?)?;
         Some(hume_ui::popup::resolve_side_popup(
-            content,
+            markup.content(),
             &slot,
             doc.scroll,
             self.state.settings.popup_border,
         ))
+    }
+}
+
+impl EditorState {
+    /// Brings the documentation box's model up to the selected item: its
+    /// text, built the first time this session shows it, and the scroll
+    /// back to the top when the item, or what is known of its docs,
+    /// changes. Built whether or not the last frame found room for the box,
+    /// so a frame that finds room shows it at once. Run in the settle pass,
+    /// after the session is reconciled.
+    pub(in crate::editor) fn sync_completion_doc_model(&mut self, view: &mut EngineView) {
+        if !self.settings.completion_docs {
+            return;
+        }
+        let Some((_, bid)) = self.input.completion_owner() else {
+            return;
+        };
+        let Some(BufferCompletionLayer { session, doc }) =
+            self.input.find_mut::<BufferCompletionLayer>()
+        else {
+            return;
+        };
+        let Some((key, item)) = session.selected_keyed() else {
+            return;
+        };
+        let shown = Some((key, item.docs_known()));
+        if doc.shown == shown {
+            return;
+        }
+        let fence_lang = self
+            .buffers
+            .get(bid)
+            .language_name(&self.config.languages)
+            .unwrap_or("");
+        let text = item.doc_box_text(fence_lang);
+        let mut loads = GrammarLoads::new(&mut self.config.languages, &mut view.registry);
+        doc.current = text.map(|text| doc.content_for(text, &mut loads, &mut view.theme));
+        doc.shown = shown;
+        doc.scroll = 0;
     }
 }
 

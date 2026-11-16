@@ -1,9 +1,13 @@
 //! `EditorHostImpl`'s grammar attachment and trigger-char registration.
 
+use hume_core::HostToken;
+use hume_rope::line::ContentLine;
+use hume_rope::offset::ExclusiveRange;
 use hume_scripting::GrammarReg;
 
 use super::EditorHostImpl;
-use hume_scripting::host::LanguageHost;
+use super::syntax::captures_of;
+use hume_scripting::host::{Captures, LanguageHost};
 
 impl<'a> LanguageHost for EditorHostImpl<'a> {
     fn attach_grammar(&mut self, reg: &GrammarReg) -> Result<bool, String> {
@@ -31,5 +35,31 @@ impl<'a> LanguageHost for EditorHostImpl<'a> {
 
     fn has_grammar(&self, language: &str) -> bool {
         self.state.config.languages.has_grammar(language)
+    }
+
+    fn parsed_text_captures(
+        &mut self,
+        parsed: HostToken,
+        language: &str,
+        query: &str,
+    ) -> Result<Captures, String> {
+        let markup = self
+            .lent
+            .filter(|&(token, _)| token == parsed)
+            .map(|(_, markup)| markup)
+            .ok_or_else(|| {
+                "the parsed text is only valid during its format-text call".to_owned()
+            })?;
+        let (_, query) = self.capture_query(language, query)?;
+        let mut captures = Vec::new();
+        if let Some(layers) = markup.syntax.layers() {
+            let text = &markup.text;
+            let lines = [ExclusiveRange::new(
+                ContentLine::default(),
+                text.content_line_count().end_exclusive(),
+            )];
+            query.collect(layers, text.rope(), &lines, &mut captures);
+        }
+        Ok(captures_of(&query, captures))
     }
 }

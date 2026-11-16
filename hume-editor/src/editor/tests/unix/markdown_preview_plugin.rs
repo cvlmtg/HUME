@@ -1904,3 +1904,91 @@ fn conceals_beside_other_decorations_with_the_cursor_on_the_heading() {
     let mut p = decorated_sample(0);
     insta::assert_snapshot!(p.snapshot());
 }
+
+// ── Popups ───────────────────────────────────────────────────────────────
+
+/// A popup's Markdown: a heading, emphasis, a list, a code block and a
+/// table.
+const POPUP: &str = "# Title\n\nSome *emphasis* and `code`.\n\n- one\n- two\n\n```rust\nfn main() {}\n```\n\n| a | b |\n|---|---|\n| c | d |";
+
+impl Preview {
+    /// Shows `text` as a markdown popup docked at the bottom of the screen,
+    /// from a typed command.
+    fn show_popup(&mut self, text: &str) {
+        run(
+            &mut self.ed,
+            self.tmp.path(),
+            &format!(
+                r#"(define-typed-command! "go" "" (lambda (pane)
+                     (show-popup! pane {text:?} #:lang "markdown" #:anchor 'bottom)))"#
+            ),
+        );
+        type_cmd(&mut self.ed, ":go");
+    }
+
+    /// The docked popup's rows.
+    fn popup_rows(&self) -> Vec<String> {
+        self.ed
+            .state
+            .views
+            .popup_band
+            .read()
+            .as_ref()
+            .map(|rows| rows.lines.texts())
+            .expect("the popup shows")
+    }
+}
+
+#[test]
+fn a_markdown_popup_draws_without_its_syntax() {
+    let mut p = preview().sized(40, 50);
+    p.show_popup(POPUP);
+    p.frame();
+    assert_eq!(error_log(&p.ed), Vec::<String>::new());
+    insta::assert_snapshot!(p.snapshot());
+}
+
+#[test]
+fn a_popup_activates_the_plugin_with_no_markdown_buffer_open() {
+    let mut p = preview();
+    assert!(
+        p.ed.state
+            .config
+            .registry
+            .lazy_owner("format-text/markdown")
+            .is_some(),
+        "no markdown buffer has activated the plugin"
+    );
+    p.show_popup("# a");
+    p.frame();
+    assert_eq!(p.popup_rows(), [" 1  a"]);
+    assert_eq!(error_log(&p.ed), Vec::<String>::new());
+}
+
+#[test]
+fn the_completion_documentation_box_draws_markdown_without_its_syntax() {
+    let mut p = preview();
+    run(
+        &mut p.ed,
+        p.tmp.path(),
+        &completion_source(
+            "test",
+            r#"(list (hash "label" "foo" "documentation" (hash "kind" "markdown" "value" "**bold** text")))"#,
+            "",
+        ),
+    );
+    p.ed.feed_key(key('i'));
+    p.ed.feed_key(key_ctrl(' '));
+    p.ed.settle();
+    p.frame();
+    let rows =
+        p.ed.state
+            .views
+            .completion_doc
+            .read()
+            .as_ref()
+            .map(|state| state.rows.lines.texts())
+            .expect("the documentation box shows");
+    assert_eq!(rows, ["bold text"]);
+    assert_eq!(error_log(&p.ed), Vec::<String>::new());
+}

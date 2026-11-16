@@ -329,6 +329,7 @@ Valid names are `0`–`9`, `k` (kill-ring head), `c` (system clipboard), and `b`
 | `register-grammar!` | `(register-grammar! name grammar-path symbol highlights-path [#:injections path] [#:textobjects path] [#:indents path] [#:context path] [#:folds path])`{.sig} Register an already-compiled tree-sitter grammar. During startup (`init.scm` and the plugins it loads at startup) the grammar loads the first time a file or an embedded block needs it; at any other time it loads at once and raises if it can't. Of two grammars from the same rank, the later replaces the earlier |
 | `language-has-grammar?` | `(language-has-grammar? name)`{.sig} `#t` if `name` has a registered grammar that hasn't failed to load |
 | `syntax-captures` | `(syntax-captures pane language query [#:ranges ranges])`{.sig} The nodes a tree-sitter `query` captures in the buffer's syntax tree, as a list of `(name start-char end-char)` entries, one per captured node, `name` being the capture's name without its `@`. `language` is the buffer's own language or one embedded in it, and the query runs over every part of the buffer parsed as it. The tree is first brought up to date with the text, which parses on the spot when the text changed since the last parse. The list is empty for a buffer with no parsed syntax tree yet (one just opened) or larger than `syntax-highlight-max-bytes`. With `ranges`, a list of line ranges (each the shape `viewport-range` returns), a match comes back when the node its pattern is rooted at overlaps the lines of any of them, with all of its captures, inside the ranges or not, and only once when several ranges reach it. `(buffer-viewport-ranges pane)` names the lines every pane on the buffer shows. Raises if `language` has no grammar, the query doesn't compile, or `ranges` is not a list or holds a range that is malformed or past the end of the buffer |
+| `parsed-text-captures` | `(parsed-text-captures parsed language query)`{.sig} The nodes `query` captures in the text a [text formatter](#formatting-popup-text) is drawing, as `syntax-captures` returns them for a buffer, over every line: `parsed` is the formatter's second argument, and names that text only while the formatter runs. Raises if `parsed` names no text, `language` has no grammar, or the query doesn't compile |
 
 [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language) shows `define-language!`, `configure-language!` and `register-grammar!` with examples.
 
@@ -413,7 +414,7 @@ Any plugin can drive a picker with these editor functions, opening one and pushi
 | Call | Pane | Effect |
 |------|------|--------|
 | `prompt!` | focused | `(prompt! pane label callback [#:prefill text])`{.sig} Open a text prompt; `callback` fires once, later, with the confirmed text, or `#f` on cancel. Raises when another `prompt!` prompt is already open. When a `#:repeatable` command opened it, `.` repeats the answer without opening it; see [Dot-repeat](writing-plugins.md#dot-repeat) |
-| `show-popup!` | focused | `(show-popup! pane text [#:anchor anchor] [#:kind kind] [#:lang language])`{.sig} Show a text popup, replacing any popup already showing. `#:anchor` is `'cursor` (default, floats near the cursor), `'bottom` (docks above the statusline) or `'fit` (floats near the cursor while all of the text fits there, docks otherwise, decided again whenever the screen changes); `#:lang` sets syntax highlighting.<br><br>`#:kind` sets how long it lives: `'sticky` (default) closes as soon as you leave the mode you opened it in; `'scrollable` stays open (`Ctrl-u`/`Ctrl-d` scroll it) until any other key, paste, or mouse input.<br><br>Returns a token for `close-popup!`, or `#f` if the popup didn't open |
+| `show-popup!` | focused | `(show-popup! pane text [#:anchor anchor] [#:kind kind] [#:lang language])`{.sig} Show a text popup, replacing any popup already showing. `#:anchor` is `'cursor` (default, floats near the cursor), `'bottom` (docks above the statusline) or `'fit` (floats near the cursor while all of the text fits there, docks otherwise, decided again whenever the screen changes); `#:lang` sets syntax highlighting, and the language's text formatter, when one is defined, draws the text; see [Formatting popup text](#formatting-popup-text).<br><br>`#:kind` sets how long it lives: `'sticky` (default) closes as soon as you leave the mode you opened it in; `'scrollable` stays open (`Ctrl-u`/`Ctrl-d` scroll it) until any other key, paste, or mouse input.<br><br>Returns a token for `close-popup!`, or `#f` if the popup didn't open |
 | `close-popup!` |  | `(close-popup! token)`{.sig} Close the popup `token` names |
 | `show-menu!` | focused | `(show-menu! pane items callback)`{.sig} Show a selection menu over `items`, a non-empty list of `(display . payload)` pairs, each display a [row display](#row-display) (raises on an empty list, and on a row whose spans don't fit its text). `callback` gets the chosen row's payload, or `#f` when the menu is dismissed.<br><br>Returns a token for `close-menu!`, or `#f` if the menu didn't open: the editor is not in Normal or Extend mode, or moved on before the call landed.<br><br>When a `#:repeatable` command opened it, `.` repeats the choice without opening it; see [Dot-repeat](writing-plugins.md#dot-repeat) |
 | `close-menu!` |  | `(close-menu! token)`{.sig} Close the menu `token` names without calling its `callback` |
@@ -452,6 +453,21 @@ Each row is drawn once for a given width, so `render` runs again only for rows s
 A new drawer replaces the one already open. The outgoing drawer's `callback` fires with `#f` and its own token, so its owner knows that drawer is gone and can tell this from its new drawer closing.
 
 `show-drawer-list!` returns the token `close-drawer!`, `update-drawer-list!` and `drawer-selection` take. It returns `#f`, with a warning, when the editor is not in Normal or Extend mode, and `#f` when the editor moved on before the call landed. `.` never records a drawer pick; see [Dot-repeat](writing-plugins.md#dot-repeat).
+
+### Formatting popup text
+
+A popup shown with `#:lang language` is drawn through the editor command `format-text/<language>` when one is defined: `format-text/markdown` for a Markdown popup. The completion menu's documentation box calls `format-text/markdown` for Markdown documentation. A plugin whose manifest lists the command is loaded the first time such a popup opens.
+
+The command runs once per text, as `(format-text/<language> text parsed)`. `text` is the popup's text, ending with a line break, and `parsed` names its syntax tree for `parsed-text-captures`. Like a drawer's `#:render`, it can read the editor but not change it. It returns a hash, every key optional:
+
+| Key | Value |
+|---|---|
+| `'conceals` | A list of entries as `set-conceals!` takes them. A `'reveal` has no effect: nothing in a popup shows its source |
+| `'overlaps` | `'error` (default) or `'drop`, as `set-conceals!`'s `#:overlaps` |
+| `'line-backgrounds` | A list of entries as `set-line-backgrounds!` takes them |
+| `'highlights` | A list of entries as `set-extra-highlights!` takes them |
+
+Char offsets and lines count from the start of `text`. The popup wraps the text as drawn. An error, a change to the editor, or a result that is malformed or doesn't fit the text is logged, and the popup shows its text highlighted, as written.
 
 ## Timers
 

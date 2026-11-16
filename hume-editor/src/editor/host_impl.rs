@@ -10,7 +10,7 @@
 //! per-capability split, since these traits and their impls are what this
 //! type exists to pair up.
 
-use hume_core::BufferId;
+use hume_core::{BufferId, HostToken};
 use hume_engine::pipeline::EngineView;
 
 use crate::editor::timer_bridge::Timers;
@@ -21,7 +21,12 @@ use hume_scripting::host::{
 };
 
 use super::EditorState;
+use super::popup_syntax::MarkupSyntax;
 use super::tui::Tui;
+
+pub(in crate::editor) use decorations::{
+    conceal_entries, extra_highlight_entries, line_background_entries,
+};
 
 mod async_process;
 mod buffers;
@@ -67,6 +72,10 @@ pub(in crate::editor) struct EditorHostImpl<'a> {
     /// never reads this field directly; it reads the already-armed frame's
     /// own captured kitty state instead, for the same cross-host reason.
     kitty_enabled: bool,
+    /// The parsed text a `format-text/<lang>` call is lent, and the token
+    /// its `parsed` argument names it by: what `parsed-text-captures` reads.
+    /// `None` outside that call.
+    lent: Option<(HostToken, &'a MarkupSyntax)>,
 }
 
 impl<'a> EditorHostImpl<'a> {
@@ -120,6 +129,7 @@ impl<'a> EditorHostImpl<'a> {
             timers: None,
             tui,
             kitty_enabled,
+            lent: None,
         }
     }
 
@@ -140,7 +150,15 @@ impl<'a> EditorHostImpl<'a> {
             timers: Some(timers),
             tui: Some(tui),
             kitty_enabled,
+            lent: None,
         }
+    }
+
+    /// This host lending `markup` to one `format-text/<lang>` call, under
+    /// `token`.
+    pub(in crate::editor) fn lending(mut self, token: HostToken, markup: &'a MarkupSyntax) -> Self {
+        self.lent = Some((token, markup));
+        self
     }
 
     /// Look up a buffer by id.

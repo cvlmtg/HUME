@@ -6,16 +6,13 @@ use hume_rope::spanned::SpannedText;
 
 // ── wrap_text ──────────────────────────────────────────────────────────
 //
-// Production code has no separate `wrap_text`. Plain popup text
-// is exactly a single default-style run through `wrap_styled` (see
-// `PopupContent::plain`). This local helper keeps that single-style edge-
+// Production code has no separate `wrap_text`. Plain popup text is its
+// lines, each a single default-style run, through `wrap_styled` (see
+// `PopupContent::wrap`). This local helper keeps that single-style edge-
 // case coverage (word boundaries, hard breaks, explicit newlines) without a
 // production wrapper.
 fn wrap_text(text: &str, max_width: u16) -> Vec<String> {
-    wrap_styled([(text, ResolvedStyle::default())], max_width)
-        .into_iter()
-        .map(|row| row.into_iter().map(|(s, _)| s).collect())
-        .collect()
+    PopupContent::plain(text).wrap(max_width).texts()
 }
 
 #[test]
@@ -73,13 +70,31 @@ fn red() -> ResolvedStyle {
     }
 }
 
+fn blue() -> ResolvedStyle {
+    ResolvedStyle {
+        bg: Some(Rgb(0, 0, 255)),
+        ..Default::default()
+    }
+}
+
+#[test]
+fn wrap_styled_gives_every_row_of_a_line_that_lines_fill() {
+    let lines = [
+        (vec![("aaaa bbbb", ResolvedStyle::default())], blue().bg),
+        (vec![("cc", ResolvedStyle::default())], None),
+    ];
+    let rows = wrap_styled(lines, 4);
+    let fills: Vec<_> = rows.iter().map(|row| row.fill).collect();
+    assert_eq!(fills, [blue().bg, blue().bg, None]);
+}
+
 #[test]
 fn wrap_styled_preserves_a_style_boundary_within_one_row() {
     let runs = [("hello ", ResolvedStyle::default()), ("world", red())];
-    let rows = wrap_styled(runs, 60);
+    let rows = wrap_styled([(runs, None)], 60);
     assert_eq!(rows.len(), 1, "both words fit on one row");
     assert_eq!(
-        rows[0],
+        rows[0].runs,
         vec![
             ("hello".to_string(), ResolvedStyle::default()),
             (" world".to_string(), red()),
@@ -97,13 +112,13 @@ fn wrap_styled_splits_a_style_change_across_two_wrapped_rows() {
     // already covers for plain text). Here "bbbb" carries a different style,
     // which must survive onto its own row's run list untouched.
     let runs = [("aaaa ", ResolvedStyle::default()), ("bbbb", red())];
-    let rows = wrap_styled(runs, 4);
+    let rows = wrap_styled([(runs, None)], 4);
     assert_eq!(rows.len(), 2);
     assert_eq!(
-        rows[0],
+        rows[0].runs,
         vec![("aaaa".to_string(), ResolvedStyle::default())]
     );
-    assert_eq!(rows[1], vec![("bbbb".to_string(), red())]);
+    assert_eq!(rows[1].runs, vec![("bbbb".to_string(), red())]);
 }
 
 // ── resolve_popup_geometry ────────────────────────────────────────────

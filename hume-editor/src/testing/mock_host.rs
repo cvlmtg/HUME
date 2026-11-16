@@ -16,12 +16,14 @@
 //! aliases, real grammar parsing) uses a real `Editor` + `EditorHostImpl`
 //! instead (see `editor/tests/plugins.rs`).
 
-use hume_core::{BufferId, BufferOptionWrite, OnUnsaved, OptionInput, OptionValue, PaneHandle};
+use hume_core::{
+    BufferId, BufferOptionWrite, HostToken, OnUnsaved, OptionInput, OptionValue, PaneHandle,
+};
 use hume_rope::line::ContentLine;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
-    BufferHost, CommandHolder, CommandHost, CursorHost, EditorHost, EventHost, LanguageHost,
-    NativeCall, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage,
+    BufferHost, Captures, CommandHolder, CommandHost, CursorHost, EditorHost, EventHost,
+    LanguageHost, NativeCall, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage,
 };
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
@@ -349,6 +351,14 @@ impl LanguageHost for MockHost {
     }
     fn has_grammar(&self, language: &str) -> bool {
         self.grammars.contains(language)
+    }
+    fn parsed_text_captures(
+        &mut self,
+        _parsed: HostToken,
+        _language: &str,
+        _query: &str,
+    ) -> Result<Captures, String> {
+        Err("MockHost: parsed_text_captures not available".into())
     }
 }
 

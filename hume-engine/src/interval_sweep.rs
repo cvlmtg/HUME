@@ -22,12 +22,11 @@ pub enum TieBreak {
 /// scan unit: one line, one byte range, whatever the caller means by
 /// "overlapping") into the sorted, non-overlapping `(range, scope)`
 /// sequence a single rendering layer's contract requires: its own output
-/// must not overlap itself. `P` is the position type. Both current callers
-/// pass `hume_rope::column::ByteCol` (a line-relative byte offset), but
-/// stays generic rather than hardcoded to match how this function is
-/// already agnostic over `R`/`S`: nothing here needs `P` to be a byte
-/// offset specifically, only `Ord + Copy + Default` (`P::default()` is the
-/// sweep's start-of-line origin). At each position, the span with the
+/// must not overlap itself. `P` is the position type: a line-relative
+/// `hume_rope::column::ByteCol` for a highlight layer, a text's
+/// `hume_rope::offset::CharOffset` for a popup's format. Nothing here needs
+/// more of it than `Ord + Copy + Default` (`P::default()` is the sweep's
+/// origin). At each position, the span with the
 /// highest-`R`-per-`Ord` wins (`R` need not be a priority number directly:
 /// `hume-editor`'s caller passes `std::cmp::Reverse<u8>` so its "lower
 /// priority number wins" convention becomes "highest `Reverse` value wins"

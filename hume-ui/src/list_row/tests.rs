@@ -7,7 +7,6 @@ use hume_engine::types::ResolvedStyle;
 use hume_grid::{Grid, Rect};
 
 use super::{ListRow, paint_styled_row};
-use crate::popup::StyledRow;
 use crate::symbols_in;
 
 fn style() -> ResolvedStyle {
@@ -54,7 +53,7 @@ fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
     let mut buf = Grid::new(20, 3);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    let runs: StyledRow = vec![
+    let runs: Vec<(String, ResolvedStyle)> = vec![
         ("a\u{200B}b".to_string(), style()),
         ("cd".to_string(), style()),
     ];
@@ -80,7 +79,7 @@ fn styled_runs_stop_at_the_right_edge() {
     let mut buf = Grid::new(20, 3);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
-    let runs: StyledRow = vec![
+    let runs: Vec<(String, ResolvedStyle)> = vec![
         ("abc".to_string(), style()),
         ("\u{6F22}z".to_string(), style()),
     ];

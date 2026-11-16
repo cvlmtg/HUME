@@ -1092,7 +1092,7 @@ fn a_popup_whose_language_loads_its_grammar_does_not_count_the_load() {
 
     assert_eq!(error_log(&ed), Vec::<String>::new());
     let popup = ed.state.input.popup().expect("the popup is shown");
-    assert!(popup.syntax.is_some());
+    assert!(popup.markup().syntax().is_some());
 }
 
 /// An edit command that `call!` runs loads the grammar of a language the

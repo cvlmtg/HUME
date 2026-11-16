@@ -2024,6 +2024,7 @@ mod pipe;
 mod plugins;
 mod plum_git;
 mod plum_helpers;
+mod popup_format;
 mod position_stores;
 mod read_only_buffer;
 mod read_only_view;

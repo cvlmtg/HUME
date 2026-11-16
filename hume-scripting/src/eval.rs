@@ -538,6 +538,30 @@ impl ScriptingHost {
             .collect()
     }
 
+    /// Calls `proc`, a `format-text/<lang>` command, as `(proc text parsed)`
+    /// under `read_only_call`'s read-only rules, run on its owner's behalf,
+    /// and decodes what it returns into a [`crate::TextFormatSpec`], raising
+    /// on a malformed result as the decoration setters raise on a malformed
+    /// entry.
+    /// `parsed` is the token the parsed text of `text` is lent under for the
+    /// call.
+    pub fn format_text(
+        &mut self,
+        proc: &CommandProc,
+        text: &hume_editing::text::BufferText,
+        parsed: HostToken,
+        host: &mut dyn EditorHost,
+    ) -> Result<crate::TextFormatSpec, String> {
+        let args = vec![
+            SteelVal::StringV(text.to_string().into()),
+            builtins::ids::ParsedText(parsed).into_steel_val(),
+        ];
+        let base = Provenance::own(Owner::clone(proc.owner()));
+        let value = self.read_only_call(host, base, |steel| proc.call(steel, args))?;
+        builtins::decorations::text_format(value, text.content_line_count().get())
+            .map_err(|e| e.to_string())
+    }
+
     /// `name`'s bundled data, read by `bootstrap.scm`'s
     /// `%bundled-language-config` under `read_only_call`'s read-only rules.
     /// `None` when there is no runtime directory or no file for `name`; a

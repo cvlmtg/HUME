@@ -124,6 +124,11 @@ impl Editor {
             self.state.reconcile_completion(&self.view);
             self.state.queue_completion_cancels();
             self.state.request_selected_completion_doc();
+            // After the session is reconciled, so the box's text is the
+            // selected item's. Inside the fixpoint: activating a formatter's
+            // plugin queues work of its own.
+            self.state.sync_completion_doc_model(&mut self.view);
+            self.format_pending_markups();
             // Inside the fixpoint, not outside it like `drain_async_sources`:
             // a *synchronous* handler that reacts to its own buffer's edit
             // (auto-format, trim-on-change) is a feedback loop, and only
