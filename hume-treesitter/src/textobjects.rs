@@ -167,7 +167,7 @@ impl TextObjectsQuery {
     }
 
     /// The capture index for a `<kind>.<span>` pair, if this query captures it.
-    pub(crate) fn capture_index(&self, kind: ObjectKind, span: ObjectSpan) -> Option<u32> {
+    fn capture_index(&self, kind: ObjectKind, span: ObjectSpan) -> Option<u32> {
         self.object(kind, span).capture
     }
 

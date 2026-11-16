@@ -284,8 +284,8 @@ pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelR
 /// name without its `@`, one string shared by every entry of that name. `'()`
 /// when the buffer has no tree for its current text.
 ///
-/// `ranges` limits the matches as [`crate::host::SyntaxHost::syntax_captures`]
-/// describes.
+/// With `ranges`, a match is returned when the node its pattern is rooted at
+/// intersects the lines of one of them, with every capture of the match.
 ///
 /// Raises when `language` has no grammar, `query-source` does not compile, or
 /// `ranges` is not a list or holds a range that is malformed or past the

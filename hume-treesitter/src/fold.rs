@@ -103,10 +103,10 @@ impl FoldQuery {
     /// any engine predicate or directive but `#trim! @fold` and
     /// `#not-has-parent? @c kind…`.
     pub(crate) fn new(query: tree_sitter::Query, source: &str) -> Result<Option<Self>, QueryError> {
+        let patterns = parse_patterns(&query, source)?;
         let Some(fold) = query.capture_index_for_name("fold") else {
             return Ok(None);
         };
-        let patterns = parse_patterns(&query, source)?;
         Ok(Some(Self::Folds {
             query,
             fold,
@@ -137,9 +137,12 @@ impl FoldQuery {
                 let mut matches = cursor.matches(query, root, RopeProvider(rope));
                 while let Some(m) = matches.next() {
                     let pattern = &patterns[m.pattern_index];
+                    if !pattern.admits(m) {
+                        continue;
+                    }
                     m.nodes_for_capture_index(*fold)
                         .map(|node| Scope::of(node.range()))
-                        .filter(|scope| wanted(scope.header) && pattern.admits(m))
+                        .filter(|scope| wanted(scope.header))
                         .filter_map(|scope| fold_of(scope, root, rope))
                         .filter_map(|fold| pattern.trimmed(fold, rope))
                         .for_each(&mut *f);

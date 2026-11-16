@@ -469,7 +469,7 @@ pub(crate) fn compose_display_line(
 /// call that sized the arena, so an out-of-range slice should not happen, but
 /// degrading to an empty string is cheaper than a debug_assert on a hot path.
 #[inline]
-fn resolve_arena_text(arena: &str, start: u32, len: u16) -> &str {
+pub(crate) fn resolve_arena_text(arena: &str, start: u32, len: u16) -> &str {
     let start = start as usize;
     let end = start + len as usize;
     arena.get(start..end).unwrap_or("")

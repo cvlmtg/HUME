@@ -62,16 +62,13 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         self.focused(pane)?;
         let mut loads =
             GrammarLoads::new(&mut self.state.config.languages, &mut self.view.registry);
-        let syntax = lang.and_then(|lang| {
-            crate::editor::popup_syntax::build_markup_syntax(&mut loads, &lang, &text)
-        });
-        let model = PopupLayer::new(
+        let markup = crate::editor::popup_syntax::Markup::new(
             text,
-            syntax,
-            layout,
+            lang.as_deref(),
+            &mut loads,
             &mut self.view.theme,
-            &self.view.registry,
         );
+        let model = PopupLayer::new(markup, layout);
         let token = model.token();
         match kind {
             PopupKind::Sticky => {

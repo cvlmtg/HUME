@@ -455,7 +455,7 @@ fn header_row_takes_a_highlight_decorations_scope() {
             hume_rope::offset::CharOffset::new(4),
         ),
         None,
-        None,
+        crate::style::line_base(&theme, None),
         &theme,
         &mut scratch,
     );

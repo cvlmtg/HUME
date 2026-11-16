@@ -330,7 +330,7 @@ pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -
     let line_count = live_line_count(ctx, bid)?;
     let range = match optional_line_range_arg(range, LABEL, line_count)? {
         Some(range) => range,
-        None => line_range_bounds(0, line_count, LABEL, line_count)?,
+        None => every_line(line_count),
     };
     // Unreachable in practice (nothing can close `bid` between two
     // synchronous host calls), but the trait returns `Option`.
@@ -355,7 +355,7 @@ pub(super) fn line_ranges_arg(
         line_range_entry(entry, LABEL, line_count)
     })? {
         Some(ranges) => Ok(ranges),
-        None => Ok(vec![line_range_bounds(0, line_count, LABEL, line_count)?]),
+        None => Ok(vec![every_line(line_count)]),
     }
 }
 
@@ -381,6 +381,17 @@ fn line_range_entry(
 ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, SteelErr> {
     let (start, end) = entry.line_range()?;
     line_range_bounds(start, end, label, line_count)
+}
+
+/// Every content line of a buffer with `line_count` of them.
+fn every_line(
+    line_count: usize,
+) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
+    // Trusted mint: `line_count` is the exclusive end one past the last line.
+    hume_rope::offset::ExclusiveRange::new(
+        hume_rope::line::ContentLine::default(),
+        hume_rope::line::ContentLine::new(line_count),
+    )
 }
 
 fn line_range_bounds(

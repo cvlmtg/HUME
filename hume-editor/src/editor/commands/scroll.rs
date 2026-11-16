@@ -24,7 +24,7 @@ use hume_rope::column::DisplayLineCol;
 /// reveal the move leaves due runs after it, so `PaneBufferState::parked`
 /// describes the view the move ends on. A pane with no rows has no view to
 /// move, and `run` does not run.
-fn view_move(
+fn settled_move(
     state: &mut EditorState,
     view: &mut EngineView,
     pid: PaneId,
@@ -72,7 +72,7 @@ fn move_view(
     size: PaneSize,
     f: impl FnOnce(ViewMove<'_>),
 ) {
-    view_move(
+    settled_move(
         state,
         view,
         pid,
@@ -106,7 +106,7 @@ fn carry_view(
     size: PaneSize,
     f: impl FnOnce(CarryMove<'_>),
 ) {
-    view_move(
+    settled_move(
         state,
         view,
         pid,

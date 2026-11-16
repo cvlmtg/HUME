@@ -45,7 +45,7 @@ use hume_rope::column::ByteCol;
 use hume_rope::line::ContentLine;
 
 use conceals::{ConcealMap, PaneConceals};
-use highlight_providers::{PaneHighlights, ScopedHighlighter};
+use highlight_providers::{PaneHighlights, ScopedHighlightRanges, ScopedHighlighter};
 use inline_decorations::{InlineDecorationMap, InlineDecorationProvider};
 use line_backgrounds::{LineBgMap, PaneLineBackgrounds};
 use signs::{SharedSignSource, SignMap};
@@ -71,8 +71,31 @@ pub struct PaneDecorationHandles {
     /// fed by `decorations.eol_text` instead of `inlay_hints`, so the two
     /// coexist on the same line without one clobbering the other.
     eol_text: InlineDecorationMap,
+    text: TextDecorationHandles,
+}
+
+/// The decoration handles of a text drawn outside a pane, such as a
+/// popup's: its extra highlights, line backgrounds and conceals, from
+/// [`build_text_providers`]. A pane holds the same set inside its
+/// [`PaneDecorationHandles`].
+pub struct TextDecorationHandles {
+    extra: ScopedHighlightRanges,
     line_backgrounds: LineBgMap,
     conceals: ConcealMap,
+}
+
+impl TextDecorationHandles {
+    pub fn set_extra(&self, spans: Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
+        self.extra.set(spans);
+    }
+
+    pub fn set_line_backgrounds(&self, by_line: FxHashMap<ContentLine, ScopeId>) {
+        self.line_backgrounds.set(by_line);
+    }
+
+    pub fn set_conceals(&self, by_line: FxHashMap<ContentLine, Vec<Conceal>>) {
+        self.conceals.set(by_line);
+    }
 }
 
 impl PaneDecorationHandles {
@@ -98,11 +121,11 @@ impl PaneDecorationHandles {
     }
 
     pub fn set_line_backgrounds(&self, by_line: FxHashMap<ContentLine, ScopeId>) {
-        self.line_backgrounds.set(by_line);
+        self.text.set_line_backgrounds(by_line);
     }
 
     pub fn set_conceals(&self, by_line: FxHashMap<ContentLine, Vec<Conceal>>) {
-        self.conceals.set(by_line);
+        self.text.set_conceals(by_line);
     }
 
     pub fn set_search(&self, spans: Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
@@ -114,7 +137,7 @@ impl PaneDecorationHandles {
     }
 
     pub fn set_extra(&self, spans: Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>) {
-        self.highlights.extra.set(spans);
+        self.text.set_extra(spans);
     }
 
     /// At most one bracket match per pane: `None` blanks it (every
@@ -145,7 +168,7 @@ impl PaneDecorationHandles {
             HighlightTier::BracketMatch => &self.highlights.bracket,
             HighlightTier::SearchMatch => &self.highlights.search,
             HighlightTier::Diagnostic => &self.highlights.diagnostics,
-            HighlightTier::Extra => &self.highlights.extra,
+            HighlightTier::Extra => &self.text.extra,
             HighlightTier::Syntax => panic!(
                 "PaneHighlights has no Syntax tier: it's resolved by a separate tree-sitter-backed provider"
             ),
@@ -170,11 +193,11 @@ impl PaneDecorationHandles {
     }
 
     pub fn line_backgrounds(&self) -> FxHashMap<ContentLine, ScopeId> {
-        self.line_backgrounds.read().clone()
+        self.text.line_backgrounds.read().clone()
     }
 
     pub fn conceals(&self) -> FxHashMap<ContentLine, Vec<Conceal>> {
-        self.conceals.read().clone()
+        self.text.conceals.read().clone()
     }
 }
 
@@ -208,8 +231,6 @@ pub fn build_providers(
     let inlay_hint_map: InlineDecorationMap = SharedSlot::new(FxHashMap::default());
     let eol_text_map: InlineDecorationMap = SharedSlot::new(FxHashMap::default());
     let virtual_line_map: VirtualLineMap = SharedSlot::new(FxHashMap::default());
-    let line_bg_map: LineBgMap = SharedSlot::new(FxHashMap::default());
-    let conceal_map: ConcealMap = SharedSlot::new(FxHashMap::default());
 
     providers.add_gutter_column(Box::new(SignColumn::new(
         Box::new(SharedSignSource::new(signs.clone())),
@@ -228,10 +249,6 @@ pub fn build_providers(
         tier: HighlightTier::Diagnostic,
         data: highlights.diagnostics.clone(),
     }));
-    providers.add_decoration_source(Box::new(ScopedHighlighter {
-        tier: HighlightTier::Extra,
-        data: highlights.extra.clone(),
-    }));
     providers.add_decoration_source(Box::new(InlineDecorationProvider {
         data: inlay_hint_map.clone(),
     }));
@@ -241,12 +258,7 @@ pub fn build_providers(
     providers.add_decoration_source(Box::new(PaneVirtualLines {
         data: virtual_line_map.clone(),
     }));
-    providers.add_decoration_source(Box::new(PaneLineBackgrounds {
-        data: line_bg_map.clone(),
-    }));
-    providers.add_decoration_source(Box::new(PaneConceals {
-        data: conceal_map.clone(),
-    }));
+    let text = build_text_providers(providers);
 
     PaneDecorationHandles {
         highlights,
@@ -254,7 +266,31 @@ pub fn build_providers(
         inlay_hints: inlay_hint_map,
         virtual_lines: virtual_line_map,
         eol_text: eol_text_map,
-        line_backgrounds: line_bg_map,
-        conceals: conceal_map,
+        text,
+    }
+}
+
+/// Register the providers of a text's extra highlights, line backgrounds and
+/// conceals into `providers`, and return the handles that feed them: the
+/// ones a text drawn outside a pane takes, and [`build_providers`] registers
+/// for every pane.
+pub fn build_text_providers(providers: &mut ProviderSet) -> TextDecorationHandles {
+    let extra = ScopedHighlightRanges::default();
+    let line_backgrounds: LineBgMap = SharedSlot::new(FxHashMap::default());
+    let conceals: ConcealMap = SharedSlot::new(FxHashMap::default());
+    providers.add_decoration_source(Box::new(ScopedHighlighter {
+        tier: HighlightTier::Extra,
+        data: extra.clone(),
+    }));
+    providers.add_decoration_source(Box::new(PaneLineBackgrounds {
+        data: line_backgrounds.clone(),
+    }));
+    providers.add_decoration_source(Box::new(PaneConceals {
+        data: conceals.clone(),
+    }));
+    TextDecorationHandles {
+        extra,
+        line_backgrounds,
+        conceals,
     }
 }

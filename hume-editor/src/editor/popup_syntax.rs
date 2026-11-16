@@ -1,28 +1,30 @@
 //! A popup's text as the box shows it (`show-popup! #:lang`, the completion
 //! documentation box): parsed once, highlighted from that parse, and drawn
 //! with the conceals, highlights and line backgrounds a `format-text/<lang>`
-//! command returns for it, resolved into the lines
-//! `hume_ui::popup::wrap_styled` wraps.
+//! command returns for it, through the layout and style stages a pane draws
+//! its lines with, into the lines `hume_ui::popup::wrap_styled` wraps.
 //!
 //! The text never changes after it is parsed, so there is nothing to
 //! reparse, and a format is asked for once per text.
 
-use hume_decorations::{ConcealEntry, ConcealEntrySpan};
-use hume_editing::text::BufferText;
-use hume_engine::interval_sweep::{TieBreak, flatten_overlapping_spans};
-use hume_engine::providers::{ConcealText, SyntaxSource};
+use hume_decorations::build_text_providers;
+use hume_editing::text::{BufferText, normalize_line_endings_owned};
+use hume_engine::providers::ProviderSet;
+use hume_engine::text_lines::styled_lines;
 use hume_engine::theme::ui_scopes;
 use hume_engine::theme::{ScopeRegistry, Theme};
-use hume_engine::types::{ResolvedStyle, Scope, ScopeId};
-use hume_rope::line::ContentLine;
+use hume_engine::types::Scope;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_scripting::TextFormatSpec;
 use hume_treesitter::registry::LanguageRegistry;
-use hume_ui::popup::{PopupContent, StyledLine};
+use hume_ui::popup::PopupContent;
 
 use hume_core::{HostToken, Severity};
 
 use crate::editor::Editor;
+use crate::editor::decoration_providers::{
+    conceals_by_line, extra_highlight_spans, first_per_line,
+};
 use crate::editor::host_impl::{
     EditorHostImpl, conceal_entries, extra_highlight_entries, line_background_entries,
 };
@@ -33,7 +35,7 @@ use crate::editor::syntax::GrammarLoads;
 /// and every grammar its injections need through `loads`. `None` when there
 /// is no such grammar or it fails to load, which leaves the popup rendering
 /// plain.
-pub(in crate::editor) fn build_markup_syntax(
+fn build_markup_syntax(
     loads: &mut GrammarLoads<'_>,
     lang: &str,
     text: &str,
@@ -49,6 +51,8 @@ pub(in crate::editor) fn build_markup_syntax(
 /// holder calls [`Self::rebuild`] when the theme changes
 /// (`theme::set_theme`).
 pub(in crate::editor) struct Markup {
+    /// Every line break a `\n`, so the parse's text is this one, padded
+    /// with a final `\n` when it lacks one.
     text: String,
     /// `None` without a grammar for the text: the popup renders plain, and
     /// no formatter is asked for. Lent out while a formatter runs
@@ -68,8 +72,37 @@ enum Format {
 }
 
 impl Markup {
-    /// `text`, highlighted through `syntax` when there is one, unformatted.
+    /// `text` with its line breaks normalized, highlighted through the
+    /// grammar named `lang` when there is one, which `loads` loads,
+    /// unformatted.
     pub(in crate::editor) fn new(
+        text: String,
+        lang: Option<&str>,
+        loads: &mut GrammarLoads<'_>,
+        theme: &mut Theme,
+    ) -> Self {
+        let text = normalize_line_endings_owned(text);
+        let syntax = lang.and_then(|lang| build_markup_syntax(loads, lang, &text));
+        Self::parsed(text, syntax, theme, loads.scopes())
+    }
+
+    /// `text` with its line breaks normalized, plain.
+    #[cfg(test)]
+    pub(in crate::editor) fn plain(
+        text: &str,
+        theme: &mut Theme,
+        registry: &ScopeRegistry,
+    ) -> Self {
+        Self::parsed(
+            normalize_line_endings_owned(text.to_owned()),
+            None,
+            theme,
+            registry,
+        )
+    }
+
+    /// `text`, normalized, highlighted through `syntax`, parsed from it.
+    fn parsed(
         text: String,
         syntax: Option<MarkupSyntax>,
         theme: &mut Theme,
@@ -155,8 +188,8 @@ impl Markup {
 }
 
 /// A `ui.popup` box's content for `text`: highlighted through `syntax` and
-/// drawn with `format` when there is a parse, plain otherwise. Its styled
-/// runs bake `theme`'s colors in.
+/// drawn with `format` when there is a parse, as a pane draws a line, plain
+/// otherwise. Its styled runs bake `theme`'s colors in.
 ///
 /// Bakes `theme` first: the grammar interned its scopes when `syntax` was
 /// built, and the format when it was checked, possibly since the last bake,
@@ -168,28 +201,35 @@ fn popup_content(
     theme: &mut Theme,
     registry: &ScopeRegistry,
 ) -> PopupContent {
-    match syntax {
-        Some(syntax) => {
-            theme.bake_if_stale(registry);
-            let base_style = theme.resolve_by_name(Scope(ui_scopes::POPUP));
-            PopupContent::styled(syntax.styled_lines(text, format, theme, base_style))
+    let Some(syntax) = syntax else {
+        return PopupContent::plain(text);
+    };
+    theme.bake_if_stale(registry);
+    let base = theme.resolve_by_name(Scope(ui_scopes::POPUP));
+    let unformatted;
+    let providers = match format {
+        Some(format) => &format.providers,
+        None => {
+            unformatted = ProviderSet::new();
+            &unformatted
         }
-        None => PopupContent::plain(text),
-    }
+    };
+    PopupContent::styled(styled_lines(
+        syntax.text.rope(),
+        Some(&syntax.syntax),
+        providers,
+        base,
+        theme,
+    ))
 }
 
 /// What a `format-text/<lang>` command returned for a text, checked against
 /// that text's parse as the decoration setters check theirs, scopes
-/// interned, and resolved as a buffer draws its decorations.
+/// interned, and held by the providers a pane draws its own decorations
+/// with.
 pub(in crate::editor) struct TextFormat {
-    /// In position order, none overlapping another.
-    conceals: Vec<ConcealEntry>,
-    /// In position order, none overlapping another: where two entries
-    /// overlap, the one starting first is drawn, the first listed for the
-    /// same start.
-    highlights: Vec<(ExclusiveRange<CharOffset>, ScopeId)>,
-    /// Each line's background scope, by line: the first entry for the line.
-    line_backgrounds: Vec<Option<ScopeId>>,
+    /// The format's conceals, extra highlights and line backgrounds.
+    providers: ProviderSet,
 }
 
 impl TextFormat {
@@ -203,32 +243,24 @@ impl TextFormat {
         let text = &syntax.text;
         let conceals = conceal_entries(text, registry, spec.conceals, spec.overlaps)
             .map_err(|e| format!("'conceals {e}"))?;
-        let mut entries = extra_highlight_entries(text, registry, spec.highlights)
+        let highlights = extra_highlight_entries(text, registry, spec.highlights)
             .map_err(|e| format!("'highlights {e}"))?;
-        // Sorted first: a tie between overlapping spans goes to the one
-        // pushed first.
-        entries.sort_by_key(|entry| entry.start);
-        let mut raw = entries
-            .into_iter()
-            .map(|entry| (entry.start, entry.end, (), entry.scope))
-            .collect();
-        let mut highlights = Vec::new();
-        flatten_overlapping_spans(
-            &mut raw,
-            &mut Vec::new(),
-            &mut Vec::new(),
-            &mut highlights,
-            TieBreak::FirstPushed,
-        );
-        let mut line_backgrounds = vec![None; text.content_line_count().get()];
-        for entry in line_background_entries(registry, spec.line_backgrounds) {
-            line_backgrounds[entry.line.index()].get_or_insert(entry.scope);
-        }
-        Ok(Self {
-            conceals,
-            highlights,
-            line_backgrounds,
-        })
+        let line_backgrounds = line_background_entries(registry, spec.line_backgrounds);
+        let mut providers = ProviderSet::new();
+        let handles = build_text_providers(&mut providers);
+        handles.set_conceals(conceals_by_line(text, &conceals));
+        let whole = ExclusiveRange::new(CharOffset::default(), text.end());
+        handles.set_extra(extra_highlight_spans(
+            text,
+            &highlights,
+            std::iter::once(whole),
+        ));
+        handles.set_line_backgrounds(first_per_line(
+            line_backgrounds
+                .iter()
+                .map(|entry| (entry.line, entry.scope)),
+        ));
+        Ok(Self { providers })
     }
 }
 
@@ -236,193 +268,9 @@ impl TextFormat {
 pub(in crate::editor) struct MarkupSyntax {
     pub(in crate::editor) syntax: hume_treesitter::syntax::Syntax,
     /// Same content the syntax was parsed from, wrapped as a rope-backed
-    /// `BufferText`: `Syntax::spans_for_line` needs `&Rope`, and re-deriving
-    /// one from the source string every frame would re-walk it on every
-    /// render. The text a formatter is handed, and checked against.
+    /// `BufferText`: the text the popup is drawn from, and the one a
+    /// formatter is handed and checked against.
     pub(in crate::editor) text: BufferText,
-}
-
-impl MarkupSyntax {
-    /// Every line of `text` as styled lines for `hume_ui::popup::wrap_styled`:
-    /// each line's highlight spans resolved over `base_style`, then `format`'s
-    /// line background, highlights and conceals applied, in the order the
-    /// buffer renderer layers them.
-    ///
-    /// Slices `text`'s own lines (`text.split('\n')`), not `self.text`'s
-    /// rope lines: `self.text` is `BufferText::from(text)`, which may have
-    /// padded on a trailing `'\n'` `text` itself lacked (the buffer
-    /// invariant), and iterating the padded rope would emit a spurious
-    /// trailing empty row a plain popup on `text` never would.
-    fn styled_lines(
-        &self,
-        text: &str,
-        format: Option<&TextFormat>,
-        theme: &Theme,
-        base_style: ResolvedStyle,
-    ) -> Vec<StyledLine> {
-        // A trailing '\n' in `text` itself (as opposed to the buffer-invariant
-        // padding `BufferText::from` may have added) would otherwise make
-        // `split('\n')` yield one more element than `self.text` has real
-        // lines, landing this loop's trusted `ContentLine` mint on the
-        // phantom line. Stripping it here is what keeps that mint honest.
-        let mut spans = Vec::new();
-        let mut line_start = 0;
-        text.strip_suffix('\n')
-            .unwrap_or(text)
-            .split('\n')
-            .enumerate()
-            .map(|(line_idx, line)| {
-                // Trusted mint: `line_idx` indexes `text`'s own unpadded
-                // lines (see above), always within `self.text`'s real content.
-                let line_idx = ContentLine::new(line_idx);
-                // Trusted mints: offsets into `text`, which `self.text` holds
-                // unchanged, its line break included.
-                let start = CharOffset::new(line_start);
-                let end = CharOffset::new(line_start + line.chars().count());
-                line_start = end.index() + 1;
-                spans.clear();
-                self.syntax
-                    .spans_for_line(line_idx, self.text.rope(), &mut spans);
-                let band = format
-                    .and_then(|f| f.line_backgrounds[line_idx.index()])
-                    .and_then(|scope| theme.resolve(scope).bg);
-                let base = base_style.layer(ResolvedStyle {
-                    bg: band,
-                    ..ResolvedStyle::default()
-                });
-                let mut out = LineRuns::new(theme, format, base, start, end);
-                for (run, scope) in hume_rope::spanned::runs(line, &spans) {
-                    let style = scope.map_or(out.base, |&s| theme.resolve(s));
-                    for cluster in unicode_segmentation::UnicodeSegmentation::graphemes(run, true) {
-                        out.push_cluster(cluster, style);
-                    }
-                }
-                out.push_inserts(out.base);
-                StyledLine {
-                    runs: out.runs,
-                    fill: band,
-                }
-            })
-            .collect()
-    }
-}
-
-/// One line's runs as [`MarkupSyntax::styled_lines`] builds them, cluster by
-/// cluster.
-struct LineRuns<'a> {
-    theme: &'a Theme,
-    /// The format's conceals on this line, in position order, an insert
-    /// before the line's `\n` included.
-    conceals: &'a [ConcealEntry],
-    /// The format's highlights on this line that end after the next
-    /// cluster, in position order.
-    highlights: &'a [(ExclusiveRange<CharOffset>, ScopeId)],
-    /// The style of text no highlight span covers: `ui.popup`, under the
-    /// line's background when it has one.
-    base: ResolvedStyle,
-    /// Where the next cluster starts.
-    at: CharOffset,
-    runs: Vec<(String, ResolvedStyle)>,
-}
-
-impl<'a> LineRuns<'a> {
-    /// The line from `start` to its `\n` at `end`, drawn with `format`.
-    fn new(
-        theme: &'a Theme,
-        format: Option<&'a TextFormat>,
-        base: ResolvedStyle,
-        start: CharOffset,
-        end: CharOffset,
-    ) -> Self {
-        let (conceals, highlights) = match format {
-            Some(format) => {
-                let conceals = &format.conceals;
-                let first = conceals.partition_point(|c| c.chars().start < start);
-                let last = conceals.partition_point(|c| c.chars().start <= end);
-                let highlights = &format.highlights;
-                let first_hl = highlights.partition_point(|(range, _)| range.end <= start);
-                let last_hl = highlights.partition_point(|(range, _)| range.start <= end);
-                (&conceals[first..last], &highlights[first_hl..last_hl])
-            }
-            None => (&[][..], &[][..]),
-        };
-        Self {
-            theme,
-            conceals,
-            highlights,
-            base,
-            at: start,
-            runs: Vec::new(),
-        }
-    }
-
-    /// `style` with the highlight covering the next cluster, if any, layered
-    /// over it.
-    fn highlighted(&mut self, style: ResolvedStyle) -> ResolvedStyle {
-        while let [(range, _), rest @ ..] = self.highlights
-            && range.end <= self.at
-        {
-            self.highlights = rest;
-        }
-        match self.highlights {
-            [(range, scope), ..] if range.start <= self.at => {
-                style.layer(self.theme.resolve(*scope))
-            }
-            _ => style,
-        }
-    }
-
-    /// `text` in `style`, its scope layered over it.
-    fn push_conceal_text(&mut self, text: &ConcealText, style: ResolvedStyle) {
-        let style = text
-            .scope
-            .map_or(style, |scope| style.layer(self.theme.resolve(scope)));
-        push_run(&mut self.runs, &text.text, style);
-    }
-
-    /// The text each insert before the next cluster draws, over `style`.
-    fn push_inserts(&mut self, style: ResolvedStyle) {
-        let style = self.highlighted(style);
-        for conceal in self.conceals {
-            if let ConcealEntrySpan::Inserted { at, text } = &conceal.span
-                && *at == self.at
-            {
-                self.push_conceal_text(text, style);
-            }
-        }
-    }
-
-    /// `cluster`, the next cluster, in `style`, or what the conceal hiding
-    /// it draws in its place.
-    fn push_cluster(&mut self, cluster: &str, style: ResolvedStyle) {
-        self.push_inserts(style);
-        let style = self.highlighted(style);
-        let at = self.at;
-        let hidden = self
-            .conceals
-            .iter()
-            .find_map(|conceal| match &conceal.span {
-                ConcealEntrySpan::Hidden { chars, text } if chars.contains(at) => {
-                    Some((chars.start == at, text.as_ref()))
-                }
-                _ => None,
-            });
-        match hidden {
-            None => push_run(&mut self.runs, cluster, style),
-            Some((true, Some(text))) => self.push_conceal_text(text, style),
-            Some(_) => {}
-        }
-        self.at = at.shift(cluster.chars().count() as isize);
-    }
-}
-
-/// `text` in `style` appended to `runs`, merged into the last run when it
-/// has the same style.
-fn push_run(runs: &mut Vec<(String, ResolvedStyle)>, text: &str, style: ResolvedStyle) {
-    match runs.last_mut() {
-        Some((last, last_style)) if *last_style == style => last.push_str(text),
-        _ => runs.push((text.to_owned(), style)),
-    }
 }
 
 /// Where an open popup text lives.

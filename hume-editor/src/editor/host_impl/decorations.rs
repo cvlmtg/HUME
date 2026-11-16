@@ -304,10 +304,11 @@ pub(in crate::editor) fn conceal_entries(
             }
         };
         let reveal = spec.reveal.map(|marked| {
-            let lines = marked.lines();
-            text.lines()
-                .span(lines.start, lines.end.retreat_saturating(1))
-                .chars()
+            let lines = marked
+                .lines()
+                .as_inclusive()
+                .expect("marked lines are never none");
+            text.lines().span(lines.start, lines.end).chars()
         });
         let entry = ConcealEntry { span, reveal };
         if !entry.within_line(text) {

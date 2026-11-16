@@ -28,8 +28,8 @@
 //! rewind: it formats with the conceal layer only, and the one format that
 //! can lag its key is a hit test's, laid out before the conceal mirror caught
 //! up. A hit test formats unwindowed and the render windowed, and
-//! [`LineFormat::covers`](crate::format::LineFormat::covers) compares the
-//! window exactly, so the render never reuses it.
+//! [`LineFormat::covers`](crate::format::LineFormat::covers) requires an
+//! equal window, so the render never reuses it.
 
 use rustc_hash::FxHashMap;
 

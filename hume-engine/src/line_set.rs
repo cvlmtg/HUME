@@ -19,11 +19,10 @@ impl LineSet {
                 .into_iter()
                 .map(|r| ExclusiveRange::new(r.start, r.end.advance(1))),
         );
-        // Joined ranges are non-empty, so the last line is one before the end.
         Self(
             joined
                 .into_iter()
-                .map(|r| InclusiveRange::new(r.start, r.end.retreat_saturating(1)))
+                .map(|r| r.as_inclusive().expect("joined ranges are non-empty"))
                 .collect(),
         )
     }

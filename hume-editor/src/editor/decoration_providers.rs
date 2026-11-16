@@ -10,7 +10,7 @@ use hume_engine::theme::{CURSOR_MATCH, CURSOR_MATCH_SEARCH, diagnostic_scopes, u
 use hume_engine::types::EditorMode;
 
 use super::Editor;
-use hume_decorations::{Anchored, ConcealEntry, ConcealEntrySpan};
+use hume_decorations::{Anchored, ConcealEntry, ConcealEntrySpan, ExtraHighlightEntry};
 use hume_engine::providers::{Conceal, ConcealSpan, conceal_ranges_overlap};
 use hume_ops::pair::matching_bracket;
 use hume_rope::column::ByteCol;
@@ -37,8 +37,8 @@ pub(super) struct DecoratedPane {
     pub(super) chars: ExclusiveRange<CharOffset>,
     /// The chars of each line a header row draws that `chars` does not
     /// already hold, so a heading scrolled above the viewport still shows
-    /// its highlights. Every such line lies above the viewport. Empty for a snapshot taken without the pane's settled
-    /// rows.
+    /// its highlights. Every such line lies above the viewport. Empty for a
+    /// snapshot taken without the pane's settled rows.
     pub(super) header_chars: Vec<ExclusiveRange<CharOffset>>,
     /// The primary cursor's line while this pane owns the Insert session,
     /// `None` otherwise. Diagnostic decorations on it are hidden unless
@@ -49,7 +49,7 @@ pub(super) struct DecoratedPane {
 impl DecoratedPane {
     /// The char ranges a highlight bridge fills: the viewport, then each
     /// header line above it.
-    fn paint_ranges(&self) -> impl Iterator<Item = ExclusiveRange<CharOffset>> + '_ {
+    fn paint_ranges(&self) -> impl Iterator<Item = ExclusiveRange<CharOffset>> + Clone + '_ {
         std::iter::once(self.chars).chain(self.header_chars.iter().copied())
     }
 }
@@ -288,32 +288,18 @@ impl Editor {
                     spans
                 };
 
-                let extra_spans = {
-                    let mut raw = Vec::new();
-                    for e in self
-                        .state
+                // `extra_highlights_starting_before` yields sources in
+                // ascending name order, so the alphabetically-first source
+                // wins an overlap, deterministic across sessions rather than
+                // whichever source called `set-extra-highlights!` first.
+                let extra_spans = extra_highlight_spans(
+                    text,
+                    self.state
                         .config
                         .decorations
-                        .extra_highlights_starting_before(bid, p.chars.end)
-                    {
-                        for visible in p.paint_ranges() {
-                            let Some(piece) =
-                                ExclusiveRange::new(e.start, e.end).intersection(visible)
-                            else {
-                                continue;
-                            };
-                            // No severity concept for plugin-supplied spans:
-                            // uniform priority; overlap ties resolve by push
-                            // order, which `extra_highlights_starting_before`
-                            // yields ascending by source name, so the
-                            // alphabetically-first source wins, deterministic
-                            // across sessions rather than whichever source
-                            // happened to call `set-extra-highlights!` first.
-                            push_priority_highlight_lines(text, piece, 0, e.scope, &mut raw);
-                        }
-                    }
-                    flatten_priority_overlaps(raw)
-                };
+                        .extra_highlights_starting_before(bid, p.chars.end),
+                    p.paint_ranges(),
+                );
 
                 let render = &self.state.panes.entries[pid].render;
                 render.set_diagnostics(diag_spans);
@@ -565,25 +551,13 @@ impl Editor {
             .set_virtual_lines(by_line);
     }
 
-    /// Mirror `decorations.conceals` into pane `pid`'s conceal handle, one
-    /// per-line list the formatter reads. Sources go in ascending name order
-    /// and a conceal is kept only when it overlaps none already kept on its
-    /// line under [`conceal_ranges_overlap`], so an earlier source wins and a
-    /// dropped conceal is dropped whole.
+    /// Mirror `decorations.conceals` into pane `pid`'s conceal handle, as
+    /// [`conceals_by_line`] lays them out. Sources go in ascending name
+    /// order, so an earlier source wins an overlap.
     fn update_conceal_providers(&mut self, pid: PaneId, bid: BufferId) {
         let text = self.state.buffers.get(bid).text();
-        let mut by_line: rustc_hash::FxHashMap<ContentLine, Vec<Conceal>> =
-            rustc_hash::FxHashMap::default();
-        for entry in self.state.config.decorations.conceals_for_buffer(bid) {
-            let (line, conceal) = line_conceal(text, entry);
-            let kept = by_line.entry(line).or_default();
-            if !kept
-                .iter()
-                .any(|k| conceal_ranges_overlap(k.bytes(), conceal.bytes()))
-            {
-                kept.push(conceal);
-            }
-        }
+        let by_line =
+            conceals_by_line(text, self.state.config.decorations.conceals_for_buffer(bid));
         self.state.panes.entries[pid].render.set_conceals(by_line);
     }
 
@@ -614,6 +588,48 @@ impl Editor {
                 .set_line_backgrounds(by_line);
         }
     }
+}
+
+/// `entries`, conceals of `text`, as the per-line lists the formatter reads.
+/// A conceal is kept only when it overlaps none already kept on its line
+/// under [`conceal_ranges_overlap`], so an earlier entry wins and a dropped
+/// conceal is dropped whole.
+pub(in crate::editor) fn conceals_by_line<'e>(
+    text: &hume_editing::text::BufferText,
+    entries: impl IntoIterator<Item = &'e ConcealEntry>,
+) -> rustc_hash::FxHashMap<ContentLine, Vec<Conceal>> {
+    let mut by_line: rustc_hash::FxHashMap<ContentLine, Vec<Conceal>> =
+        rustc_hash::FxHashMap::default();
+    for entry in entries {
+        let (line, conceal) = line_conceal(text, entry);
+        let kept = by_line.entry(line).or_default();
+        if !kept
+            .iter()
+            .any(|k| conceal_ranges_overlap(k.bytes(), conceal.bytes()))
+        {
+            kept.push(conceal);
+        }
+    }
+    by_line
+}
+
+/// The parts of `entries`, extra highlights of `text`, inside `ranges`, one
+/// span per line they touch. Plugin spans have no severity, so where two
+/// overlap the one listed first wins.
+pub(in crate::editor) fn extra_highlight_spans<'e>(
+    text: &hume_editing::text::BufferText,
+    entries: impl IntoIterator<Item = &'e ExtraHighlightEntry>,
+    ranges: impl Iterator<Item = ExclusiveRange<CharOffset>> + Clone,
+) -> Vec<(ContentLine, ByteCol, ByteCol, hume_engine::types::ScopeId)> {
+    let mut raw = Vec::new();
+    for e in entries {
+        for range in ranges.clone() {
+            if let Some(piece) = ExclusiveRange::new(e.start, e.end).intersection(range) {
+                push_priority_highlight_lines(text, piece, 0, e.scope, &mut raw);
+            }
+        }
+    }
+    flatten_priority_overlaps(raw)
 }
 
 /// `entry` as the engine's per-line [`Conceal`], with the line it sits on.
@@ -652,7 +668,7 @@ fn line_conceal(
 /// ascending name order, so a line two sources write goes to the
 /// alphabetically first. Signs need no such fold: each source has its own
 /// gutter slot.
-fn first_per_line<T>(
+pub(in crate::editor) fn first_per_line<T>(
     entries: impl IntoIterator<Item = (hume_rope::line::ContentLine, T)>,
 ) -> rustc_hash::FxHashMap<hume_rope::line::ContentLine, T> {
     let mut by_line = rustc_hash::FxHashMap::default();

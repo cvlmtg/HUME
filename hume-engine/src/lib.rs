@@ -39,5 +39,6 @@ pub mod style;
 pub mod test_doubles;
 #[cfg(test)]
 mod test_support;
+pub mod text_lines;
 pub mod theme;
 pub mod types;

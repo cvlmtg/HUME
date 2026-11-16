@@ -5,7 +5,7 @@ use std::cmp::Reverse;
 use std::sync::Arc;
 
 use hume_rope::line::{ContentLine, join_line_ranges};
-use hume_rope::offset::{CharOffset, ExclusiveRange, InclusiveRange};
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use ropey::Rope;
 use streaming_iterator::StreamingIterator;
 use tree_sitter::{Query, QueryCursor, QueryError};
@@ -76,8 +76,7 @@ impl CaptureQuery {
         out.clear();
         let mut cursor = QueryCursor::new();
         for range in join_line_ranges(lines.iter().copied()) {
-            // Joined ranges are non-empty, so the last line is one before the end.
-            let lines = InclusiveRange::new(range.start, range.end.retreat_saturating(1));
+            let lines = range.as_inclusive().expect("joined ranges are non-empty");
             let (bytes, covering) = layers.covering_lines(rope, lines);
             cursor.set_byte_range(bytes);
             for layer in covering.filter(|layer| layer.bundle.config_gen == self.config_gen) {

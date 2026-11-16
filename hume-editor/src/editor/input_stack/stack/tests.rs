@@ -21,13 +21,12 @@ fn confirm() -> ConfirmLayer {
 }
 
 fn popup_model(text: &str) -> PopupLayer {
-    PopupLayer::new(
-        text.to_string(),
-        None,
-        hume_core::PopupLayout::Cursor,
+    let markup = crate::editor::popup_syntax::Markup::plain(
+        text,
         &mut hume_engine::theme::Theme::default(),
         &hume_engine::theme::ScopeRegistry::new(),
-    )
+    );
+    PopupLayer::new(markup, hume_core::PopupLayout::Cursor)
 }
 
 #[test]

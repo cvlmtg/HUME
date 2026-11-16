@@ -12,7 +12,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::commands::half_page;
 use super::super::error::CommandError;
-use super::super::popup_syntax::{Markup, MarkupSyntax};
+use super::super::popup_syntax::Markup;
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
 use super::placement::{focused_cursor, popup_placement};
@@ -63,17 +63,11 @@ pub(in crate::editor) struct PopupLayer {
 impl PopupLayer {
     /// Mints a fresh token for this popup. The constructor is the only
     /// minting site, same as `DrawerLayer::new`.
-    pub(in crate::editor) fn new(
-        text: String,
-        syntax: Option<MarkupSyntax>,
-        layout: hume_core::PopupLayout,
-        theme: &mut Theme,
-        registry: &ScopeRegistry,
-    ) -> Self {
+    pub(in crate::editor) fn new(markup: Markup, layout: hume_core::PopupLayout) -> Self {
         Self {
             scroll: 0,
             layout,
-            markup: Markup::new(text, syntax, theme, registry),
+            markup,
             token: HostToken::mint(),
         }
     }

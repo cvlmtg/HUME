@@ -85,7 +85,7 @@ fn apply_styles(
                 mode,
                 cursor_is_block,
             }),
-            tint.and_then(|scope| theme.resolve(scope).bg),
+            line_base(theme, tint.and_then(|scope| theme.resolve(scope).bg)),
             theme,
             scratch,
         );
@@ -183,7 +183,7 @@ fn line_tint_applies_only_background_not_fg_or_modifiers() {
             mode: EditorMode::Normal,
             cursor_is_block: true,
         }),
-        theme.resolve(tint_scope).bg,
+        line_base(&theme, theme.resolve(tint_scope).bg),
         &theme,
         &mut scratch,
     );
@@ -238,7 +238,7 @@ fn no_selection_paint_leaves_every_cell_at_the_base_style() {
             mode: EditorMode::Normal,
             cursor_is_block: true,
         }),
-        None,
+        line_base(&theme, None),
         &theme,
         &mut scratch,
     );
@@ -254,7 +254,7 @@ fn no_selection_paint_leaves_every_cell_at_the_base_style() {
         &graphemes,
         line_chars,
         None,
-        Some(base),
+        line_base(&theme, Some(base)),
         &theme,
         &mut scratch,
     );
@@ -2050,7 +2050,7 @@ fn concealed_heading_style(conceal_scope: Option<&str>) -> ResolvedStyle {
         &fmt.graphemes,
         line_chars,
         None,
-        None,
+        line_base(&theme, None),
         &theme,
         &mut scratch,
     );

@@ -206,7 +206,7 @@ pub(crate) fn render_pane(
                         mode: pane_ctx.settings.mode,
                         cursor_is_block: pane_ctx.settings.cursor_is_block,
                     }),
-                    line.tint_bg,
+                    crate::style::line_base(pane_ctx.theme, line.tint_bg),
                     pane_ctx.theme,
                     style,
                 );
@@ -267,7 +267,7 @@ pub(crate) fn render_pane(
             rendered.graphemes,
             line.chars,
             None,
-            header_bg,
+            crate::style::line_base(pane_ctx.theme, header_bg),
             pane_ctx.theme,
             style,
         );

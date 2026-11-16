@@ -69,6 +69,14 @@ pub(crate) struct SelectionPaint<'a> {
     pub cursor_is_block: bool,
 }
 
+/// The style under a pane's line: the theme's default, over `bg`.
+pub(crate) fn line_base(theme: &Theme, bg: Option<Rgb>) -> ResolvedStyle {
+    theme.default.layer(ResolvedStyle {
+        bg,
+        ..ResolvedStyle::default()
+    })
+}
+
 /// Resolve per-grapheme styles for one display line.
 ///
 /// `styles_out` must be pre-sized to at least `display_line.graphemes.end` (parallel
@@ -76,15 +84,15 @@ pub(crate) struct SelectionPaint<'a> {
 /// outside `display_line.graphemes` are untouched.
 ///
 /// Call [`rebuild_line_decorations`] for the current buffer line before
-/// this. `base_bg` is the background under the whole line. `selection` is
-/// `None` for a line drawn without selections, cursors or cursorline: a
-/// scope header row.
+/// this. `base` is the style under the whole line, [`line_base`] for a pane's
+/// line. `selection` is `None` for a line drawn without selections, cursors
+/// or cursorline: a scope header row or a popup's line.
 pub(crate) fn style_display_line(
     display_line: &DisplayLine,
     graphemes: &[Grapheme],
     line_chars: ExclusiveRange<CharOffset>,
     selection: Option<SelectionPaint<'_>>,
-    base_bg: Option<Rgb>,
+    base: ResolvedStyle,
     theme: &Theme,
     scratch: &mut StyleScratch,
 ) {
@@ -118,7 +126,7 @@ pub(crate) fn style_display_line(
     // Tiers 4 and 3 are properties of the *display line*, not of any
     // grapheme in it, so they resolve once here rather than per grapheme below.
     //
-    // Tier 4: the line's background (lowest): a provider's full-row tint
+    // Tier 4, in `base`: the line's background (lowest): a provider's full-row tint
     // (`Decoration::LineBg`, e.g. git-diff's changed-line highlight) or a
     // header row's `ui.context`. A background only, not a whole style: the
     // row-fill paint site (`pane_render.rs`'s `row_bg`) can only ever
@@ -133,10 +141,7 @@ pub(crate) fn style_display_line(
     // Tier 3: selection-head-line background tint, applied to every grapheme
     // on the line that contains a selection head. `theme.ui` fields are O(1)
     // struct-field reads, no HashMap lookup.
-    let mut base_style = theme.default.layer(ResolvedStyle {
-        bg: base_bg,
-        ..ResolvedStyle::default()
-    });
+    let mut base_style = base;
     if selection.is_some_and(|(paint, _)| paint.is_head_line) {
         base_style = base_style.layer(theme.ui.cursorline);
     }

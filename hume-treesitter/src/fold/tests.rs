@@ -158,6 +158,15 @@ fn an_unsupported_fold_directive_fails_the_compile_on_its_pattern_row() {
     );
 }
 
+#[test]
+fn an_unsupported_fold_directive_fails_on_its_row_without_a_fold_capture() {
+    assert_rejected_at_pattern_start(
+        OptionalQuery::Folds,
+        "(block) @b",
+        &[r#"((block) @b (#frobnicate! @b))"#],
+    );
+}
+
 /// The end moves from after the closing `}` to column 0 of its line, so the
 /// region ends on the line before.
 #[test]

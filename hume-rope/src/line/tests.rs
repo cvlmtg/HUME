@@ -169,3 +169,27 @@ fn join_line_ranges_drops_empty_ranges() {
         [lines(20, 30)]
     );
 }
+
+#[test]
+fn as_inclusive_ends_on_the_line_before_the_end() {
+    assert_eq!(
+        lines(3, 7).as_inclusive(),
+        Some(InclusiveRange::new(
+            ContentLine::new(3),
+            ContentLine::new(6)
+        ))
+    );
+    assert_eq!(
+        lines(3, 4).as_inclusive(),
+        Some(InclusiveRange::new(
+            ContentLine::new(3),
+            ContentLine::new(3)
+        ))
+    );
+}
+
+#[test]
+fn as_inclusive_is_none_for_an_empty_range() {
+    assert_eq!(lines(3, 3).as_inclusive(), None);
+    assert_eq!(lines(4, 3).as_inclusive(), None);
+}

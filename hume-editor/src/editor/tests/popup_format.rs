@@ -34,6 +34,11 @@ fn heading() -> ResolvedStyle {
     style(None, Some(RED))
 }
 
+/// A heading's char as the popup draws it: its style over `ui.popup`.
+fn heading_cell() -> ResolvedStyle {
+    base().layer(heading())
+}
+
 fn theme() -> Theme {
     let styles = std::collections::HashMap::from([
         ("ui.popup", base()),
@@ -127,6 +132,22 @@ fn a_hidden_range_drops_its_chars() {
 }
 
 #[test]
+fn offsets_count_a_crlf_break_as_one_char() {
+    // The formatter gets "ab\ncd ef\n": char 5 is the space after "cd".
+    let rows = formatted(
+        "ab\r\ncd ef",
+        "(hash 'conceals (list (hash 'start-char 5 'end-char 6)))",
+    );
+    assert_eq!(texts(&rows), ["ab", "cdef"]);
+}
+
+#[test]
+fn a_tab_draws_as_one_blank_column() {
+    let rows = formatted("a\tb", "(hash)");
+    assert_eq!(texts(&rows), ["a b"]);
+}
+
+#[test]
 fn a_replacement_draws_in_its_scope_over_the_syntax_style() {
     let rows = formatted(
         "# H",
@@ -137,7 +158,7 @@ fn a_replacement_draws_in_its_scope_over_the_syntax_style() {
         rows[0].runs,
         [
             runs("1", style(Some(BLUE), Some(RED))),
-            runs(" H", heading())
+            runs(" H", heading_cell())
         ]
     );
 }
@@ -148,7 +169,7 @@ fn a_replacement_without_a_scope_keeps_the_syntax_style() {
         "# H",
         r#"(hash 'conceals (list (hash 'start-char 0 'end-char 2 'text "1 ")))"#,
     );
-    assert_eq!(rows[0].runs, [runs("1 H", heading())]);
+    assert_eq!(rows[0].runs, [runs("1 H", heading_cell())]);
 }
 
 #[test]
@@ -184,10 +205,10 @@ fn a_highlight_layers_over_the_syntax_style() {
     );
     let bold = ResolvedStyle {
         modifiers: Modifiers::BOLD,
-        ..heading()
+        ..heading_cell()
     };
     // Wrapping draws the space between two words in the second word's style.
-    assert_eq!(rows[0].runs, [runs("#", heading()), runs(" H", bold)]);
+    assert_eq!(rows[0].runs, [runs("#", heading_cell()), runs(" H", bold)]);
 }
 
 #[test]

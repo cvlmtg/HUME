@@ -25,7 +25,8 @@ use hume_rope::offset::ExclusiveRange;
 /// during the engine's per-line render loop.
 pub(crate) type ScopedHighlightRanges = SharedSlot<Vec<(ContentLine, ByteCol, ByteCol, ScopeId)>>;
 
-/// The four highlight buffers every pane owns.
+/// The highlight buffers every pane owns beside its extra highlights, which
+/// [`crate::TextDecorationHandles`] holds.
 ///
 /// Each pane gets its own Arcs (never shared across panes; see
 /// `build_pane`), so `update_highlight_providers` can compute one pane's
@@ -36,7 +37,6 @@ pub(crate) struct PaneHighlights {
     pub(crate) bracket: ScopedHighlightRanges,
     pub(crate) search: ScopedHighlightRanges,
     pub(crate) diagnostics: ScopedHighlightRanges,
-    pub(crate) extra: ScopedHighlightRanges,
 }
 
 /// Highlights a set of byte ranges at a fixed tier, each carrying its own

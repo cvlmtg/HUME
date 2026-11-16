@@ -22,6 +22,7 @@
 //! `MenuOverlay` and `PopupBandWidget::render` paint the resolved result,
 //! clipped defensively to `pane_rect`.
 
+use hume_engine::text_lines::{StyledLine, push_run};
 use hume_engine::types::{ResolvedStyle, Scope};
 use hume_grid::{Rect, Rgb};
 use std::cell::{Cell, Ref, RefCell};
@@ -74,14 +75,6 @@ pub struct PopupContent {
 enum PopupSource {
     Plain(String),
     Styled(Vec<StyledLine>),
-}
-
-/// One line of a [`PopupContent::styled`] popup: its runs, none holding a
-/// `\n`, and the background the rest of each of its wrapped rows is filled
-/// with, `None` for the box's own.
-pub struct StyledLine {
-    pub runs: Vec<(String, ResolvedStyle)>,
-    pub fill: Option<Rgb>,
 }
 
 struct Wrapped {
@@ -845,19 +838,6 @@ fn clamp_x_to_pane(x: u16, width: u16, pane_rect: Rect) -> u16 {
 pub struct StyledRow {
     pub runs: Vec<(String, ResolvedStyle)>,
     pub fill: Option<Rgb>,
-}
-
-/// Merge adjacent `(text, style)` pairs sharing the same `ResolvedStyle`:
-/// [`coalesce_atoms`]'s own primitive, merging wrapped *output* graphemes
-/// back down to runs.
-fn push_run(runs: &mut Vec<(String, ResolvedStyle)>, text: &str, style: ResolvedStyle) {
-    if text.is_empty() {
-        return;
-    }
-    match runs.last_mut() {
-        Some((last_text, last_style)) if *last_style == style => last_text.push_str(text),
-        _ => runs.push((text.to_string(), style)),
-    }
 }
 
 /// Merge adjacent atoms sharing the same `ResolvedStyle` into a row filled

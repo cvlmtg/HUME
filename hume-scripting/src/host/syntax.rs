@@ -30,15 +30,16 @@ pub struct CaptureEntry {
 pub trait SyntaxHost {
     /// The captures of `query`, compiled against `language`'s grammar, over
     /// each layer of `bid`'s tree parsed with that grammar, injected layers
-    /// included, sorted by start, then by end descending. The tree is brought
-    /// up to date with the text first; empty when the buffer has no tree for
-    /// its current text. `Err` naming the language when it has no grammar,
-    /// and with the position and kind of the error when `query` does not
-    /// compile.
+    /// included, sorted by start, then by end descending, then by name, each
+    /// distinct capture once. The tree is brought up to date with the text
+    /// first; empty when the buffer has no tree for its current text. `Err`
+    /// naming the language when it has no grammar, and with the position and
+    /// kind of the error when `query` does not compile.
     ///
-    /// Only the matches `hume_treesitter::CaptureQuery::collect` returns for
-    /// the lines of `ranges`, each ending at most one past the last content
-    /// line, in any order and overlapping or not.
+    /// A match counts when the node its pattern is rooted at intersects the
+    /// lines of one of `ranges`, with every capture of the match, inside those
+    /// lines or not. `ranges` come in any order and may overlap, each ending
+    /// at most one past the last content line.
     fn syntax_captures(
         &mut self,
         bid: BufferId,

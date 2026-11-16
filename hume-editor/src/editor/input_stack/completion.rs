@@ -22,7 +22,7 @@ use super::super::completion::{
 };
 use super::super::error::CommandError;
 use super::super::keymap::WalkResult;
-use super::super::popup_syntax::{Markup, build_markup_syntax};
+use super::super::popup_syntax::Markup;
 use super::super::syntax::GrammarLoads;
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
@@ -102,11 +102,8 @@ impl DocView {
         if let Some(i) = self.built.iter().position(|(built, _)| *built == text) {
             return i;
         }
-        let syntax = text
-            .markdown
-            .then(|| build_markup_syntax(loads, "markdown", &text.text))
-            .flatten();
-        let markup = Markup::new(text.text.clone(), syntax, theme, loads.scopes());
+        let lang = text.markdown.then_some("markdown");
+        let markup = Markup::new(text.text.clone(), lang, loads, theme);
         self.built.push((text, markup));
         self.built.len() - 1
     }

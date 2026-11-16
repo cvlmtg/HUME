@@ -172,6 +172,13 @@ impl ExclusiveRange<ContentLine> {
     pub fn iter(self) -> impl DoubleEndedIterator<Item = ContentLine> + Clone {
         (self.start.0..self.end.0).map(ContentLine)
     }
+
+    /// The same lines from `start` through the line before `end`, `None`
+    /// when the range is empty.
+    pub fn as_inclusive(self) -> Option<InclusiveRange<ContentLine>> {
+        (self.start < self.end)
+            .then(|| InclusiveRange::new(self.start, ContentLine(self.end.0 - 1)))
+    }
 }
 
 /// `ranges` without the empty ones, sorted by start, with the ranges that

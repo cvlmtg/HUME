@@ -121,9 +121,8 @@ impl TreeSitterHighlighter {
         // A capture node can span multiple lines (markdown fenced blocks,
         // paragraphs); `set_byte_range` only filters which nodes match, it
         // does not clip a matched node's end to the queried line. Clamp to
-        // this line's content (newline excluded) so consumers that slice
-        // their own copy of the line by these offsets (the hover popup,
-        // via `MarkupSyntax::styled_row`) never index past its end.
+        // this line's content (newline excluded), so a span is a range of
+        // its own line and a caller slicing the line by it stays inside.
         // Depends only on `line_start`/`line_end`/`rope`, not on the
         // capture, so it is hoisted above the loop instead of recomputed per capture.
         let content_len = (line_end - line_start).saturating_sub(usize::from(
