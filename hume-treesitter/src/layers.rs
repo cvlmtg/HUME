@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::cmp::Reverse;
 use std::ops::{Range, RangeInclusive};
 use std::sync::{Arc, Mutex};
@@ -42,7 +43,6 @@ pub struct SyntaxLayer {
 /// A layer's committed tree, sites and locals, edited to the text being
 /// parsed, and where they were found: what the layer's next tree, sites and
 /// locals are built from.
-#[derive(Clone)]
 pub(crate) struct LayerPrior<'p> {
     /// The layer's committed tree, edited to the text being parsed.
     pub(crate) old_tree: &'p tree_sitter::Tree,
@@ -60,30 +60,52 @@ pub(crate) struct LayerPrior<'p> {
     pub(crate) edited: &'p EditedBytes,
 }
 
-/// The bytes where a layer's query results, its sites and locals, can
-/// differ from `prior`'s, as sorted, disjoint closed intervals: the edited
-/// bytes in the layer's hull and, when `tree` was reparsed from
-/// `prior.old_tree`, every range the two trees differ in, its end byte
-/// included.
-pub(crate) fn dirty_bytes(
-    prior: &LayerPrior<'_>,
-    tree: &tree_sitter::Tree,
-) -> Vec<RangeInclusive<usize>> {
-    let mut dirty: Vec<RangeInclusive<usize>> = prior.edited.within(prior.hull.clone()).collect();
-    if prior.reparsed {
-        dirty.extend(
-            prior
-                .old_tree
-                .changed_ranges(tree)
-                .map(|range| range.start_byte..=range.end_byte),
-        );
+impl<'a> LayerPrior<'a> {
+    /// What the layer's next sites and locals are built from, once its new
+    /// tree is `tree`.
+    pub(crate) fn against(self, tree: &'a tree_sitter::Tree) -> LayerChange<'a> {
+        LayerChange {
+            prior: self,
+            tree,
+            dirty: OnceCell::new(),
+        }
     }
-    dirty.sort_unstable_by_key(|region| *region.start());
-    let mut merged: Vec<RangeInclusive<usize>> = Vec::with_capacity(dirty.len());
-    for region in dirty {
-        push_merging(&mut merged, region);
+}
+
+/// A layer's prior and its new tree.
+pub(crate) struct LayerChange<'a> {
+    pub(crate) prior: LayerPrior<'a>,
+    tree: &'a tree_sitter::Tree,
+    dirty: OnceCell<Vec<RangeInclusive<usize>>>,
+}
+
+impl LayerChange<'_> {
+    /// The bytes where the layer's query results, its sites and locals, can
+    /// differ from the prior's, as sorted, disjoint closed intervals: the
+    /// edited bytes in the layer's hull and, when the new tree was reparsed
+    /// from `prior.old_tree`, every range the two trees differ in, its end
+    /// byte included. Computed on first use.
+    pub(crate) fn dirty(&self) -> &[RangeInclusive<usize>] {
+        self.dirty.get_or_init(|| {
+            let prior = &self.prior;
+            let mut dirty: Vec<RangeInclusive<usize>> =
+                prior.edited.within(prior.hull.clone()).collect();
+            if prior.reparsed {
+                dirty.extend(
+                    prior
+                        .old_tree
+                        .changed_ranges(self.tree)
+                        .map(|range| range.start_byte..=range.end_byte),
+                );
+            }
+            dirty.sort_unstable_by_key(|region| *region.start());
+            let mut merged: Vec<RangeInclusive<usize>> = Vec::with_capacity(dirty.len());
+            for region in dirty {
+                push_merging(&mut merged, region);
+            }
+            merged
+        })
     }
-    merged
 }
 
 /// A buffer's full syntax tree: the root grammar's tree plus every embedded

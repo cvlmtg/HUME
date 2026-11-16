@@ -204,13 +204,16 @@ pub(crate) fn do_parse(
                 prior: prior.map(|prior| (&prior.injected, &prior.edited)),
                 cancel,
             };
-            let root_prior = prior.map(|prior| LayerPrior {
-                old_tree: &prior.root,
-                sites: &prior.root_sites,
-                locals: &prior.root_locals,
-                hull: 0..=rope.len_bytes(),
-                reparsed: true,
-                edited: &prior.edited,
+            let root_change = prior.map(|prior| {
+                LayerPrior {
+                    old_tree: &prior.root,
+                    sites: &prior.root_sites,
+                    locals: &prior.root_locals,
+                    hull: 0..=rope.len_bytes(),
+                    reparsed: true,
+                    edited: &prior.edited,
+                }
+                .against(&root)
             });
             let mut unloaded = Vec::new();
             let (root_sites, injected) = resolve_and_parse_injections(
@@ -219,10 +222,10 @@ pub(crate) fn do_parse(
                 &root,
                 &req.bundle,
                 1,
-                root_prior.clone(),
+                root_change.as_ref(),
                 &mut unloaded,
             );
-            let root_locals = layer_locals(&req.bundle, &root, rope, root_prior.as_ref());
+            let root_locals = layer_locals(&req.bundle, &root, rope, root_change.as_ref());
             ParseOutcome::Ok(ParsedLayers {
                 root,
                 root_sites,

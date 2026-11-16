@@ -265,7 +265,7 @@ fn updated_and_fresh(
         edited: &edited,
     };
     (
-        layer_locals(bundle, &tree, &rope, Some(&layer_prior)),
+        layer_locals(bundle, &tree, &rope, Some(&layer_prior.against(&tree))),
         layer_locals(bundle, &tree, &rope, None),
     )
 }

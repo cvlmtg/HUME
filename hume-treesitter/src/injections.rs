@@ -11,7 +11,7 @@ use crate::directives::{PatternDirectives, hull, parse_patterns};
 use crate::edited_bytes::EditedBytes;
 use crate::highlight::RopeProvider;
 
-use crate::layers::{LayerPrior, SyntaxLayer, SyntaxLayers, dirty_bytes};
+use crate::layers::{LayerChange, LayerPrior, SyntaxLayer, SyntaxLayers};
 use crate::locals::layer_locals;
 use crate::parse_worker::{MAX_INJECTION_DEPTH, run_parse};
 use crate::registry::{GrammarBundle, GrammarSnapshot, LanguageId, SnapshotGrammar};
@@ -296,8 +296,8 @@ fn push_sites(
     }
 }
 
-/// The sites of `tree`: a full query without `prior`, else `prior`'s sites
-/// with those that can have changed queried again.
+/// The sites of `tree`: a full query without `change`, else its prior's
+/// sites with those that can have changed queried again.
 ///
 /// A match depends only on its root node's subtree: its structure, and the
 /// text its predicates and language capture read. A bounded run over the
@@ -321,12 +321,12 @@ fn resolve_sites(
     inj: &InjectionsQuery,
     tree: &tree_sitter::Tree,
     rope: &ropey::Rope,
-    prior: Option<LayerPrior<'_>>,
+    change: Option<&LayerChange<'_>>,
 ) -> InjectionSites {
-    let Some(prior) = prior else {
+    let Some(change) = change else {
         return InjectionSites::canonical(query_sites(inj, tree, rope, None));
     };
-    let dirty = dirty_bytes(&prior, tree);
+    let (prior, dirty) = (&change.prior, change.dirty());
     if dirty.is_empty() {
         return prior.sites.clone();
     }
@@ -545,7 +545,7 @@ pub(crate) struct InjectionContext<'a> {
 }
 
 /// The injection sites of `tree`, a layer of `bundle`'s grammar, resolved
-/// from `prior` as [`resolve_sites`] does, and every layer they inject,
+/// from `change` as [`resolve_sites`] does, and every layer they inject,
 /// parsed, its own injections resolved the same way and listed right
 /// before it.
 ///
@@ -565,7 +565,7 @@ pub(crate) fn resolve_and_parse_injections(
     tree: &tree_sitter::Tree,
     bundle: &GrammarBundle,
     depth: u8,
-    prior: Option<LayerPrior<'_>>,
+    change: Option<&LayerChange<'_>>,
     unloaded: &mut Vec<LanguageId>,
 ) -> (InjectionSites, Vec<SyntaxLayer>) {
     let Some(inj) = bundle
@@ -575,7 +575,7 @@ pub(crate) fn resolve_and_parse_injections(
     else {
         return (InjectionSites::default(), Vec::new());
     };
-    let sites = resolve_sites(inj, tree, cx.rope, prior);
+    let sites = resolve_sites(inj, tree, cx.rope, change);
 
     let mut out = Vec::new();
     for group in group_sites(inj, &sites, cx.langs, unloaded) {
@@ -597,7 +597,8 @@ pub(crate) fn resolve_and_parse_injections(
                 (tree, None)
             }
         };
-        let locals = layer_locals(&group.bundle, &child_tree, cx.rope, child_prior.as_ref());
+        let child_change = child_prior.map(|prior| prior.against(&child_tree));
+        let locals = layer_locals(&group.bundle, &child_tree, cx.rope, child_change.as_ref());
 
         let (child_sites, descendants) = resolve_and_parse_injections(
             parser,
@@ -605,7 +606,7 @@ pub(crate) fn resolve_and_parse_injections(
             &child_tree,
             &group.bundle,
             depth + 1,
-            child_prior,
+            child_change.as_ref(),
             unloaded,
         );
         out.extend(descendants);

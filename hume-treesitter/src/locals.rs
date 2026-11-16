@@ -34,7 +34,7 @@ use crate::directives::{PatternDirectives, parse_patterns};
 use crate::edits::ByteMap;
 use crate::highlight::RopeProvider;
 use crate::injections::node_text;
-use crate::layers::{LayerPrior, dirty_bytes};
+use crate::layers::LayerChange;
 use crate::registry::GrammarBundle;
 
 /// A compiled `locals.scm`.
@@ -448,29 +448,29 @@ fn dirty_scopes(
 }
 
 /// The locals of `tree`, a layer parsed from `rope` with `bundle`: empty
-/// for a grammar without a `locals.scm`. With `prior`, the layer's locals
-/// before this parse, edited to it, only the scopes an edit can have
-/// changed are rebuilt.
+/// for a grammar without a `locals.scm`. With `change`, whose prior holds
+/// the layer's locals before this parse, edited to it, only the scopes an
+/// edit can have changed are rebuilt.
 pub(crate) fn layer_locals(
     bundle: &GrammarBundle,
     tree: &tree_sitter::Tree,
     rope: &ropey::Rope,
-    prior: Option<&LayerPrior<'_>>,
+    change: Option<&LayerChange<'_>>,
 ) -> Arc<LayerLocals> {
     let Some(query) = bundle.locals.as_ref() else {
         return Arc::default();
     };
-    let Some(prior) = prior else {
+    let Some(change) = change else {
         let mut locals = LayerLocals::default();
         locals.rebuild(query, tree, rope, None);
         return Arc::new(locals);
     };
-    let dirty = dirty_bytes(prior, tree);
+    let dirty = change.dirty();
     if dirty.is_empty() {
-        return Arc::clone(prior.locals);
+        return Arc::clone(change.prior.locals);
     }
-    let mut locals = LayerLocals::clone(prior.locals);
-    match dirty_scopes(query, &locals, tree, rope, &dirty) {
+    let mut locals = LayerLocals::clone(change.prior.locals);
+    match dirty_scopes(query, &locals, tree, rope, dirty) {
         Some(regions) => {
             for region in regions {
                 locals.rebuild(query, tree, rope, Some(region));

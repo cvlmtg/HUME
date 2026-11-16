@@ -567,14 +567,17 @@ impl Reparsed {
             inj,
             &self.new,
             &self.rope,
-            Some(LayerPrior {
-                old_tree: &self.old,
-                sites: prior_sites,
-                locals: &Default::default(),
-                hull: 0..=self.rope.len_bytes(),
-                reparsed: true,
-                edited: &self.edited,
-            }),
+            Some(
+                &LayerPrior {
+                    old_tree: &self.old,
+                    sites: prior_sites,
+                    locals: &Default::default(),
+                    hull: 0..=self.rope.len_bytes(),
+                    reparsed: true,
+                    edited: &self.edited,
+                }
+                .against(&self.new),
+            ),
         )
     }
 
@@ -599,14 +602,17 @@ fn without_dirty_bytes_the_prior_sites_are_kept_as_given() {
         inj,
         &tree,
         &rope,
-        Some(LayerPrior {
-            old_tree: &tree,
-            sites: &given,
-            locals: &Default::default(),
-            hull: 0..=rope.len_bytes(),
-            reparsed: false,
-            edited: &edited,
-        }),
+        Some(
+            &LayerPrior {
+                old_tree: &tree,
+                sites: &given,
+                locals: &Default::default(),
+                hull: 0..=rope.len_bytes(),
+                reparsed: false,
+                edited: &edited,
+            }
+            .against(&tree),
+        ),
     );
     assert_eq!(resolved, given);
 }
@@ -680,14 +686,17 @@ fn a_match_two_dirty_regions_meet_is_resolved_once() {
             inj,
             &tree,
             &rope,
-            Some(LayerPrior {
-                old_tree: &tree,
-                sites: &fresh,
-                locals: &Default::default(),
-                hull: 0..=rope.len_bytes(),
-                reparsed,
-                edited: &edited,
-            }),
+            Some(
+                &LayerPrior {
+                    old_tree: &tree,
+                    sites: &fresh,
+                    locals: &Default::default(),
+                    hull: 0..=rope.len_bytes(),
+                    reparsed,
+                    edited: &edited,
+                }
+                .against(&tree),
+            ),
         );
         assert_eq!(resolved, fresh, "reparsed: {reparsed}");
     }
