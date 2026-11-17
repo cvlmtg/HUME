@@ -162,13 +162,13 @@ pub trait DecorationHost {
     ) -> Result<(), SetError>;
 
     /// `(set-extra-highlights! pane source spans)`: replaces `source`'s
-    /// extra highlights for `bid` wholesale. Each entry is `(start, end,
-    /// scope)`, char offsets. `Err` if the range is empty or out of bounds.
+    /// extra highlights for `bid` wholesale, char offsets. `Err` if a range
+    /// is empty or out of bounds, or a scope is refused.
     fn set_extra_highlights(
         &mut self,
         source: String,
         bid: BufferId,
-        spans: Vec<(usize, usize, String)>,
+        spans: crate::ScopedSpans,
     ) -> Result<(), SetError>;
 
     /// `(set-conceals! pane source entries #:overlaps o)`: replaces

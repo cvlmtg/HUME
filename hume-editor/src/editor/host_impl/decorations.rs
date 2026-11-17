@@ -22,7 +22,7 @@ use crate::statusline::StatusElement;
 
 use super::EditorHostImpl;
 use hume_scripting::host::{DecorationHost, DiagnosticCounts, MarkedLines, SetError, each_entry};
-use hume_scripting::{ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText};
+use hume_scripting::{ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText, ScopedSpans};
 
 impl<'a> DecorationHost for EditorHostImpl<'a> {
     fn set_inlay_hints(
@@ -132,11 +132,10 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         &mut self,
         source: String,
         bid: BufferId,
-        spans: Vec<(usize, usize, String)>,
+        spans: ScopedSpans,
     ) -> Result<(), SetError> {
         let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        let registry = &mut self.view.registry;
-        let entries = extra_highlight_entries(text, spans, |name| script_scope(registry, &name))?;
+        let entries = scoped_highlight_entries(text, spans, &mut self.view.registry)?;
         self.state
             .config
             .decorations
@@ -367,7 +366,7 @@ pub(in crate::editor) fn conceal_entries(
 /// Each `(start, end, scope)` char range of `text` as an extra highlight,
 /// its scope's id given by `scope_id`. Errors on a range outside the text,
 /// an empty one, or a scope `scope_id` refuses.
-pub(in crate::editor) fn extra_highlight_entries<S>(
+fn extra_highlight_entries<S>(
     text: &BufferText,
     spans: Vec<(usize, usize, S)>,
     mut scope_id: impl FnMut(S) -> Result<ScopeId, String>,
@@ -383,6 +382,26 @@ pub(in crate::editor) fn extra_highlight_entries<S>(
             end: range.end,
             scope: scope_id(scope)?,
         })
+    })
+}
+
+/// [`extra_highlight_entries`] of spans that name their scope by its place in
+/// `spans.scopes`, each scope interned through [`script_scope`] when a span
+/// first uses it, so a scope after a failing entry is never interned.
+pub(in crate::editor) fn scoped_highlight_entries(
+    text: &BufferText,
+    spans: ScopedSpans,
+    registry: &mut ScopeRegistry,
+) -> Result<Vec<hume_decorations::ExtraHighlightEntry>, SetError> {
+    let ScopedSpans { scopes, spans } = spans;
+    let mut ids: Vec<Option<ScopeId>> = vec![None; scopes.len()];
+    extra_highlight_entries(text, spans, |place| {
+        if let Some(id) = ids[place] {
+            return Ok(id);
+        }
+        let id = script_scope(registry, &scopes[place])?;
+        ids[place] = Some(id);
+        Ok(id)
     })
 }
 

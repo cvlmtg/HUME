@@ -4,6 +4,7 @@
 //! these), but LSP is the first and heaviest client.
 
 use hume_core::{BufferId, DiagSeverity, Side};
+use rustc_hash::FxHashMap;
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
@@ -11,7 +12,8 @@ use crate::SteelCtx;
 use crate::host::{DiagnosticEntry, DiagnosticRange, MarkedLines, each_entry};
 use crate::json::{WireOrigin, to_steel_handle};
 use crate::types::{
-    ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText, TextFormatSpec, VirtualLineSpec,
+    ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText, ScopedSpans, TextFormatSpec,
+    VirtualLineSpec,
 };
 
 use super::SteelResult;
@@ -216,16 +218,25 @@ fn virtual_line_segments(
     )
 }
 
-/// A list of `(hash 'start-char s 'end-char e 'scope name)` spans, each as
-/// `(s, e, name)`.
-fn char_range_scopes(
-    val: SteelVal,
-    ctx_name: &str,
-) -> Result<Vec<(usize, usize, String)>, SteelErr> {
-    hash_list(val, ctx_name, START_END_CHAR_SCOPE, |entry| {
+/// A list of `(hash 'start-char s 'end-char e 'scope name)` spans, each
+/// distinct scope name copied once.
+fn char_range_scopes(val: SteelVal, ctx_name: &str) -> Result<ScopedSpans, SteelErr> {
+    let mut scopes = Vec::new();
+    let mut places: FxHashMap<String, usize> = FxHashMap::default();
+    let spans = hash_list(val, ctx_name, START_END_CHAR_SCOPE, |entry| {
         let (start, end) = entry.char_range()?;
-        Ok((start, end, entry.string("scope")?))
-    })
+        let name = entry.str("scope")?;
+        let place = match places.get(name) {
+            Some(&place) => place,
+            None => {
+                places.insert(name.to_owned(), scopes.len());
+                scopes.push(name.to_owned());
+                scopes.len() - 1
+            }
+        };
+        Ok((start, end, place))
+    })?;
+    Ok(ScopedSpans { scopes, spans })
 }
 
 /// One `(hash 'start-char-col 'end-char-col 'scope)` entry, decoded with

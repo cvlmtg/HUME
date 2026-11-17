@@ -726,7 +726,10 @@ fn following_the_log_moves_another_sources_highlights_with_the_text() {
         &mut crate::editor::host_impl::EditorHostImpl::new(&mut ed.state, &mut ed.view),
         "other".to_string(),
         bid,
-        vec![(23, 25, "ui.text".to_string())],
+        hume_scripting::ScopedSpans {
+            scopes: vec!["ui.text".to_string()],
+            spans: vec![(23, 25, 0)],
+        },
     )
     .expect("the span lies in the text");
 

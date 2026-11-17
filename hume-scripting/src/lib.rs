@@ -64,9 +64,9 @@ pub use types::{
     CapabilityQuery, ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText, DocSpan,
     Effect, EvalError, GrammarReg, LspErrKind, LspRoute, LspServerStatusEntry, LspServerTarget,
     Params, PendingLanguageReg, PendingLspNotify, PendingLspRequest, PendingLspServerOp,
-    PendingLspServerReg, RequestMode, RequestParams, RouteSpec, SteelCmdBody, SteelCmdDef,
-    SteelTypedCmdBody, SteelTypedCmdDef, TextFormatSpec, TriggerScope, VirtualLineSpec,
-    WhenUnavailable, lsp_err_value,
+    PendingLspServerReg, RequestMode, RequestParams, RouteSpec, ScopedSpans, SteelCmdBody,
+    SteelCmdDef, SteelTypedCmdBody, SteelTypedCmdDef, TextFormatSpec, TriggerScope,
+    VirtualLineSpec, WhenUnavailable, lsp_err_value,
 };
 // Test-only external visibility: the editor's own test suite arms/cancels a
 // real watchdog directly (hume-editor/tests/scripting.rs) rather than

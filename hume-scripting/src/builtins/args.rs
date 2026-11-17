@@ -11,6 +11,7 @@
 //! absent_marker_is_decoded_only_in_args_rs` (`arch-lints/tests/
 //! absent_decode.rs`).
 
+use std::fmt;
 use std::path::{Path, PathBuf};
 
 use steel::rerrs::{ErrorKind, SteelErr};
@@ -50,14 +51,20 @@ pub(crate) fn not_live_err(arg: &str, bid: BufferId) -> SteelErr {
 // slice). `ctx_name` names the argument for the error message.
 
 /// [`string_ref_arg`], owned.
-pub(crate) fn string_arg(val: SteelVal, ctx_name: &str) -> Result<String, SteelErr> {
+pub(crate) fn string_arg<C: fmt::Display + ?Sized>(
+    val: SteelVal,
+    ctx_name: &C,
+) -> Result<String, SteelErr> {
     string_ref_arg(&val, ctx_name).map(str::to_owned)
 }
 
 /// A string, borrowed from `val`. Accepts both strings and symbols, since
 /// Scheme callers often pass unquoted symbol literals where a string is
 /// semantically expected.
-pub(crate) fn string_ref_arg<'a>(val: &'a SteelVal, ctx_name: &str) -> Result<&'a str, SteelErr> {
+pub(crate) fn string_ref_arg<'a, C: fmt::Display + ?Sized>(
+    val: &'a SteelVal,
+    ctx_name: &C,
+) -> Result<&'a str, SteelErr> {
     match val {
         SteelVal::StringV(s) => Ok(s.as_str()),
         SteelVal::SymbolV(s) => Ok(s.as_str()),
@@ -235,7 +242,10 @@ pub(crate) fn under_cwd(
 
 /// A non-negative integer, as `usize`. Callers needing `u64` (millisecond
 /// durations) cast at the call site.
-pub(crate) fn usize_arg(val: SteelVal, ctx_name: &str) -> Result<usize, SteelErr> {
+pub(crate) fn usize_arg<C: fmt::Display + ?Sized>(
+    val: SteelVal,
+    ctx_name: &C,
+) -> Result<usize, SteelErr> {
     match val {
         SteelVal::IntV(n) if n >= 0 => Ok(n as usize),
         _ => steel::stop!(TypeMismatch => "{}: expected a non-negative integer", ctx_name),
@@ -616,10 +626,30 @@ pub(crate) struct HashEntry<'a> {
     ctx_name: &'a str,
 }
 
+/// `"<ctx_name> '<key>"`, the label a decoder reports a bad `key` under,
+/// formatted only when an error shows it.
+struct KeyLabel<'a> {
+    ctx_name: &'a str,
+    key: &'a str,
+}
+
+impl fmt::Display for KeyLabel<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} '{}", self.ctx_name, self.key)
+    }
+}
+
 impl HashEntry<'_> {
     /// `"<ctx_name> '<key>"`, the label a decoder reports a bad `key` under.
     pub(crate) fn label(&self, key: &str) -> String {
-        format!("{} '{key}", self.ctx_name)
+        self.key_label(key).to_string()
+    }
+
+    fn key_label<'k>(&'k self, key: &'k str) -> KeyLabel<'k> {
+        KeyLabel {
+            ctx_name: self.ctx_name,
+            key,
+        }
     }
 
     /// `key` must be one of the keys handed to [`hash_entry`]: asking for any
@@ -638,21 +668,30 @@ impl HashEntry<'_> {
     }
 
     pub(crate) fn required(&self, key: &str) -> Result<SteelVal, SteelErr> {
-        self.optional(key)
-            .ok_or_else(|| generic_err(format!("{}: missing '{key}", self.ctx_name)))
+        self.optional(key).ok_or_else(|| self.missing(key))
+    }
+
+    fn missing(&self, key: &str) -> SteelErr {
+        generic_err(format!("{}: missing '{key}", self.ctx_name))
     }
 
     pub(crate) fn usize(&self, key: &str) -> Result<usize, SteelErr> {
-        usize_arg(self.required(key)?, &self.label(key))
+        usize_arg(self.required(key)?, &self.key_label(key))
     }
 
     pub(crate) fn string(&self, key: &str) -> Result<String, SteelErr> {
-        string_arg(self.required(key)?, &self.label(key))
+        Ok(self.str(key)?.to_owned())
+    }
+
+    /// [`string`](Self::string), borrowed from the entry.
+    pub(crate) fn str(&self, key: &str) -> Result<&str, SteelErr> {
+        let value = self.slot(key).as_ref().ok_or_else(|| self.missing(key))?;
+        string_ref_arg(value, &self.key_label(key))
     }
 
     pub(crate) fn optional_string(&self, key: &str) -> Result<Option<String>, SteelErr> {
         self.optional(key)
-            .map(|v| string_arg(v, &self.label(key)))
+            .map(|v| string_arg(v, &self.key_label(key)))
             .transpose()
     }
 
@@ -696,7 +735,7 @@ impl HashEntry<'_> {
         let line = self.usize("line")?;
         let end = self
             .optional(END_LINE)
-            .map(|v| usize_arg(v, &self.label(END_LINE)))
+            .map(|v| usize_arg(v, &self.key_label(END_LINE)))
             .transpose()?;
         Ok((line, end))
     }
@@ -755,6 +794,17 @@ pub(crate) fn hash_entry<'a>(
     ctx_name: &'a str,
     keys: &'a [&'a str],
 ) -> Result<HashEntry<'a>, SteelErr> {
+    hash_entry_in(val, ctx_name, keys, Vec::new())
+}
+
+/// [`hash_entry`] decoded into `slots`, the buffer an earlier entry's decode
+/// left, so a list decode allocates its slots once.
+fn hash_entry_in<'a>(
+    val: SteelVal,
+    ctx_name: &'a str,
+    keys: &'a [&'a str],
+    mut slots: Vec<Option<SteelVal>>,
+) -> Result<HashEntry<'a>, SteelErr> {
     let expected = || {
         keys.iter()
             .map(|k| format!("'{k}"))
@@ -765,7 +815,8 @@ pub(crate) fn hash_entry<'a>(
         steel::stop!(TypeMismatch =>
             "{}: expected a hashmap with keys from {}", ctx_name, expected());
     };
-    let mut slots = vec![None; keys.len()];
+    slots.clear();
+    slots.resize(keys.len(), None);
     for (key, value) in map.iter() {
         let SteelVal::SymbolV(name) = key else {
             steel::stop!(Generic =>
@@ -841,15 +892,17 @@ pub(crate) fn hash_list<T>(
     keys: &[&str],
     mut row: impl FnMut(&HashEntry) -> Result<T, SteelErr>,
 ) -> Result<Vec<T>, SteelErr> {
+    let items = list_items(val, ctx_name)?;
+    let mut rows = Vec::with_capacity(items.len());
     let mut label = String::new();
-    list_items(val, ctx_name)?
-        .into_iter()
-        .enumerate()
-        .map(|(i, entry)| {
-            write_item_label(&mut label, ctx_name, i);
-            row(&hash_entry(entry, &label, keys)?)
-        })
-        .collect()
+    let mut slots = Vec::new();
+    for (i, item) in items.into_iter().enumerate() {
+        write_item_label(&mut label, ctx_name, i);
+        let entry = hash_entry_in(item, &label, keys, slots)?;
+        rows.push(row(&entry)?);
+        slots = entry.slots;
+    }
+    Ok(rows)
 }
 
 /// [`hash_list`] of a value that may be `#f` (absent).

@@ -25,7 +25,7 @@ use super::popup_syntax::MarkupSyntax;
 use super::tui::Tui;
 
 pub(in crate::editor) use decorations::{
-    conceal_entries, extra_highlight_entries, line_background_entries, script_scope,
+    conceal_entries, line_background_entries, scoped_highlight_entries, script_scope,
 };
 
 mod async_process;

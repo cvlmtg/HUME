@@ -175,8 +175,17 @@ pub struct TextFormatSpec {
     pub overlaps: ConcealOverlaps,
     /// Each entry's lines and scope name.
     pub line_backgrounds: Vec<(MarkedLines, String)>,
-    /// Each entry's `(start-char, end-char, scope)`.
-    pub highlights: Vec<(usize, usize, String)>,
+    pub highlights: ScopedSpans,
+}
+
+/// Char-offset spans that name their scope by its place in `scopes`, so a
+/// scope many spans share is decoded once.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ScopedSpans {
+    /// Each distinct scope name, in the order a span first named it.
+    pub scopes: Vec<String>,
+    /// Each span's `(start-char, end-char, index into scopes)`.
+    pub spans: Vec<(usize, usize, usize)>,
 }
 
 /// A side effect a Steel builtin queues during an eval because it needs
