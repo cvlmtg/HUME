@@ -17,6 +17,23 @@ use crate::types::{ResolvedStyle, Scope, ScopeId};
 
 // ScopeRegistry
 
+/// A new scope name was refused because the registry holds
+/// [`ScopeRegistry::NAME_LIMIT`] names already.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScopeLimitReached;
+
+impl std::fmt::Display for ScopeLimitReached {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "too many distinct scope names in this session (limit {})",
+            ScopeRegistry::NAME_LIMIT
+        )
+    }
+}
+
+impl std::error::Error for ScopeLimitReached {}
+
 /// Maps scope name strings to compact [`ScopeId`] integers, at most
 /// `u16::MAX` of them. Append-only.
 ///
@@ -40,24 +57,59 @@ impl ScopeRegistry {
         }
     }
 
+    /// How many distinct names [`ScopeRegistry::intern_name`] lets in. The
+    /// ids from this count up stay free for HUME's own names, which
+    /// [`ScopeRegistry::intern`] takes whatever the count.
+    pub const NAME_LIMIT: usize = 65_536 - 256;
+
     fn next_id(&self) -> ScopeId {
-        debug_assert!(
+        assert!(
             self.names.len() < u16::MAX as usize,
             "ScopeRegistry overflow: more than 65 535 distinct scope names"
         );
         ScopeId(self.names.len() as u16)
     }
 
-    /// Return the [`ScopeId`] for `name`, interning it if new.
-    pub fn intern(&mut self, name: &str) -> ScopeId {
-        if let Some(&id) = self.map.get(name) {
-            return id;
-        }
+    fn insert_new(&mut self, name: &str) -> ScopeId {
         let id = self.next_id();
         let boxed: Box<str> = Box::from(name);
         self.names.push(boxed.clone());
         self.map.insert(boxed, id);
         id
+    }
+
+    /// Return the [`ScopeId`] for one of HUME's own scope names, interning it
+    /// if new. Never refused: a name from a script or a query file goes
+    /// through [`ScopeRegistry::intern_name`].
+    pub fn intern(&mut self, name: &str) -> ScopeId {
+        match self.map.get(name) {
+            Some(&id) => id,
+            None => self.insert_new(name),
+        }
+    }
+
+    /// Return the [`ScopeId`] for a name that came from a script or a query
+    /// file. A name already interned always succeeds; a new one is refused
+    /// once [`ScopeRegistry::NAME_LIMIT`] names are interned.
+    pub fn intern_name(&mut self, name: &str) -> Result<ScopeId, ScopeLimitReached> {
+        if let Some(&id) = self.map.get(name) {
+            return Ok(id);
+        }
+        if self.names.len() >= Self::NAME_LIMIT {
+            return Err(ScopeLimitReached);
+        }
+        Ok(self.insert_new(name))
+    }
+
+    /// Intern placeholder names until the registry holds
+    /// [`ScopeRegistry::NAME_LIMIT`] of them.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn fill_to_limit(&mut self) {
+        while self.names.len() < Self::NAME_LIMIT {
+            let filler = format!("scope-filler.{}", self.names.len());
+            self.intern_name(&filler)
+                .expect("below the limit, so never refused");
+        }
     }
 
     /// Look up an already-interned scope without inserting.

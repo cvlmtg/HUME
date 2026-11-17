@@ -762,3 +762,52 @@ mod scope_styles {
         assert!(theme.has_entry("ui.statusline.separator"));
     }
 }
+
+// ── ScopeRegistry name limit ─────────────────────────────────────────
+
+#[test]
+fn intern_name_refuses_a_new_name_at_the_limit() {
+    let mut reg = ScopeRegistry::new();
+    reg.fill_to_limit();
+    assert_eq!(reg.intern_name("brand.new"), Err(ScopeLimitReached));
+    assert_eq!(reg.len(), 65_536 - 256);
+    assert_eq!(reg.get("brand.new"), None);
+}
+
+#[test]
+fn scope_limit_reached_displays_the_limit() {
+    assert_eq!(
+        ScopeLimitReached.to_string(),
+        "too many distinct scope names in this session (limit 65280)"
+    );
+}
+
+#[test]
+fn intern_name_returns_an_existing_id_at_the_limit() {
+    let mut reg = ScopeRegistry::new();
+    let before = reg.intern_name("keyword").unwrap();
+    reg.fill_to_limit();
+    assert_eq!(reg.intern_name("keyword"), Ok(before));
+}
+
+#[test]
+fn intern_takes_ids_past_the_limit() {
+    let mut reg = ScopeRegistry::new();
+    reg.fill_to_limit();
+    let id = reg.intern("hume.own");
+    assert!(id.0 as usize >= 65_536 - 256);
+    assert_eq!(reg.name_of(id), "hume.own");
+}
+
+#[test]
+fn every_interned_name_counts_toward_the_limit() {
+    let mut reg = ScopeRegistry::new();
+    for name in ["a0", "a1", "a2", "a3", "a4", "a5", "a6", "a7", "a8", "a9"] {
+        reg.intern(name);
+    }
+    let mut accepted = 0usize;
+    while reg.intern_name(&format!("n.{accepted}")).is_ok() {
+        accepted += 1;
+    }
+    assert_eq!(accepted, 65_536 - 256 - 10);
+}
