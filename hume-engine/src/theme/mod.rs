@@ -207,7 +207,7 @@ pub enum Restyle {
 /// # Two-phase API
 ///
 /// 1. Construct with [`Theme::from_owned`] (or [`Theme::default`]).
-///    `theme.ui` is usable at once.
+///    `theme.ui()` is usable at once.
 ///
 /// 2. Bake against the [`ScopeRegistry`] ([`Theme::bake_if_stale`]) before
 ///    [`Theme::resolve`] reads an interned scope.
@@ -230,11 +230,8 @@ pub struct Theme {
     /// Indexed by [`ScopeId`]; `None` when no name on the scope's fallback
     /// chain has an entry.
     baked: Vec<Option<ResolvedStyle>>,
-    /// Default style used when no scope matches: the `ui.text` entry, or
-    /// empty.
-    pub default: ResolvedStyle,
-    /// Pre-resolved styles for hot-path UI scopes.
-    pub ui: UiScopes,
+    default: ResolvedStyle,
+    ui: UiScopes,
 }
 
 impl Theme {
@@ -291,6 +288,18 @@ impl Theme {
         self.baked.clear();
         self.derive_from_entries();
         warnings
+    }
+
+    /// The style used when no scope matches: the `ui.text` entry, or empty.
+    #[inline]
+    pub fn default_style(&self) -> ResolvedStyle {
+        self.default
+    }
+
+    /// Pre-resolved styles for hot-path UI scopes.
+    #[inline]
+    pub fn ui(&self) -> &UiScopes {
+        &self.ui
     }
 
     /// Recompute what the entries determine: `default` and the

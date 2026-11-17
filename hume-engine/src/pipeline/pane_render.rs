@@ -118,8 +118,8 @@ pub(crate) fn render_pane(
             primary_head_line: head_line,
         },
         tab_width: inputs.format.tab_width,
-        tilde_style: pane_ctx.theme.ui.virtual_text,
-        indent_guide_style: pane_ctx.theme.ui.indent_guide,
+        tilde_style: pane_ctx.theme.ui().virtual_text,
+        indent_guide_style: pane_ctx.theme.ui().indent_guide,
         indent_guides: pane_ctx.settings.indent_guides,
         pane_rect: pane_ctx.rect,
         theme: pane_ctx.theme,
@@ -128,7 +128,7 @@ pub(crate) fn render_pane(
         gutter: pane_ctx.settings.gutter,
         folds: pane_ctx.settings.gutter.folds.then_some(&*fold_starts),
     };
-    let mut canvas = render::Canvas::new(grid, pane_ctx.theme.ui.invisible, pane_ctx.dim);
+    let mut canvas = render::Canvas::new(grid, pane_ctx.theme.ui().invisible, pane_ctx.dim);
 
     // ── Display-line walk ────────────────────────────────────────────────
     let height = pane_ctx.rect.height;
@@ -152,7 +152,7 @@ pub(crate) fn render_pane(
                 // highlight tiers, no cursor/selection), but each grapheme
                 // can still carry its own `scope` from the provider that
                 // produced it (already folded with `base_scope` in
-                // `format_virtual_lines`): `theme.default` layered with that
+                // `format_virtual_lines`): `theme.default_style()` layered with that
                 // scope, or the themed `virtual_text` fallback for
                 // graphemes with none (matching the tilde-filler /
                 // no-decoration look).
@@ -162,9 +162,9 @@ pub(crate) fn render_pane(
                     match g.scope {
                         Some(id) => compose_ctx
                             .theme
-                            .default
+                            .default_style()
                             .layer(compose_ctx.theme.resolve(id)),
-                        None => compose_ctx.theme.ui.virtual_text,
+                        None => compose_ctx.theme.ui().virtual_text,
                     }
                 }));
                 // Row-wide fill, the virtual display line's counterpart of
@@ -206,14 +206,14 @@ pub(crate) fn render_pane(
                         mode: pane_ctx.settings.mode,
                         cursor_is_block: pane_ctx.settings.cursor_is_block,
                     }),
-                    crate::style::line_base(pane_ctx.theme.default, line.tint_bg),
+                    crate::style::line_base(pane_ctx.theme.default_style(), line.tint_bg),
                     pane_ctx.theme,
                     style,
                 );
                 // Cursorline wins over the tint: a theme whose cursorline
                 // has no `bg` falls through to the tint automatically.
                 let row_bg = is_head_line
-                    .then_some(pane_ctx.theme.ui.cursorline.bg)
+                    .then_some(pane_ctx.theme.ui().cursorline.bg)
                     .flatten()
                     .or(line.tint_bg);
                 render::compose_display_line(
@@ -254,14 +254,14 @@ pub(crate) fn render_pane(
         row: GutterRow::Header,
         ..compose_ctx
     };
-    let header_bg = pane_ctx.theme.ui.context.bg;
+    let header_bg = pane_ctx.theme.ui().context.bg;
     for (header_row, &header) in (0u16..).zip(rows.headers()) {
         let line = enter_line(header, last_content_line, header_providers, pane_ctx, style);
         let rendered = crate::style::style_unselected_line(
             &mut header_dlm,
             header,
             line.chars,
-            crate::style::line_base(pane_ctx.theme.default, header_bg),
+            crate::style::line_base(pane_ctx.theme.default_style(), header_bg),
             pane_ctx.theme,
             style,
         );

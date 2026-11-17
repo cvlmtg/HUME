@@ -33,14 +33,14 @@ pub(crate) struct ComposeCtx<'a> {
     pub mode: EditorMode,
     pub row: crate::providers::GutterRow,
     pub tab_width: u8,
-    /// Pre-resolved from `theme.ui.virtual_text` to avoid repeated field access in the hot loop.
+    /// Pre-resolved from `theme.ui().virtual_text` to avoid repeated field access in the hot loop.
     pub tilde_style: ResolvedStyle,
-    /// Pre-resolved from `theme.ui.indent_guide`.
+    /// Pre-resolved from `theme.ui().indent_guide`.
     pub indent_guide_style: ResolvedStyle,
     /// From the `indent-guides` setting; gates the draw loop below.
     pub indent_guides: bool,
     pub pane_rect: Rect,
-    /// `theme.ui.background.bg` is read directly wherever a row/gutter cell
+    /// `theme.ui().background.bg` is read directly wherever a row/gutter cell
     /// falls back to the pane's own background (trailing cells past the
     /// last grapheme, blank gutter cells) rather than through a cached copy
     /// on this struct: `theme` is already here, so a copy would only be
@@ -132,7 +132,7 @@ fn compose_gutter(
     };
     // Constant for the whole row; resolved once so the per-cell loop and the
     // leftover-width fill below can't drift apart on it.
-    let cell_bg = row_bg.or(compose_ctx.theme.ui.background.bg);
+    let cell_bg = row_bg.or(compose_ctx.theme.ui().background.bg);
     for ((_, lane_provider), &lane_width) in
         compose_ctx.gutter_columns.iter().zip(lane_widths.iter())
     {
@@ -275,7 +275,7 @@ pub(crate) fn compose_display_line(
         content_x_origin,
         right_edge,
         y,
-        row_bg.or(compose_ctx.theme.ui.background.bg),
+        row_bg.or(compose_ctx.theme.ui().background.bg),
     );
 
     let line_graphemes = &graphemes[display_line.graphemes.start..display_line.graphemes.end];
@@ -485,7 +485,7 @@ pub(crate) fn render_tilde_fillers(
         let y = compose_ctx.pane_rect.y + screen_row;
         let right_edge = compose_ctx.pane_rect.right();
         // Gutter first: it already paints a real background (row_bg, or
-        // theme.ui.background.bg, patched with the column's scope, see
+        // theme.ui().background.bg, patched with the column's scope, see
         // `compose_gutter`) across the
         // whole gutter width, including column 0. The tilde below patches its
         // fg on top of that, matching editor convention: `~` sits at the
@@ -504,7 +504,7 @@ pub(crate) fn render_tilde_fillers(
             content_x_origin,
             right_edge,
             y,
-            compose_ctx.theme.ui.background.bg,
+            compose_ctx.theme.ui().background.bg,
         );
         canvas.write_cell(
             compose_ctx.pane_rect.x,

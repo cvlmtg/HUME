@@ -216,7 +216,7 @@ fn sign_text_truncates_to_column_width_end_to_end() {
         gutter: inputs(2),
         folds: None,
     };
-    let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui().invisible, None);
     crate::render::compose_display_line(
         &render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
@@ -299,7 +299,7 @@ fn zero_width_sign_column_leaves_the_next_column_untouched() {
         gutter: inputs(0),
         folds: None,
     };
-    let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui().invisible, None);
     crate::render::compose_display_line(
         &render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
@@ -526,7 +526,7 @@ fn multi_slot_column_renders_through_compose_gutter() {
         gutter: inputs(3),
         folds: None,
     };
-    let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = crate::render::Canvas::new(&mut buf, theme.ui().invisible, None);
     crate::render::compose_display_line(
         &render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,

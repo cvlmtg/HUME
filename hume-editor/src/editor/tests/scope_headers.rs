@@ -467,7 +467,7 @@ fn header_rows_draw_highlights_but_no_layout_decorations() {
         .theme
         .resolve_by_name(hume_engine::types::Scope("ui.selection"))
         .bg;
-    let header_bg = ed.view.theme.ui.context.bg;
+    let header_bg = ed.view.theme.ui().context.bg;
     assert!(
         marked_bg.is_some() && marked_bg != header_bg,
         "premise: the highlight's background differs from the header rows'"

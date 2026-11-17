@@ -447,7 +447,7 @@ fn header_row_takes_a_highlight_decorations_scope() {
         &mut dlm,
         ContentLine::new(0),
         line.chars,
-        crate::style::line_base(theme.default, None),
+        crate::style::line_base(theme.default_style(), None),
         &theme,
         &mut scratch,
     );

@@ -207,11 +207,11 @@ pub(crate) fn style_display_line(
     // only overrides on `Some(bg)`).
     //
     // Tier 3: selection-head-line background tint, applied to every grapheme
-    // on the line that contains a selection head. `theme.ui` fields are O(1)
+    // on the line that contains a selection head. `theme.ui()` fields are O(1)
     // struct-field reads, no HashMap lookup.
     let mut base_style = base;
     if selection.is_some_and(|(paint, _)| paint.is_head_line) {
-        base_style = base_style.layer(theme.ui.cursorline);
+        base_style = base_style.layer(theme.ui().cursorline);
     }
 
     for (g_idx, g) in graphemes[display_line.graphemes.clone()].iter().enumerate() {
@@ -241,10 +241,10 @@ pub(crate) fn style_display_line(
         // neither scope: a tab's indicator being off must leave it unstyled.
         match g.content {
             crate::types::CellContent::Placeholder { .. } => {
-                style = style.layer(theme.ui.invisible);
+                style = style.layer(theme.ui().invisible);
             }
             crate::types::CellContent::Whitespace { .. } => {
-                style = style.layer(theme.ui.whitespace);
+                style = style.layer(theme.ui().whitespace);
             }
             crate::types::CellContent::Grapheme
             | crate::types::CellContent::TabFill
@@ -299,16 +299,16 @@ pub(crate) fn style_display_line(
                 style = style.layer(cursor_cell_style(theme, paint.mode, is_primary_head));
             } else if is_primary_head {
                 if primary_is_reverse && in_primary_span {
-                    style = style.layer(theme.ui.selection_primary);
+                    style = style.layer(theme.ui().selection_primary);
                 }
             } else if in_primary_span {
-                style = style.layer(theme.ui.selection_primary);
+                style = style.layer(theme.ui().selection_primary);
             } else if scratch
                 .sel_spans
                 .iter()
                 .any(|&(s, e)| g.display_col >= s && g.display_col < e)
             {
-                style = style.layer(theme.ui.selection);
+                style = style.layer(theme.ui().selection);
             }
         }
 
@@ -329,10 +329,10 @@ pub(crate) fn style_display_line(
 /// chain.
 fn cursor_cell_style(theme: &Theme, mode: EditorMode, is_primary: bool) -> ResolvedStyle {
     let (primary, secondary) = match mode {
-        EditorMode::Insert => (theme.ui.cursor_insert_primary, theme.ui.cursor_insert),
-        EditorMode::Extend => (theme.ui.cursor_select_primary, theme.ui.cursor_select),
+        EditorMode::Insert => (theme.ui().cursor_insert_primary, theme.ui().cursor_insert),
+        EditorMode::Extend => (theme.ui().cursor_select_primary, theme.ui().cursor_select),
         EditorMode::Normal | EditorMode::Command | EditorMode::Search | EditorMode::Sift => {
-            (theme.ui.cursor_primary, theme.ui.cursor)
+            (theme.ui().cursor_primary, theme.ui().cursor)
         }
     };
     if is_primary { primary } else { secondary }

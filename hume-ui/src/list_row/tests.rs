@@ -52,7 +52,7 @@ fn styled_runs_stay_adjacent_when_a_run_holds_an_undrawable_grapheme() {
     // begins after the whole placeholder.
     let mut buf = Grid::new(20, 3);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let runs: Vec<(String, ResolvedStyle)> = vec![
         ("a\u{200B}b".to_string(), style()),
         ("cd".to_string(), style()),
@@ -78,7 +78,7 @@ fn styled_runs_stop_at_the_right_edge() {
     // whole, never half-drawn.
     let mut buf = Grid::new(20, 3);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let runs: Vec<(String, ResolvedStyle)> = vec![
         ("abc".to_string(), style()),
         ("\u{6F22}z".to_string(), style()),

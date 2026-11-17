@@ -11,7 +11,7 @@ use crate::style::ResolvedStyle;
 /// itself, so no write site can skip the non-focused pane dim. Chrome
 /// (menus, pickers, the drawer, the statusline) passes `dim: None`.
 ///
-/// The placeholder style arrives pre-resolved (`theme.ui.invisible`), so
+/// The placeholder style arrives pre-resolved (`theme.ui().invisible`), so
 /// this crate needs no dependency on `hume-engine`'s theme type.
 pub struct Canvas<'a> {
     grid: &'a mut Grid,

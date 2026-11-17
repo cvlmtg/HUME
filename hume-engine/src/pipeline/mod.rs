@@ -540,7 +540,7 @@ impl EngineView {
             // One canvas for every chrome row. Chrome is never dimmed, so
             // they all share the same `dim: None`; a canvas per provider
             // would only re-derive that.
-            let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
+            let mut canvas = crate::render::Canvas::new(grid, self.theme.ui().invisible, None);
 
             if let Some(chrome) = &self.chrome {
                 // ── Render tab bar ────────────────────────────────────────────
@@ -646,7 +646,7 @@ impl EngineView {
                 // bg: there is no defined blend target for custom themes that
                 // leave it unset.
                 dim: (pane_id != focused_pane_id)
-                    .then_some(self.theme.ui.background.bg)
+                    .then_some(self.theme.ui().background.bg)
                     .flatten()
                     .map(|bg| (bg, PANE_DIM_FACTOR)),
                 default_gutter_scope: self.default_gutter_scope,
@@ -665,7 +665,7 @@ impl EngineView {
             ctx.seam_arms.clear();
             collect_seam_arms(seams, &mut ctx.seam_arms);
 
-            // `theme.default` (ui.text's color) is the base layer here for the
+            // `theme.default_style()` (ui.text's color) is the base layer here for the
             // same reason it's the base for a content display line
             // (`style_display_line`'s `base_style`) and a virtual display
             // line (`base_scope` in `pane_render.rs`): a scope that leaves
@@ -683,9 +683,9 @@ impl EngineView {
             // that sets `ui.background = { fg, bg }` a seam glyph in that fg
             // and nowhere else, contradicting the base-layer rule above.
             let seam_base =
-                crate::style::line_base(self.theme.default, self.theme.ui.background.bg);
-            let muted = seam_base.layer(self.theme.ui.window);
-            let accent = seam_base.layer(self.theme.ui.window_focused);
+                crate::style::line_base(self.theme.default_style(), self.theme.ui().background.bg);
+            let muted = seam_base.layer(self.theme.ui().window);
+            let accent = seam_base.layer(self.theme.ui().window_focused);
 
             // Junction cells at the focused pane's corners are missed by the
             // per-seam accent test (see `focused_pane_corners`); precompute
@@ -698,7 +698,7 @@ impl EngineView {
             // before the canvas takes its exclusive `&mut Grid` for the whole
             // seam pass.
             let (grid_w, grid_h) = grid.size();
-            let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
+            let mut canvas = crate::render::Canvas::new(grid, self.theme.ui().invisible, None);
             for seam in seams {
                 let (x0, y0, x1, y1) =
                     crate::render::clamp_rect_to_grid((grid_w, grid_h), seam.rect);
@@ -733,7 +733,7 @@ impl EngineView {
         // ── Render overlays on top (may span panes) ───────────────────────────
         // One canvas for all of them, for the same reason chrome shares one:
         // an overlay is never dimmed either.
-        let mut canvas = crate::render::Canvas::new(grid, self.theme.ui.invisible, None);
+        let mut canvas = crate::render::Canvas::new(grid, self.theme.ui().invisible, None);
         for overlay in &self.overlays {
             if overlay.is_active() {
                 overlay.render(&self.theme, &mut canvas);

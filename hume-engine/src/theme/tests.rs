@@ -190,13 +190,13 @@ fn resolve_by_name_default() {
 fn ui_scopes_available_before_bake() {
     let theme = theme_with([("ui.cursorline", bg(Rgb(0, 0, 255)))]);
     // theme.bake() NOT called: ui.cursorline must still be correct.
-    assert_eq!(theme.ui.cursorline.bg, Some(Rgb(0, 0, 255)));
+    assert_eq!(theme.ui().cursorline.bg, Some(Rgb(0, 0, 255)));
 }
 
 #[test]
 fn context_falls_back_to_popup_when_unset() {
     let theme = theme_with([("ui.popup", bg(Rgb(1, 2, 3)))]);
-    assert_eq!(theme.ui.context.bg, Some(Rgb(1, 2, 3)));
+    assert_eq!(theme.ui().context.bg, Some(Rgb(1, 2, 3)));
 }
 
 #[test]
@@ -205,15 +205,15 @@ fn context_uses_its_own_entry_when_set() {
         ("ui.popup", bg(Rgb(1, 2, 3))),
         ("ui.context", bg(Rgb(4, 5, 6))),
     ]);
-    assert_eq!(theme.ui.context.bg, Some(Rgb(4, 5, 6)));
+    assert_eq!(theme.ui().context.bg, Some(Rgb(4, 5, 6)));
 }
 
 #[test]
 fn window_focused_falls_back_to_window_when_unset() {
     // No "ui.window.focused" entry: dot-notation must fall back to "ui.window".
     let theme = theme_with([("ui.window", fg(Rgb(0x80, 0x80, 0x80)))]);
-    assert_eq!(theme.ui.window_focused.fg, Some(Rgb(0x80, 0x80, 0x80)));
-    assert_eq!(theme.ui.window_focused, theme.ui.window);
+    assert_eq!(theme.ui().window_focused.fg, Some(Rgb(0x80, 0x80, 0x80)));
+    assert_eq!(theme.ui().window_focused, theme.ui().window);
 }
 
 #[test]
@@ -222,8 +222,8 @@ fn window_focused_uses_its_own_entry_when_set() {
         ("ui.window", fg(Rgb(0x80, 0x80, 0x80))),
         ("ui.window.focused", fg(Rgb(0xff, 0x80, 0x00))),
     ]);
-    assert_eq!(theme.ui.window_focused.fg, Some(Rgb(0xff, 0x80, 0x00)));
-    assert_ne!(theme.ui.window_focused, theme.ui.window);
+    assert_eq!(theme.ui().window_focused.fg, Some(Rgb(0xff, 0x80, 0x00)));
+    assert_ne!(theme.ui().window_focused, theme.ui().window);
 }
 
 // ── ui.cursor.match.search: dot-fallback onto ui.cursor.match ────────
@@ -267,7 +267,7 @@ fn search_match_falls_back_to_cursor_when_no_bracket_match_either() {
 #[test]
 fn cursor_select_falls_back_to_cursor() {
     let theme = theme_with([("ui.cursor", fg(Rgb(1, 2, 3)))]);
-    assert_eq!(theme.ui.cursor_select.fg, Some(Rgb(1, 2, 3)));
+    assert_eq!(theme.ui().cursor_select.fg, Some(Rgb(1, 2, 3)));
 }
 
 #[test]
@@ -276,19 +276,19 @@ fn cursor_select_uses_its_own_entry_when_set() {
         ("ui.cursor", fg(Rgb(1, 2, 3))),
         ("ui.cursor.select", fg(Rgb(4, 5, 6))),
     ]);
-    assert_eq!(theme.ui.cursor_select.fg, Some(Rgb(4, 5, 6)));
+    assert_eq!(theme.ui().cursor_select.fg, Some(Rgb(4, 5, 6)));
 }
 
 #[test]
 fn cursor_primary_select_falls_back_through_cursor_primary_then_cursor() {
     let theme = theme_with([("ui.cursor", fg(Rgb(1, 1, 1)))]);
-    assert_eq!(theme.ui.cursor_select_primary.fg, Some(Rgb(1, 1, 1)));
+    assert_eq!(theme.ui().cursor_select_primary.fg, Some(Rgb(1, 1, 1)));
 
     let theme = theme_with([
         ("ui.cursor", fg(Rgb(1, 1, 1))),
         ("ui.cursor.primary", fg(Rgb(2, 2, 2))),
     ]);
-    assert_eq!(theme.ui.cursor_select_primary.fg, Some(Rgb(2, 2, 2)));
+    assert_eq!(theme.ui().cursor_select_primary.fg, Some(Rgb(2, 2, 2)));
 }
 
 #[test]
@@ -297,7 +297,7 @@ fn cursor_primary_select_uses_its_own_entry_when_set() {
         ("ui.cursor.primary", fg(Rgb(2, 2, 2))),
         ("ui.cursor.primary.select", fg(Rgb(3, 3, 3))),
     ]);
-    assert_eq!(theme.ui.cursor_select_primary.fg, Some(Rgb(3, 3, 3)));
+    assert_eq!(theme.ui().cursor_select_primary.fg, Some(Rgb(3, 3, 3)));
 }
 
 /// A theme that colours Extend mode but never declares a `.primary` variant
@@ -313,7 +313,7 @@ fn cursor_primary_select_never_visits_the_secondary_select_scope() {
         ("ui.cursor", fg(Rgb(1, 1, 1))),
         ("ui.cursor.select", fg(Rgb(4, 5, 6))),
     ]);
-    assert_eq!(theme.ui.cursor_select_primary.fg, Some(Rgb(1, 1, 1)));
+    assert_eq!(theme.ui().cursor_select_primary.fg, Some(Rgb(1, 1, 1)));
 }
 
 // ── ui.cursor.normal / ui.cursor.primary.normal: Normal-mode cursor ──
@@ -322,7 +322,7 @@ fn cursor_primary_select_never_visits_the_secondary_select_scope() {
 #[test]
 fn cursor_falls_back_to_bare_cursor_when_no_normal_entry() {
     let theme = theme_with([("ui.cursor", fg(Rgb(7, 8, 9)))]);
-    assert_eq!(theme.ui.cursor.fg, Some(Rgb(7, 8, 9)));
+    assert_eq!(theme.ui().cursor.fg, Some(Rgb(7, 8, 9)));
 }
 
 #[test]
@@ -331,21 +331,21 @@ fn cursor_uses_normal_entry_when_set() {
         ("ui.cursor", fg(Rgb(7, 8, 9))),
         ("ui.cursor.normal", fg(Rgb(10, 11, 12))),
     ]);
-    assert_eq!(theme.ui.cursor.fg, Some(Rgb(10, 11, 12)));
+    assert_eq!(theme.ui().cursor.fg, Some(Rgb(10, 11, 12)));
 }
 
 #[test]
 fn cursor_primary_falls_back_through_primary_then_cursor() {
     // No ui.cursor.primary.normal, no ui.cursor.primary: falls all the way to ui.cursor.
     let theme = theme_with([("ui.cursor", fg(Rgb(1, 1, 1)))]);
-    assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(1, 1, 1)));
+    assert_eq!(theme.ui().cursor_primary.fg, Some(Rgb(1, 1, 1)));
 
     // ui.cursor.primary set, no .normal variant: falls back to ui.cursor.primary.
     let theme = theme_with([
         ("ui.cursor", fg(Rgb(1, 1, 1))),
         ("ui.cursor.primary", fg(Rgb(2, 2, 2))),
     ]);
-    assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(2, 2, 2)));
+    assert_eq!(theme.ui().cursor_primary.fg, Some(Rgb(2, 2, 2)));
 }
 
 #[test]
@@ -354,7 +354,7 @@ fn cursor_primary_normal_uses_its_own_entry_when_set() {
         ("ui.cursor.primary", fg(Rgb(2, 2, 2))),
         ("ui.cursor.primary.normal", fg(Rgb(3, 3, 3))),
     ]);
-    assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(3, 3, 3)));
+    assert_eq!(theme.ui().cursor_primary.fg, Some(Rgb(3, 3, 3)));
 }
 
 /// Normal-mode twin of `cursor_primary_select_never_visits_the_secondary_select_scope`:
@@ -367,7 +367,7 @@ fn cursor_primary_never_visits_the_secondary_normal_scope() {
         ("ui.cursor", fg(Rgb(1, 1, 1))),
         ("ui.cursor.normal", fg(Rgb(10, 11, 12))),
     ]);
-    assert_eq!(theme.ui.cursor_primary.fg, Some(Rgb(1, 1, 1)));
+    assert_eq!(theme.ui().cursor_primary.fg, Some(Rgb(1, 1, 1)));
 }
 
 /// Everforest's case: `ui.cursor.insert` (secondary) and
@@ -381,7 +381,7 @@ fn cursor_insert_primary_never_visits_the_secondary_insert_scope() {
         ("ui.cursor.insert", fg(Rgb(4, 5, 6))),
         ("ui.cursor.primary", fg(Rgb(7, 8, 9))),
     ]);
-    assert_eq!(theme.ui.cursor_insert_primary.fg, Some(Rgb(7, 8, 9)));
+    assert_eq!(theme.ui().cursor_insert_primary.fg, Some(Rgb(7, 8, 9)));
 }
 
 /// With no block scope defined at all, the primary Insert ladder now reaches
@@ -390,7 +390,7 @@ fn cursor_insert_primary_never_visits_the_secondary_insert_scope() {
 #[test]
 fn cursor_insert_primary_falls_back_to_selection_when_nothing_else_is_set() {
     let theme = theme_with([("ui.selection", fg(Rgb(1, 2, 3)))]);
-    assert_eq!(theme.ui.cursor_insert_primary.fg, Some(Rgb(1, 2, 3)));
+    assert_eq!(theme.ui().cursor_insert_primary.fg, Some(Rgb(1, 2, 3)));
 }
 
 // ── ScopeRegistry ────────────────────────────────────────────────────
@@ -573,7 +573,7 @@ mod scope_styles {
             &styles(&[("ui.selection", fg_spec(GREEN), ConfigOrigin::User)]),
             Restyle::All,
         );
-        assert_eq!(theme.ui.selection.fg, Some(GREEN));
+        assert_eq!(theme.ui().selection.fg, Some(GREEN));
     }
 
     #[test]
@@ -583,13 +583,13 @@ mod scope_styles {
             &styles(&[("ui.text", fg_spec(GREEN), ConfigOrigin::Plugin)]),
             Restyle::All,
         );
-        assert_eq!(theme.default.fg, Some(GREEN));
+        assert_eq!(theme.default_style().fg, Some(GREEN));
 
         let _ = theme.apply_scope_styles(
             &styles(&[("ui.text", fg_spec(BLUE), ConfigOrigin::User)]),
             Restyle::All,
         );
-        assert_eq!(theme.default.fg, Some(BLUE));
+        assert_eq!(theme.default_style().fg, Some(BLUE));
     }
 
     #[test]
@@ -599,7 +599,7 @@ mod scope_styles {
             &styles(&[("ui.text", fg_spec(GREEN), ConfigOrigin::Plugin)]),
             Restyle::All,
         );
-        assert_eq!(theme.default.fg, Some(RED));
+        assert_eq!(theme.default_style().fg, Some(RED));
     }
 
     #[test]

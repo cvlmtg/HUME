@@ -94,7 +94,7 @@ fn renders_simple_text() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     compose_display_line(
         &render_display_line(&dls[0], &graphemes, "hi", ""),
         &styles,
@@ -160,7 +160,7 @@ fn grapheme_byte_range_past_line_str_asserts() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     compose_display_line(
         &render_display_line(&dls[0], &graphemes, "hi", ""),
         &styles,
@@ -208,7 +208,7 @@ fn filler_rows_have_tilde() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     render_tilde_fillers(1, &[], &ctx, &mut canvas);
 
     // Rows 1–4 should have '~'
@@ -264,7 +264,7 @@ fn do_compose_display_line(
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     compose_display_line(
         &render_display_line(display_line, graphemes, line_str, virtual_texts),
         styles,
@@ -630,7 +630,7 @@ fn indent_guide_hidden_when_indent_guides_is_false() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     compose_display_line(
         &render_display_line(&dls[0], &graphemes, "        foo", ""),
         &styles,
@@ -773,7 +773,7 @@ fn indent_guide_leaves_a_reversed_cursor_cell_visibly_distinct() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     compose_display_line(
         &render_display_line(&display_line, &graphemes, "        foo", ""),
         &styles,
@@ -965,7 +965,7 @@ fn gutter_text_wider_than_column_is_truncated_not_bled_into_content() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     compose_display_line(
         &render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
@@ -1040,7 +1040,7 @@ fn gutter_overflow_does_not_bleed_into_neighbouring_pane() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     compose_display_line(
         &render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
@@ -1165,7 +1165,7 @@ fn second_column_leftover_is_painted_and_next_column_starts_on_boundary() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     compose_display_line(
         &render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
@@ -1268,7 +1268,7 @@ fn gutter_wider_than_pane_does_not_bleed_past_the_pane_right_edge() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     compose_display_line(
         &render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
@@ -1375,7 +1375,7 @@ fn owned_gutter_icon_renders_identically_to_static_one() {
             gutter: crate::providers::GutterInputs::default(),
             folds: None,
         };
-        let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+        let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
         compose_display_line(
             &render_display_line(&dls[0], &graphemes, "X", ""),
             &styles,
@@ -1486,7 +1486,7 @@ fn gutter_column_reads_rope_via_ctx() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     compose_display_line(
         &render_display_line(&dls[0], &graphemes, "X", ""),
         &styles,
@@ -1512,7 +1512,7 @@ fn fill_row_bg_none_fills_with_blank() {
     }
     let theme = Theme::default();
     // Clear the middle 4 columns of row 1.
-    Canvas::new(&mut buf, theme.ui.invisible, None).fill_row_bg(3, 7, 1, None);
+    Canvas::new(&mut buf, theme.ui().invisible, None).fill_row_bg(3, 7, 1, None);
     for x in 0..10 {
         let sym = buf.cell(x, 1).unwrap().text();
         if (3..7).contains(&x) {
@@ -1531,7 +1531,7 @@ fn fill_row_bg_none_clips_right_edge() {
     }
     let theme = Theme::default();
     // x_end extends past the buffer's right edge: should clip, not panic.
-    Canvas::new(&mut buf, theme.ui.invisible, None).fill_row_bg(8, 20, 0, None);
+    Canvas::new(&mut buf, theme.ui().invisible, None).fill_row_bg(8, 20, 0, None);
     for x in 0..10 {
         let sym = buf.cell(x, 0).unwrap().text();
         if x >= 8 {
@@ -1547,7 +1547,7 @@ fn fill_row_bg_none_empty_range_no_panic() {
     let mut buf = make_test_buf(10, 3);
     let theme = Theme::default();
     // x_start == x_end and x_start > x_end should both be no-ops.
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     canvas.fill_row_bg(5, 5, 0, None);
     canvas.fill_row_bg(7, 3, 0, None);
 }
@@ -1600,7 +1600,7 @@ fn compose_display_line_dims_cells_inline() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_display_line(
         &render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
@@ -1657,7 +1657,7 @@ fn compose_display_line_dim_leaves_an_uncoloured_cell_alone() {
         gutter: crate::providers::GutterInputs::default(),
         folds: None,
     };
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, Some((Rgb(0, 0, 0), 0.5)));
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, Some((Rgb(0, 0, 0), 0.5)));
     compose_display_line(
         &render_display_line(&dls[0], &graphemes, "x", ""),
         &styles,
@@ -1682,10 +1682,10 @@ fn fill_rect_bg_clears_stale_modifiers() {
         modifiers: Modifiers::ITALIC | Modifiers::BOLD,
         ..Default::default()
     };
-    Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(0, 0, "x", emphasised, 4);
+    Canvas::new(&mut buf, theme.ui().invisible, None).write_text_run(0, 0, "x", emphasised, 4);
     assert_eq!(buf[(0, 0)].style().modifiers, emphasised.modifiers);
 
-    Canvas::new(&mut buf, theme.ui.invisible, None).fill_rect_bg(
+    Canvas::new(&mut buf, theme.ui().invisible, None).fill_rect_bg(
         Rect {
             x: 0,
             y: 0,
@@ -1711,7 +1711,7 @@ fn write_text_run_draws_a_tab_as_one_space_not_a_placeholder() {
     let style = ResolvedStyle::default();
     let theme = Theme::default();
     let after =
-        Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(0, 0, "a\tb", style, 10);
+        Canvas::new(&mut buf, theme.ui().invisible, None).write_text_run(0, 0, "a\tb", style, 10);
 
     assert_eq!(buf[(0, 0)].text(), "a");
     assert_eq!(buf[(1, 0)].text(), " ", "a tab draws as a single space");
@@ -1737,12 +1737,14 @@ fn write_text_run_still_shows_a_genuine_placeholder_cluster_as_its_codepoint() {
         fg: Some(Rgb(255, 255, 255)),
         ..Default::default()
     };
-    let mut theme = Theme::default();
-    theme.ui.invisible = ResolvedStyle {
-        fg: Some(Rgb(255, 0, 0)),
-        ..Default::default()
-    };
-    let after = Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(
+    let theme = Theme::new(std::collections::HashMap::from([(
+        crate::theme::ui_scopes::VIRTUAL_INVISIBLE,
+        ResolvedStyle {
+            fg: Some(Rgb(255, 0, 0)),
+            ..Default::default()
+        },
+    )]));
+    let after = Canvas::new(&mut buf, theme.ui().invisible, None).write_text_run(
         0,
         0,
         "a\u{200b}b",
@@ -1774,7 +1776,7 @@ fn write_text_run_drops_a_wide_grapheme_whole_at_the_right_edge() {
     let style = ResolvedStyle::default();
     let theme = Theme::default();
     let after =
-        Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(0, 0, "中", style, 1);
+        Canvas::new(&mut buf, theme.ui().invisible, None).write_text_run(0, 0, "中", style, 1);
 
     assert_eq!(
         buf[(0, 0)].text(),
@@ -1792,7 +1794,7 @@ fn write_cell_drops_a_wide_glyph_at_the_right_edge() {
     let mut buf = make_test_buf(10, 1);
     let style = ResolvedStyle::default();
     let theme = Theme::default();
-    Canvas::new(&mut buf, theme.ui.invisible, None).write_cell(0, 0, "中", 2, style, 1);
+    Canvas::new(&mut buf, theme.ui().invisible, None).write_cell(0, 0, "中", 2, style, 1);
 
     assert_eq!(
         buf[(0, 0)].text(),
@@ -1814,7 +1816,7 @@ fn write_text_run_claims_the_continuation_cell_of_a_wide_grapheme() {
         ..Default::default()
     };
     let theme = Theme::default();
-    Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(0, 0, "中", style, 10);
+    Canvas::new(&mut buf, theme.ui().invisible, None).write_text_run(0, 0, "中", style, 10);
 
     assert_eq!(buf[(0, 0)].text(), "中");
     assert_eq!(buf[(0, 0)].advance(), 2);
@@ -1839,7 +1841,7 @@ fn write_text_run_drops_a_placeholder_whole_when_it_would_straddle_the_right_edg
     let mut buf = make_test_buf(10, 1);
     let style = ResolvedStyle::default();
     let theme = Theme::default();
-    let after = Canvas::new(&mut buf, theme.ui.invisible, None).write_text_run(
+    let after = Canvas::new(&mut buf, theme.ui().invisible, None).write_text_run(
         0,
         0,
         "a\u{200b}b",

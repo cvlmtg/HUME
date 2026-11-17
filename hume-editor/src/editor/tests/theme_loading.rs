@@ -86,7 +86,7 @@ fn sand_defines_ui_context() {
         .expect("sand is bundled");
     assert!(sand.has_entry("ui.context"));
     assert_eq!(
-        sand.ui.context,
+        sand.ui().context,
         sand.resolve_by_name(hume_engine::types::Scope("ui.context"))
     );
 }

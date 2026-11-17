@@ -151,7 +151,7 @@ fn cursorline_wins_over_the_line_background_tint() {
     ed.prepare_frame(&mut ctx);
     let buf = ed.render_to_buf(Rect::new(0, 0, 40, 8));
 
-    let cursorline_bg = ed.view.theme.ui.cursorline.bg;
+    let cursorline_bg = ed.view.theme.ui().cursorline.bg;
     assert!(
         cursorline_bg.is_some(),
         "sanity: this theme's cursorline has a bg"

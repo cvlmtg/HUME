@@ -319,7 +319,7 @@ pub(in crate::editor) fn typed_theme_debug(
     // being silently dropped by `zip` stopping at the shorter side and leaving
     // the new mode missing from this listing.
     let [normal, insert, select] = hume_engine::theme::CURSOR_MODES;
-    let ui = &theme.ui;
+    let ui = theme.ui();
     for ((label, mode_scope, primary_mode_scope), style, primary_style) in [
         (normal, ui.cursor, ui.cursor_primary),
         (insert, ui.cursor_insert, ui.cursor_insert_primary),

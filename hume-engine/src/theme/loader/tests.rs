@@ -448,7 +448,7 @@ fn ui_text_folds_into_default() {
     let theme = parse_theme(r##""ui.text" = { fg = "#d0d0d0" }"##)
         .unwrap()
         .theme;
-    assert_eq!(theme.default.fg, Some(Rgb(0xd0, 0xd0, 0xd0)));
+    assert_eq!(theme.default_style().fg, Some(Rgb(0xd0, 0xd0, 0xd0)));
 }
 
 #[test]
@@ -468,7 +468,7 @@ inherits = "base3"
 
     // The merge replaces the parent's "ui.text" with the child's wholesale;
     // `default` is folded once, from that final merged value.
-    assert_eq!(theme.default.fg, Some(Rgb(0x22, 0x22, 0x22)));
+    assert_eq!(theme.default_style().fg, Some(Rgb(0x22, 0x22, 0x22)));
 }
 
 #[test]
@@ -481,7 +481,7 @@ fn inherits_child_without_ui_text_keeps_parent_default() {
 
     // Child never redeclares "ui.text". The merge keeps the parent's entry
     // untouched, and `default` folds from that same value.
-    assert_eq!(theme.default.fg, Some(Rgb(0x11, 0x11, 0x11)));
+    assert_eq!(theme.default_style().fg, Some(Rgb(0x11, 0x11, 0x11)));
 }
 
 #[test]
@@ -506,9 +506,9 @@ inherits = "base7"
     // Child's "ui.text" replaces the parent's whole style for that scope.
     // It does not layer on top of it. A child that drops "modifiers" must
     // not still carry the parent's bold into `default`.
-    assert_eq!(theme.default.fg, Some(Rgb(0x22, 0x22, 0x22)));
+    assert_eq!(theme.default_style().fg, Some(Rgb(0x22, 0x22, 0x22)));
     assert!(
-        !theme.default.modifiers.contains(Modifiers::BOLD),
+        !theme.default_style().modifiers.contains(Modifiers::BOLD),
         "child's ui.text override dropped modifiers; default must not stay bold"
     );
 }
@@ -1153,13 +1153,13 @@ text = "#d0d0d0"
 
     let text = theme.resolve_by_name(crate::types::Scope("ui.text"));
     assert_eq!(text.fg, Some(Rgb(0xd0, 0xd0, 0xd0)));
-    assert_eq!(theme.default.fg, Some(Rgb(0xd0, 0xd0, 0xd0)));
+    assert_eq!(theme.default_style().fg, Some(Rgb(0xd0, 0xd0, 0xd0)));
 
     // A container-only "ui" table emits nothing for itself, so it stays out of
     // the dot-fallback chain and an unset ui.* scope falls through to
     // `default` rather than to an empty style.
     let other = theme.resolve_by_name(crate::types::Scope("ui.other"));
-    assert_eq!(other, theme.default);
+    assert_eq!(other, theme.default_style());
 }
 
 #[test]

@@ -120,7 +120,7 @@ fn render(theme: &Theme, rows: Vec<ListRow>, border: bool, grid: &mut Grid, area
             border,
         })),
     };
-    let mut canvas = Canvas::new(grid, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(grid, theme.ui().invisible, None);
     widget.render(area, theme, &mut canvas);
 }
 
@@ -323,7 +323,7 @@ fn a_row_not_rendered_yet_paints_only_its_highlight() {
     widget.render(
         area,
         &theme,
-        &mut Canvas::new(&mut grid, theme.ui.invisible, None),
+        &mut Canvas::new(&mut grid, theme.ui().invisible, None),
     );
 
     let rows = Rect::new(area.x + FRAME_EDGE, area.y + FRAME_EDGE, 8, 2);

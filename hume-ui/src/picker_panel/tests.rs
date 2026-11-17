@@ -102,7 +102,7 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
     // must stop at the inner edge rather than bleed past the right border.
     let mut buf = Grid::new(40, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 12, 4), // inner_width = 10
         list_rows: 1,
@@ -126,7 +126,7 @@ fn draw_picker_panel_clips_overlong_row_to_inner_width() {
 fn draw_picker_panel_border_input_and_rows_snapshot() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(2, 3, 10, 6),
         list_rows: 3,
@@ -148,7 +148,7 @@ fn draw_picker_panel_border_input_and_rows_snapshot() {
 fn draw_picker_panel_no_border_leaves_plain_margin() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(2, 3, 10, 6),
         list_rows: 3,
@@ -169,7 +169,7 @@ fn draw_picker_panel_no_border_leaves_plain_margin() {
 fn draw_picker_panel_highlights_selected_row_full_width() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 10, 6),
         list_rows: 3,
@@ -211,7 +211,7 @@ fn draw_picker_panel_does_not_rewindow_rows() {
     // rather than trying to re-window it.
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 12, 6), // list_rows = 3
         list_rows: 3,
@@ -236,7 +236,7 @@ fn draw_picker_panel_does_not_rewindow_rows() {
 fn draw_picker_panel_pending_marks_the_counter_snapshot() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(2, 3, 14, 6),
         list_rows: 3,
@@ -263,7 +263,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     };
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let mut s = state("q", &[], None, &geo_wide);
     s.matched = 3;
     s.total = 42;
@@ -275,7 +275,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
         list_rows: 1,
     };
     let mut buf2 = Grid::new(20, 20);
-    let mut canvas2 = Canvas::new(&mut buf2, theme.ui.invisible, None);
+    let mut canvas2 = Canvas::new(&mut buf2, theme.ui().invisible, None);
     let mut s2 = state("q", &[], None, &geo_narrow);
     s2.matched = 3;
     s2.total = 42;
@@ -290,7 +290,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
 fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 10, 4), // inner_width = 8; counts "0/0" leaves a 3-col query budget
         list_rows: 1,
@@ -314,7 +314,7 @@ fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
 fn draw_picker_panel_renders_prompt_before_query() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 12, 4), // inner_width = 10; counts "0/0" leaves a 2-col query budget after "f: "
         list_rows: 1,
@@ -337,7 +337,7 @@ fn draw_picker_panel_renders_prompt_before_query() {
 fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 7, 4), // inner_width = 5, narrower than the prompt alone
         list_rows: 1,
@@ -363,7 +363,7 @@ fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
 fn draw_picker_panel_empty_state_is_blank_with_zero_counts() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 12, 6),
         list_rows: 3,
@@ -379,7 +379,7 @@ fn draw_picker_panel_degenerate_rect_does_not_panic_or_paint() {
     let mut buf = Grid::new(20, 20);
     let before = buf.clone();
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 2, 2),
         list_rows: 0,
@@ -450,7 +450,7 @@ fn draw_picker_panel_reversed_cursor_swaps_against_the_panels_own_text_color() {
     // the panel's own `ui.text` fg is what the swap must land on.
     let mut buf = Grid::new(40, 20);
     let theme = Theme::default();
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 20, 4),
         list_rows: 1,
@@ -500,7 +500,7 @@ fn a_rendered_rows_span_layers_over_ui_text_focus() {
     )]));
     theme.bake(&registry);
     let mut buf = Grid::new(20, 20);
-    let mut canvas = Canvas::new(&mut buf, theme.ui.invisible, None);
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
         rect: rect(0, 0, 10, 5),
         list_rows: 2,
