@@ -508,7 +508,7 @@ mod scope_styles {
     fn a_user_style_replaces_the_themes_entry() {
         let mut theme = theme_with([("keyword", fg(RED))]);
         let warnings = theme.apply_scope_styles(
-            &mut styles(&[("keyword", fg_spec(GREEN), ConfigOrigin::User)]),
+            &styles(&[("keyword", fg_spec(GREEN), ConfigOrigin::User)]),
             Restyle::All,
         );
         assert!(warnings.is_empty());
@@ -519,7 +519,7 @@ mod scope_styles {
     fn a_plugin_style_yields_to_the_themes_entry_of_the_same_name() {
         let mut theme = theme_with([("keyword", fg(RED))]);
         let _ = theme.apply_scope_styles(
-            &mut styles(&[("keyword", fg_spec(GREEN), ConfigOrigin::Plugin)]),
+            &styles(&[("keyword", fg_spec(GREEN), ConfigOrigin::Plugin)]),
             Restyle::All,
         );
         assert_eq!(fg_of(&theme, "keyword"), Some(RED));
@@ -529,7 +529,7 @@ mod scope_styles {
     fn a_plugin_style_beats_a_themes_parent_scope() {
         let mut theme = theme_with([("markup.heading.1", fg(RED))]);
         let _ = theme.apply_scope_styles(
-            &mut styles(&[(
+            &styles(&[(
                 "markup.heading.1.text",
                 fg_spec(GREEN),
                 ConfigOrigin::Plugin,
@@ -544,7 +544,7 @@ mod scope_styles {
     fn a_bundled_style_sits_beneath_the_theme_like_a_plugins() {
         let mut theme = theme_with([("keyword", fg(RED))]);
         let _ = theme.apply_scope_styles(
-            &mut styles(&[
+            &styles(&[
                 ("keyword", fg_spec(GREEN), ConfigOrigin::Bundled),
                 ("string", fg_spec(BLUE), ConfigOrigin::Bundled),
             ]),
@@ -562,7 +562,7 @@ mod scope_styles {
         assert!(!styles.set("keyword", fg_spec(BLUE), ConfigOrigin::User));
 
         let mut theme = theme_with([]);
-        let _ = theme.apply_scope_styles(&mut styles, Restyle::All);
+        let _ = theme.apply_scope_styles(&styles, Restyle::All);
         assert_eq!(fg_of(&theme, "keyword"), Some(BLUE));
     }
 
@@ -570,7 +570,7 @@ mod scope_styles {
     fn a_user_ui_style_reaches_the_pre_resolved_ui_scopes() {
         let mut theme = theme_with([("ui.selection", fg(RED))]);
         let _ = theme.apply_scope_styles(
-            &mut styles(&[("ui.selection", fg_spec(GREEN), ConfigOrigin::User)]),
+            &styles(&[("ui.selection", fg_spec(GREEN), ConfigOrigin::User)]),
             Restyle::All,
         );
         assert_eq!(theme.ui.selection.fg, Some(GREEN));
@@ -580,13 +580,13 @@ mod scope_styles {
     fn a_ui_text_style_sets_the_default() {
         let mut theme = theme_with([]);
         let _ = theme.apply_scope_styles(
-            &mut styles(&[("ui.text", fg_spec(GREEN), ConfigOrigin::Plugin)]),
+            &styles(&[("ui.text", fg_spec(GREEN), ConfigOrigin::Plugin)]),
             Restyle::All,
         );
         assert_eq!(theme.default.fg, Some(GREEN));
 
         let _ = theme.apply_scope_styles(
-            &mut styles(&[("ui.text", fg_spec(BLUE), ConfigOrigin::User)]),
+            &styles(&[("ui.text", fg_spec(BLUE), ConfigOrigin::User)]),
             Restyle::All,
         );
         assert_eq!(theme.default.fg, Some(BLUE));
@@ -596,7 +596,7 @@ mod scope_styles {
     fn a_plugin_ui_text_style_leaves_a_themes_ui_text_default() {
         let mut theme = Theme::new(HashMap::from([("ui.text", fg(RED))]));
         let _ = theme.apply_scope_styles(
-            &mut styles(&[("ui.text", fg_spec(GREEN), ConfigOrigin::Plugin)]),
+            &styles(&[("ui.text", fg_spec(GREEN), ConfigOrigin::Plugin)]),
             Restyle::All,
         );
         assert_eq!(theme.default.fg, Some(RED));
@@ -607,7 +607,7 @@ mod scope_styles {
         let palette = [("gold".to_owned(), Some(RED))].into_iter().collect();
         let mut theme = Theme::from_owned(FxHashMap::default(), palette);
         let warnings = theme.apply_scope_styles(
-            &mut styles(&[
+            &styles(&[
                 ("a", named_fg_spec("gold"), ConfigOrigin::User),
                 ("b", named_fg_spec("blue"), ConfigOrigin::User),
             ]),
@@ -626,7 +626,7 @@ mod scope_styles {
             ..named_fg_spec("gold")
         };
         let warnings = theme.apply_scope_styles(
-            &mut styles(&[("keyword.control", spec, ConfigOrigin::User)]),
+            &styles(&[("keyword.control", spec, ConfigOrigin::User)]),
             Restyle::All,
         );
         assert!(
@@ -658,7 +658,7 @@ mod scope_styles {
             .iter()
             .map(|scope| (*scope, named_fg_spec("gold"), ConfigOrigin::User))
             .collect();
-        let warnings = theme.apply_scope_styles(&mut styles(&entries), Restyle::All);
+        let warnings = theme.apply_scope_styles(&styles(&entries), Restyle::All);
         let mut sorted = names;
         sorted.sort_unstable();
         assert_eq!(warned_keys(&warnings), sorted);
@@ -671,13 +671,14 @@ mod scope_styles {
             ("a", named_fg_spec("gold"), ConfigOrigin::User),
             ("b", named_fg_spec("gold"), ConfigOrigin::User),
         ]);
-        let _ = theme.apply_scope_styles(&mut styles, Restyle::All);
+        let _ = theme.apply_scope_styles(&styles, Restyle::All);
+        styles.mark_shown();
         let _ = styles.set("z", named_fg_spec("gold"), ConfigOrigin::Plugin);
         let _ = styles.set("a", fg_spec(GREEN), ConfigOrigin::User);
         let _ = styles.set("c", named_fg_spec("gold"), ConfigOrigin::Plugin);
         let _ = styles.set("z", named_fg_spec("gold"), ConfigOrigin::Plugin);
 
-        let warnings = theme.apply_scope_styles(&mut styles, Restyle::Unshown);
+        let warnings = theme.apply_scope_styles(&styles, Restyle::Unshown);
 
         assert_eq!(warned_keys(&warnings), ["z", "c"]);
         assert_eq!(fg_of(&theme, "a"), Some(GREEN));
@@ -686,17 +687,48 @@ mod scope_styles {
     }
 
     #[test]
-    fn a_full_apply_leaves_nothing_unshown() {
+    fn restyling_a_scope_warns_only_for_the_new_style() {
+        let mut theme = theme_with([]);
+        let mut styles = styles(&[("keyword", named_fg_spec("gold"), ConfigOrigin::Plugin)]);
+        assert_eq!(
+            warned_keys(&theme.apply_scope_styles(&styles, Restyle::All)),
+            ["keyword"]
+        );
+        styles.mark_shown();
+        let _ = styles.set("keyword", fg_spec(GREEN), ConfigOrigin::User);
+
+        let warnings = theme.apply_scope_styles(&styles, Restyle::Unshown);
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(fg_of(&theme, "keyword"), Some(GREEN));
+    }
+
+    #[test]
+    fn a_hidden_style_restyles_nothing() {
+        let mut theme = theme_with([]);
+        let mut styles = styles(&[("keyword", named_fg_spec("gold"), ConfigOrigin::Plugin)]);
+        let _ = theme.apply_scope_styles(&styles, Restyle::All);
+        styles.mark_shown();
+        assert!(styles.set("keyword", fg_spec(GREEN), ConfigOrigin::Bundled));
+
+        let warnings = theme.apply_scope_styles(&styles, Restyle::Unshown);
+
+        assert!(warnings.is_empty(), "{warnings:?}");
+        assert_eq!(fg_of(&theme, "keyword"), None);
+    }
+
+    #[test]
+    fn marking_the_styles_shown_leaves_nothing_to_restyle() {
         let mut theme = theme_with([]);
         let mut styles = styles(&[("a", named_fg_spec("gold"), ConfigOrigin::User)]);
         assert!(styles.has_unshown());
 
-        let _ = theme.apply_scope_styles(&mut styles, Restyle::All);
+        styles.mark_shown();
 
         assert!(!styles.has_unshown());
         assert!(
             theme
-                .apply_scope_styles(&mut styles, Restyle::Unshown)
+                .apply_scope_styles(&styles, Restyle::Unshown)
                 .is_empty()
         );
     }
@@ -708,7 +740,7 @@ mod scope_styles {
         let mut theme = theme_with([("keyword", fg(RED))]);
         theme.bake(&reg);
         let _ = theme.apply_scope_styles(
-            &mut styles(&[("keyword", fg_spec(GREEN), ConfigOrigin::User)]),
+            &styles(&[("keyword", fg_spec(GREEN), ConfigOrigin::User)]),
             Restyle::All,
         );
         theme.bake_if_stale(&reg);
@@ -720,7 +752,7 @@ mod scope_styles {
         let mut theme = theme_with([]);
         assert!(!theme.has_entry("ui.statusline.separator"));
         let _ = theme.apply_scope_styles(
-            &mut styles(&[(
+            &styles(&[(
                 "ui.statusline.separator",
                 fg_spec(GREEN),
                 ConfigOrigin::Plugin,

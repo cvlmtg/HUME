@@ -79,9 +79,10 @@ pub(in crate::editor) fn show_unshown_scope_styles(state: &mut EditorState, view
     });
 }
 
-/// Layer the scripts' scope styles `which` selects onto `view.theme` and
-/// rebuild what the input-stack layers built against its colors. Returns a
-/// warning for each color the theme does not resolve.
+/// Layer the scripts' scope styles `which` selects onto `view.theme`, mark
+/// them shown, since `view.theme` is the theme on screen, and rebuild what
+/// the input-stack layers built against its colors. Returns a warning for
+/// each color the theme does not resolve.
 fn apply_scope_styles(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -89,7 +90,8 @@ fn apply_scope_styles(
 ) -> Vec<ThemeError> {
     let warnings = view
         .theme
-        .apply_scope_styles(&mut state.config.scope_styles, which);
+        .apply_scope_styles(&state.config.scope_styles, which);
+    state.config.scope_styles.mark_shown();
     state.input.theme_changed(&mut view.theme, &view.registry);
     warnings
 }

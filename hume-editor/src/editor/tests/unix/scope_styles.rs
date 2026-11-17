@@ -156,6 +156,24 @@ fn a_live_call_warns_only_for_its_own_entries() {
 }
 
 #[test]
+fn a_live_call_does_not_warn_for_another_origins_style_of_its_scope() {
+    let (mut ed, fixture) = session(
+        r#"(load-plugin! "user/tp")"#,
+        r##"(set-scope-styles! (list (hash 'scope "keyword" 'fg "gold")))"##,
+    );
+    assert_eq!(warnings(&ed), 1, "{:?}", warning_texts(&ed));
+
+    run(
+        &mut ed,
+        &fixture.config_dir,
+        r##"(set-scope-styles! (list (hash 'scope "keyword" 'fg "#abcdef")))"##,
+    );
+
+    assert_eq!(warnings(&ed), 1, "{:?}", warning_texts(&ed));
+    assert_eq!(style(&ed, "keyword").fg, Some(SCRIPT_RGB));
+}
+
+#[test]
 fn a_call_warns_in_the_order_it_names_its_scopes() {
     let (mut ed, fixture) = session("", "");
     let scopes = ["zeta.x", "alpha.x", "mid.x", "beta.x", "omega.x"];

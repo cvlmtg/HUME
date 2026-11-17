@@ -197,8 +197,8 @@ pub struct UiScopes {
 pub enum Restyle {
     /// Every scope, replacing the styles layered before.
     All,
-    /// The scopes set since a theme last took them, in the order first
-    /// set; every other scope keeps its layered style.
+    /// The styles set since they were last marked shown, in the order
+    /// first set; every other style keeps its layer.
     Unshown,
 }
 
@@ -269,16 +269,10 @@ impl Theme {
 
     /// Layer the scopes `which` selects from `styles` over and under the
     /// theme's own entries, and resolve their colors against the theme's
-    /// palette. Either way `styles` then has no unshown scope. Returns a
-    /// warning for each color that does not resolve, in the order the
-    /// scopes are layered; its field stays unset. Scopes baked before
-    /// re-bake at the next [`Self::bake_if_stale`].
-    pub fn apply_scope_styles(
-        &mut self,
-        styles: &mut ScopeStyles,
-        which: Restyle,
-    ) -> Vec<ThemeError> {
-        let unshown = styles.take_unshown();
+    /// palette. Returns a warning for each color that does not resolve, in
+    /// the order the scopes are layered; its field stays unset. Scopes
+    /// baked before re-bake at the next [`Self::bake_if_stale`].
+    pub fn apply_scope_styles(&mut self, styles: &ScopeStyles, which: Restyle) -> Vec<ThemeError> {
         let mut warnings = Vec::new();
         match which {
             Restyle::All => {
@@ -289,7 +283,7 @@ impl Theme {
                 }
             }
             Restyle::Unshown => {
-                for layered in unshown.iter().filter_map(|s| styles.layered_scope(s)) {
+                for layered in styles.unshown() {
                     self.layer_scope(layered, &mut warnings);
                 }
             }
