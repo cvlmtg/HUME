@@ -1129,6 +1129,24 @@ fn set_conceals_bumps_the_generation() {
     assert_eq!(store.generation(b), b_before);
 }
 
+/// Extra highlights and line backgrounds only paint: nothing keyed on the
+/// stamp reads them, so writing or moving them leaves it alone.
+#[test]
+fn paint_only_kinds_leave_the_generation_alone() {
+    let mut store = DecorationStores::default();
+    let (a, _) = make_two_bids();
+    let before = store.generation(a);
+
+    store.set_extra_highlights("color".to_string(), a, vec![extra(0, 2)]);
+    store.add_extra_highlights("color".to_string(), a, vec![extra(4, 6)]);
+    store.set_line_backgrounds("bg".to_string(), a, vec![line_bg(0)]);
+    remap(&mut store, a, BOLD, |b| {
+        b.insert("z");
+    });
+
+    assert_eq!(store.generation(a), before);
+}
+
 #[test]
 fn remap_bumps_the_generation_of_a_buffer_holding_conceals_only() {
     let mut store = DecorationStores::default();

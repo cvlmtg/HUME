@@ -663,9 +663,11 @@ pub struct DecorationStores {
     /// either slot. Not touch-stamped: it isn't decoration content, so no
     /// `generation` bump is the right one when it changes.
     sign_sources: FxHashMap<BufferId, Vec<(String, i64)>>,
-    /// Per-buffer dirty-tracking stamp, touched by every `set_*` and
-    /// `clear_entries` for that buffer, and by `remap_through` when a remap
-    /// actually moved one of that buffer's entries. The editor mirrors
+    /// Per-buffer dirty-tracking stamp for the kinds that lay out, touched
+    /// by their `set_*` and by `clear_entries` for that buffer, and by
+    /// `remap_through` when a remap actually moved one of their entries.
+    /// Extra highlights and line backgrounds only paint, and the frame reads
+    /// them fresh, so they never touch it. The editor mirrors
     /// `virtual_lines` and the conceals into per-pane maps only when
     /// *its buffer's* stamp changed since its last sync, rather than
     /// every frame (unlike inlay hints/EOL text, that sync runs in
@@ -713,8 +715,8 @@ impl DecorationStores {
     }
 
     /// Stamps `bid` with a fresh value off the shared clock: the one
-    /// mutation primitive every `set_*`, `clear_entries`, and a touched
-    /// `remap_through` funnel through, so `generation`/`clock` can never
+    /// mutation primitive every layout kind's `set_*`, `clear_entries`, and
+    /// a touched `remap_through` funnel through, so `generation`/`clock` can never
     /// drift out of sync with each other.
     fn touch(&mut self, bid: BufferId) {
         self.clock = self.clock.wrapping_add(1);
@@ -730,9 +732,9 @@ impl DecorationStores {
 
     /// `bid`'s current stamp: `0` if `bid` has never been touched by this
     /// store (a fresh buffer, or one this store was reset since; see
-    /// `reset`). Bumped by every `set_*` call and `clear_entries` for `bid`,
-    /// and by `remap_through` when a remap actually moved one of `bid`'s
-    /// entries.
+    /// `reset`). Bumped by a layout kind's `set_*` call and `clear_entries`
+    /// for `bid`, and by `remap_through` when a remap actually moved one of
+    /// `bid`'s layout entries.
     pub fn generation(&self, bid: BufferId) -> u64 {
         self.generation.get(&bid).copied().unwrap_or(0)
     }
@@ -932,7 +934,6 @@ impl DecorationStores {
         entries: Vec<LineBgEntry>,
     ) {
         self.line_backgrounds.set_one_per_line(source, bid, entries);
-        self.touch(bid);
     }
 
     #[cfg(any(test, feature = "test-util"))]
@@ -985,7 +986,6 @@ impl DecorationStores {
         spans: Vec<ExtraHighlightEntry>,
     ) {
         self.extra_highlights.set(source, bid, spans);
-        self.touch(bid);
     }
 
     /// Adds `spans` to `source`'s extra highlights for `bid`.
@@ -996,7 +996,6 @@ impl DecorationStores {
         spans: Vec<ExtraHighlightEntry>,
     ) {
         self.extra_highlights.extend(source, bid, spans);
-        self.touch(bid);
     }
 
     #[cfg(any(test, feature = "test-util"))]
@@ -1109,7 +1108,7 @@ impl DecorationStores {
     /// chokepoint as the diagnostics remap (`hume-editor`'s
     /// `PositionStores::carry`), so decoration positions never drift out of
     /// sync with the diagnostics they're often paired with. Touches `bid`'s
-    /// stamp only if some kind actually had an entry to remap: that
+    /// stamp only if some layout kind actually had an entry to remap: that
     /// chokepoint carries *every* edit through here, decorated buffer or
     /// not, so touching unconditionally would stamp a
     /// zero-decoration buffer on every keystroke, defeating the pane
@@ -1136,16 +1135,17 @@ impl DecorationStores {
         } = self;
         // Every kind always attempts its remap; only whether to bump the
         // stamp is conditional. The array literal's eager evaluation (not
-        // the iterator adapters below) is what guarantees none of these seven
-        // calls get short-circuited away.
+        // the iterator adapters below) is what guarantees none of these five
+        // calls get short-circuited away. The paint-only kinds remap without
+        // a vote, as their setters write without one.
         let cs = change.changes();
+        line_backgrounds.remap_lines(bid, change);
+        extra_highlights.remap_ranges(bid, cs);
         let touched = [
             inlay_hints.remap_points(bid, cs),
             signs.remap_lines(bid, change),
             virtual_lines.remap_lines(bid, change),
             eol_text.remap_lines(bid, change),
-            line_backgrounds.remap_lines(bid, change),
-            extra_highlights.remap_ranges(bid, cs),
             conceals.remap_conceals(bid, change),
         ]
         .into_iter()
