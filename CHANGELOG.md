@@ -11,18 +11,25 @@
 ### Panes & interface
 - Scope headers now show search matches and diagnostics, and highlights from plugins.
 - A parameter, `self` and other local names keep the color of their definition wherever they are used, in every language whose grammar has a `locals.scm`.
+- To drop the startup warning about Quarto's and R Markdown's `indents.scm`, and keep Rust macro names out of local-variable colors, install those grammars again with `:plum-install-grammar`.
 
 ### Plugins & scripting
-- `core:markdown-preview` draws Markdown without its syntax, and the lines you are on show their source. It needs the `markdown` and `markdown.inline` grammars.
+- `core:markdown-preview` draws Markdown without its syntax, and the lines you are on show their source. Install its grammar with `:plum-install-grammar markdown`.
 - `set-scope-styles!` styles scopes from `init.scm` or a plugin without editing the theme, and the styles stay when you switch themes.
 - `core:markdown-preview` also draws Markdown popups, the hover and the completion documentation box included.
-- A `format-text/<language>` editor command draws the text of every popup shown in that language; `parsed-text-captures` queries that text's syntax tree.
-- `set-conceals!` hides part of a line or draws other text in its place (`#:overlaps 'drop` leaves out an entry overlapping an earlier one), `syntax-captures` returns the nodes a tree-sitter query captures (`#:ranges` limits it to some lines), and the `on-syntax-changed` hook runs after a buffer's syntax tree is parsed.
+- A plugin can format a language's popups by defining a `format-text/<language>` command; `parsed-text-captures` queries the popup text's syntax tree.
+- `set-conceals!` hides part of a line or draws other text in its place.
+- `syntax-captures` returns the nodes a tree-sitter query captures in a buffer.
+- The `on-syntax-changed` hook runs after a buffer's syntax tree is parsed.
 - `buffer-viewport-ranges` returns the lines every pane on a buffer shows, and `lsp-cancel!` cancels a pending request filed under a `#:supersede` key.
-- `stdlib/lsp-batch` sends several language server requests as one batch and calls back once all have answered; a new batch under a `stdlib/lsp-batch-key` replaces the one before it.
+- `stdlib/lsp-batch` sends several language server requests as one batch and calls back once all have answered.
 - A grammar's `folds.scm` can use `#trim!` and `#not-has-parent?`, its `textobjects.scm` `#make-range!` and `#offset!`, and its `context.scm` `#make-range!`.
 - `register-grammar!` takes a `#:locals` query file, and `highlights.scm` can use `#is? local` and `#is-not? local`.
-- A query pattern using a predicate or directive HUME doesn't apply is left out with a warning, and an optional query file that doesn't compile no longer keeps its grammar from loading.
+- A query pattern using a predicate or directive HUME doesn't apply is left out with a warning, as is an `injections.scm`, `textobjects.scm` or `indents.scm` that captures nothing.
+- An optional query file that doesn't compile no longer keeps its grammar from loading.
+
+### Performance
+- Typing, scrolling and plugin scripts do less work per keystroke, most of all in large files and with many cursors.
 
 ### Fixes
 - Inlay hints show in every pane on a buffer, not only one of them.
@@ -30,6 +37,8 @@
 - `hume --keys` leaves the system clipboard alone.
 - A closed Markdown section keeps the blank line before the next heading visible.
 - A popup whose text ends in a line break shows no blank row after it.
+- Formatting several selections waits for every range and reports the first failing one in selection order.
+- Elm no longer folds parenthesized calls, and MoonBit's function and parameter text objects select the right text.
 
 ## [0.21.0] - 2026-11-12
 

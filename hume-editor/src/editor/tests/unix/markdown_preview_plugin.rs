@@ -393,6 +393,23 @@ fn bullet_becomes_a_dot() {
 }
 
 #[test]
+fn nested_bullets_become_dots() {
+    let mut p = preview();
+    // "- a\n" 0..4, "  - b\n" 4..10, "    - c\n" 10..18: each `-` becomes
+    // the dot, its indentation stays.
+    let bid = p.open("a.md", "- a\n  - b\n    - c\n");
+    p.render();
+    assert_eq!(
+        p.conceals(bid),
+        [
+            replaced(0, 1, "•", None),
+            replaced(6, 7, "•", None),
+            replaced(14, 15, "•", None),
+        ]
+    );
+}
+
+#[test]
 fn task_boxes_become_checkboxes() {
     let mut p = preview();
     // "- [ ] a\n" 0..8, "- [x] b\n" 8..16: bullet and box become one glyph,

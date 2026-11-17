@@ -251,7 +251,7 @@ Draws Markdown without its syntax, in the style of a rendered preview, right in 
 (load-plugin! "core:markdown-preview")
 ```
 
-Requires `core:stdlib` loaded first. It starts when you open a Markdown file or a Markdown popup opens.
+Requires `core:stdlib` loaded first. It starts when you open a Markdown file, or when a Markdown popup opens with the `markdown` grammar installed.
 
 It also draws Markdown popups, such as a language server's hover, and Markdown documentation in the completion menu's documentation box. A popup shows no source, since no selection is in it, and a table wider than the popup breaks its grid.
 
@@ -277,7 +277,7 @@ Configure with `#:config`:
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `'enabled` | boolean | `#t` | Whether the preview starts on in each buffer |
+| `'enabled` | boolean | `#t` | Whether the preview starts on in each buffer. Popups and the completion documentation box are drawn either way |
 | `'rule-width` | integer (≥ 1) | `40` | How many `─` a horizontal rule draws |
 
 A table wider than the pane draws a broken grid when soft wrap is on. A table's top and bottom border appear only on an empty line next to it. A tab inside a table cell throws its column out of line.

@@ -22,7 +22,7 @@ HUME follows the select-then-act model: first select what you want to change, th
 ## Quickstart
 
 1. **Install.** Download the archive for your platform and extract it. See [Installation](./installation.md).
-2. **Turn on the extras.** HUME starts lean. Copy the [starter config](configuration.md#example-init-scm) to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) to turn on the fuzzy pickers, language servers, live git diff, the undo-history graph and the plugin manager.
+2. **Turn on the extras.** HUME starts lean. Copy the [starter config](configuration.md#example-init-scm) to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) to turn on the fuzzy pickers, language servers, live git diff, the undo-history graph, the Markdown preview and the plugin manager.
 3. **Add your languages.** Open a file and run `:plum-install-grammar` for syntax highlighting and `:lsp-install` for a language server. Both act on the open file's language, once per language. Both need [the plugins from step 2](./core-plugins.md).
 4. **Learn the keys.** Type `:tutor` and press `Enter` for the interactive tutorial.
 

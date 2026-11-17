@@ -165,6 +165,7 @@ Core plugins add typed commands of their own once you load them:
 - `core:lsp-install`: `:lsp-install`, `:lsp-uninstall` and `:lsp-catalog`.
 - `core:git-diff`: `:toggle-git-signs` and `:toggle-inline-diff`.
 - `core:undotree`: `:undotree`.
+- `core:markdown-preview`: `:toggle-markdown-preview`.
 - `core:steel-server`: `:steel-server-install`.
 
 None of these plugins is loaded until you ask for it in `init.scm`. See [Core Plugins](core-plugins.md).

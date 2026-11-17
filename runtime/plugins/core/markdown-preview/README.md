@@ -91,7 +91,7 @@ The choices the plugin and the Rust surface under it are built on:
 
 | File | Role |
 |---|---|
-| `manifest.scm` | Lazy activation on the language and the two commands |
+| `manifest.scm` | Lazy activation on the language and the three commands |
 | `plugin.scm` | Config, the hooks and the commands |
 | `lib/state.scm` | Per-buffer state, keyed by `(buffer-key pane)`: whether the preview is on, and the generation the buffer's last parsed tree was built from. The grammar names warned about this session |
 | `lib/queries.scm` | The block and inline queries, their capture names, the capture accessors, the grouping of captures by name, and the conceal constructor and order |
