@@ -748,6 +748,43 @@ mod scope_styles {
     }
 
     #[test]
+    fn restyling_the_unshown_scopes_keeps_every_other_baked_style() {
+        let mut reg = ScopeRegistry::new();
+        let string = reg.intern("string");
+        let mut theme = theme_with([("string", fg(BLUE))]);
+        theme.bake(&reg);
+        let mut styles = ScopeStyles::default();
+        let _ = styles.set("colorizer.fg.ff0000", fg_spec(RED), ConfigOrigin::Plugin);
+
+        let _ = theme.apply_scope_styles(&styles, Restyle::Unshown);
+
+        assert_eq!(theme.baked.len(), reg.len());
+        assert_eq!(theme.resolve(string).fg, Some(BLUE));
+        let color = reg
+            .intern_name("colorizer.fg.ff0000")
+            .expect("below the limit");
+        theme.bake_if_stale(&reg);
+        assert_eq!(theme.resolve(color).fg, Some(RED));
+    }
+
+    #[test]
+    fn restyling_an_unshown_parent_rebakes_its_baked_children() {
+        let mut reg = ScopeRegistry::new();
+        let child = reg.intern("keyword.operator");
+        let lookalike = reg.intern("keywords");
+        let mut theme = theme_with([("keyword", fg(RED)), ("keywords", fg(BLUE))]);
+        theme.bake(&reg);
+        let mut styles = ScopeStyles::default();
+        let _ = styles.set("keyword", fg_spec(GREEN), ConfigOrigin::User);
+
+        let _ = theme.apply_scope_styles(&styles, Restyle::Unshown);
+        theme.bake_if_stale(&reg);
+
+        assert_eq!(theme.resolve(child).fg, Some(GREEN));
+        assert_eq!(theme.resolve(lookalike).fg, Some(BLUE));
+    }
+
+    #[test]
     fn a_script_style_counts_as_an_entry() {
         let mut theme = theme_with([]);
         assert!(!theme.has_entry("ui.statusline.separator"));

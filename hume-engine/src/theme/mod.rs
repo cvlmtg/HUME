@@ -8,7 +8,7 @@ mod values;
 
 use std::collections::HashMap;
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::theme::error::ThemeError;
 use crate::theme::scope_styles::{Layered, ScopeStyles};
@@ -282,6 +282,9 @@ pub struct Theme {
     /// Indexed by [`ScopeId`]; `None` when no name on the scope's fallback
     /// chain has an entry.
     baked: Vec<Option<ResolvedStyle>>,
+    /// The names layered since the last bake, whose baked scopes
+    /// [`Self::bake_if_stale`] re-resolves.
+    restyled: FxHashSet<String>,
     default: ResolvedStyle,
     ui: UiScopes,
 }
@@ -309,6 +312,7 @@ impl Theme {
             above: FxHashMap::default(),
             below: FxHashMap::default(),
             baked: Vec::new(),
+            restyled: FxHashSet::default(),
             default: ResolvedStyle::default(),
             ui: UiScopes::default(),
         };
@@ -319,8 +323,10 @@ impl Theme {
     /// Layer the scopes `which` selects from `styles` over and under the
     /// theme's own entries, and resolve their colors against the theme's
     /// palette. Returns a warning for each color that does not resolve, in
-    /// the order the scopes are layered; its field stays unset. Scopes
-    /// baked before re-bake at the next [`Self::bake_if_stale`].
+    /// the order the scopes are layered; its field stays unset. The next
+    /// [`Self::bake_if_stale`] re-resolves every baked scope after
+    /// [`Restyle::All`], and after [`Restyle::Unshown`] only those whose
+    /// fallback chain names a layered scope.
     pub fn apply_scope_styles(&mut self, styles: &ScopeStyles, which: Restyle) -> Vec<ThemeError> {
         let mut warnings = Vec::new();
         match which {
@@ -330,14 +336,16 @@ impl Theme {
                 for layered in styles.layered() {
                     self.layer_scope(layered, &mut warnings);
                 }
+                self.baked.clear();
+                self.restyled.clear();
             }
             Restyle::Unshown => {
                 for layered in styles.unshown() {
+                    self.restyled.insert(layered.scope.to_owned());
                     self.layer_scope(layered, &mut warnings);
                 }
             }
         }
-        self.baked.clear();
         self.derive_from_entries();
         warnings
     }
@@ -383,22 +391,34 @@ impl Theme {
     /// Production calls [`Self::bake_if_stale`] instead.
     pub fn bake(&mut self, registry: &ScopeRegistry) {
         self.baked.clear();
-        self.baked.resize(registry.len(), None);
-        for i in 0..registry.len() {
-            self.baked[i] = self.lookup(registry.name_of(ScopeId(i as u16)));
-        }
-        self.ui = self.compute_ui();
+        self.restyled.clear();
+        self.bake_if_stale(registry);
     }
 
-    /// Re-bake only if scopes were interned since the last [`Self::bake`] call.
+    /// Re-resolve the baked scopes whose fallback chain names a scope
+    /// layered since the last bake, then resolve the scopes interned since.
     ///
-    /// `ScopeRegistry` is append-only and `bake` sizes `baked` to
-    /// `registry.len()`, so a length mismatch means new scopes are unbaked.
+    /// `ScopeRegistry` is append-only and every bake sizes `baked` to
+    /// `registry.len()`, so the ids past `baked.len()` are the unbaked ones.
     /// Called at the end of `prepare_frame`, whose steps intern scopes
     /// lazily, and wherever the editor resolves styles outside `render`.
     pub fn bake_if_stale(&mut self, registry: &ScopeRegistry) {
-        if self.baked.len() != registry.len() {
-            self.bake(registry);
+        debug_assert!(
+            self.baked.len() <= registry.len(),
+            "baked against another registry"
+        );
+        if !self.restyled.is_empty() {
+            let restyled = std::mem::take(&mut self.restyled);
+            for i in 0..self.baked.len() {
+                let name = registry.name_of(ScopeId(i as u16));
+                if fallback_chain(name).any(|key| restyled.contains(key)) {
+                    self.baked[i] = self.lookup(name);
+                }
+            }
+        }
+        for i in self.baked.len()..registry.len() {
+            let style = self.lookup(registry.name_of(ScopeId(i as u16)));
+            self.baked.push(style);
         }
     }
 
