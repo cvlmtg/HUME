@@ -81,7 +81,7 @@ impl ScopeRegistry {
     /// Return the [`ScopeId`] for one of HUME's own scope names, interning it
     /// if new. Never refused: a name from a script or a query file goes
     /// through [`ScopeRegistry::intern_name`].
-    pub fn intern(&mut self, name: &str) -> ScopeId {
+    pub fn intern(&mut self, name: &'static str) -> ScopeId {
         match self.map.get(name) {
             Some(&id) => id,
             None => self.insert_new(name),

@@ -1995,7 +1995,7 @@ impl crate::providers::SyntaxSource for OneSpan {
 /// `conceal_scope`, under a syntax span `heading` over the `#`. Styled
 /// without selections, as a scope header row is, so only highlights and
 /// the cell's own scope apply.
-fn concealed_heading_style(conceal_scope: Option<&str>) -> ResolvedStyle {
+fn concealed_heading_style(conceal_scope: Option<&'static str>) -> ResolvedStyle {
     let rope = ropey::Rope::from_str("# T\n");
     let mut registry = crate::theme::ScopeRegistry::new();
     let heading = registry.intern("heading");

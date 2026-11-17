@@ -519,17 +519,17 @@ fn listed_drawer_rows(ed: &Editor) -> Vec<hume_ui::list_row::ListRow> {
 }
 
 /// A `(start, end, scope, selected_scope)` char range over a list row's text.
-type ExpectedSpan<'a> = (usize, usize, &'a str, Option<&'a str>);
+type ExpectedSpan = (usize, usize, &'static str, Option<&'static str>);
 
 /// A list row's own selected scope, and its spans.
-type ExpectedRow<'a> = (Option<&'a str>, &'a [ExpectedSpan<'a>]);
+type ExpectedRow<'a> = (Option<&'static str>, &'a [ExpectedSpan]);
 
 /// List rows with `texts` and `rows[i]`'s selected scope and spans, their
 /// scopes interned in `registry`.
 fn expected_rows(
     registry: &mut hume_engine::theme::ScopeRegistry,
     texts: Vec<String>,
-    rows: &[ExpectedRow],
+    rows: &[ExpectedRow<'_>],
 ) -> Vec<hume_ui::list_row::ListRow> {
     assert_eq!(texts.len(), rows.len(), "{texts:?}");
     texts
