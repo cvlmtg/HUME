@@ -99,9 +99,9 @@ pub(crate) fn render_pane(
         let drawn_end = hidden
             .line_after_shown(top.line, usize::from(pane_ctx.rect.height))
             .min(last_content_line);
-        let headers = rows.headers().iter().map(|&h| InclusiveRange::new(h, h));
         fold_starts.read(
-            std::iter::once(InclusiveRange::new(top.line, drawn_end)).chain(headers),
+            std::iter::once(InclusiveRange::new(top.line, drawn_end))
+                .chain(rows.headers().ranges()),
             syntax,
             pane_ctx.rope,
         );

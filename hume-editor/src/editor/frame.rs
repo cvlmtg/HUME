@@ -578,26 +578,25 @@ impl Editor {
                 ));
                 settled.cursor_screen
             });
-            if self.state.messages_view_awaits_seen(buf_id)
-                && shows_document_end(
-                    self.state.buffers.get(buf_id),
-                    &mut self.view.panes[pid],
-                    &layout_key,
-                    rows.as_ref(),
-                )
-            {
-                self.state.message_log.mark_all_seen();
-            }
             if pid == self.view.focused_pane() {
                 ctx.cursor_content_pos = cursor_screen;
             }
 
-            // A change in the lines shown arms the `OnViewportChange`
-            // debounce timer; the hook fires later from the timer drain.
             let text = self.state.buffers.get(buf_id).text();
             #[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
             let (mut dlm, viewport) =
                 self.view.panes[pid].display_lines_and_viewport(text.rope(), layout_key.inputs());
+            if self.state.messages_view_awaits_seen(buf_id)
+                && rows.as_ref().is_some_and(|rows| {
+                    let bottom = rows.bottom(&mut dlm);
+                    dlm.next(bottom).is_none()
+                })
+            {
+                self.state.message_log.mark_all_seen();
+            }
+
+            // A change in the lines shown arms the `OnViewportChange`
+            // debounce timer; the hook fires later from the timer drain.
             let shown = super::geometry::ShownLines::read(
                 &mut dlm,
                 viewport,
@@ -1079,23 +1078,6 @@ struct ScrollOutcome {
     settled: Option<SettledPane>,
     /// See [`PaneBufferState::parked`](crate::editor::pane_state::PaneBufferState::parked)'s own doc.
     parked: bool,
-}
-
-/// Whether `pane`'s viewport, laid out as `rows`, reaches `doc`'s last
-/// display line. `rows` is `None` for a pane with no rows.
-#[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
-fn shows_document_end(
-    doc: &Buffer,
-    pane: &mut Pane,
-    layout_key: &LayoutKey,
-    rows: Option<&PaneRows>,
-) -> bool {
-    let Some(rows) = rows else {
-        return false;
-    };
-    let (mut dlm, _) = pane.display_lines_and_viewport(doc.text().rope(), layout_key.inputs());
-    let bottom = rows.bottom(&mut dlm);
-    dlm.next(bottom).is_none()
 }
 
 /// Scroll the pane viewport so `cursor` stays within the visible area.

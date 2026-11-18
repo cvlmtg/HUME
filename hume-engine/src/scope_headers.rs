@@ -8,6 +8,7 @@
 
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::InclusiveRange;
 use ropey::Rope;
 
 use crate::display_lines::line_store::{FormatKey, PaneLineStore};
@@ -72,6 +73,13 @@ pub struct PaneRows {
 pub struct HeaderLines {
     lines: [ContentLine; MAX_SCOPE_HEADERS],
     count: usize,
+}
+
+impl HeaderLines {
+    /// Each header row's line as a range of that one line, top row first.
+    pub fn ranges(&self) -> impl Iterator<Item = InclusiveRange<ContentLine>> + '_ {
+        self.iter().map(|&line| InclusiveRange::new(line, line))
+    }
 }
 
 impl std::ops::Deref for HeaderLines {
@@ -146,7 +154,7 @@ impl PaneRows {
                 scratch.retain(|line| !dlm.hidden().is_hidden(*line));
                 scratch_line = Some(pos.line);
             }
-            if rows.headers.count == cap {
+            if rows.headers.len() == cap {
                 break;
             }
             let Some(&header) = scratch.iter().find(|line| !rows.headers().contains(*line)) else {

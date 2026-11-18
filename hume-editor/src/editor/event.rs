@@ -114,11 +114,9 @@ pub(in crate::editor) enum EditorEvent {
     /// Fires when the lines a pane shows change (scroll, resize, an edit
     /// that moves the EOF-clamped end, a buffer switch, its scope header
     /// rows changing), debounced (`hook-viewport-debounce-ms`) so a burst
-    /// fires once. `lines.visible` is the range `viewport-range` returns,
-    /// end-exclusive, and reaches the hook as the same value; it covers
-    /// every line that could be visible and is exact unless soft wrap makes
-    /// lines span several rows. `lines.headers` reaches the hook as a list
-    /// of ranges in `viewport-range`'s shape, one line each, top row first.
+    /// fires once. `lines.visible` reaches the hook as the value
+    /// `viewport-range` returns, and `lines.headers` as a list of ranges in
+    /// that shape, one line each, top row first.
     /// `target`'s pane is the pane whose viewport actually scrolled, not
     /// necessarily the focused one.
     OnViewportChange {

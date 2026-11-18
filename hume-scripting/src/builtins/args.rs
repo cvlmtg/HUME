@@ -20,6 +20,7 @@ use termina::event::KeyEvent;
 
 use hume_core::{BufferId, HostToken, TruncateEnd};
 use hume_platform::path::AbsolutePath;
+use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::spanned::SpannedText;
 
@@ -776,9 +777,7 @@ pub(crate) fn char_range_value(range: ExclusiveRange<CharOffset>) -> SteelVal {
 }
 
 /// A content-line range as Steel sees it: `(hash 'start-line s 'end-line e)`.
-pub fn line_range_value(
-    range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
-) -> SteelVal {
+pub fn line_range_value(range: ExclusiveRange<ContentLine>) -> SteelVal {
     symbol_hash([
         (START_LINE, SteelVal::IntV(range.start.index() as isize)),
         (END_LINE, SteelVal::IntV(range.end.index() as isize)),
@@ -787,7 +786,7 @@ pub fn line_range_value(
 
 /// Content-line ranges as Steel sees them: a list of [`line_range_value`]s.
 pub fn line_range_list_value(
-    ranges: impl IntoIterator<Item = hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>,
+    ranges: impl IntoIterator<Item = ExclusiveRange<ContentLine>>,
 ) -> SteelVal {
     list_of(ranges.into_iter().map(line_range_value))
 }

@@ -307,11 +307,11 @@ impl ShownLines {
         content_lines: hume_rope::line::ContentLineCount,
         rows: Option<&PaneRows>,
     ) -> Self {
-        let (body_top, bottom) = match rows {
-            Some(rows) => (rows.body_top(dlm), rows.bottom(dlm)),
+        let (body_top, bottom, headers) = match rows {
+            Some(rows) => (rows.body_top(dlm), rows.bottom(dlm), *rows.headers()),
             None => {
                 let top = viewport.top_at(dlm);
-                (top, top)
+                (top, top, HeaderLines::default())
             }
         };
         let end_line = dlm
@@ -320,7 +320,7 @@ impl ShownLines {
             .min(content_lines.end_exclusive());
         Self {
             visible: ExclusiveRange::new(body_top.line, end_line),
-            headers: rows.map(|rows| *rows.headers()).unwrap_or_default(),
+            headers,
         }
     }
 
@@ -328,9 +328,7 @@ impl ShownLines {
     pub(in crate::editor) fn header_ranges(
         &self,
     ) -> impl Iterator<Item = ExclusiveRange<ContentLine>> + '_ {
-        self.headers
-            .iter()
-            .map(|&line| InclusiveRange::new(line, line).to_exclusive())
+        self.headers.ranges().map(InclusiveRange::to_exclusive)
     }
 }
 

@@ -991,8 +991,7 @@ fn on_viewport_change_hands_the_header_lines_to_its_handler() {
              (lambda (pane range headers)
                (set! seen (to-string (map (lambda (r) (list (hash-ref r 'start-line)
                                                             (hash-ref r 'end-line)))
-                                          headers)))))
-           (define-typed-command! "seen" "" (lambda (bid) (log! 'info seen)))"#,
+                                          headers)))))"#,
     );
     wheel_down(&mut ed, pid, 10);
     ed.drain_async_sources();
@@ -1000,18 +999,14 @@ fn on_viewport_change_hands_the_header_lines_to_its_handler() {
     let drawn = drawn_lines(&mut ed, pid, 2);
     assert_eq!(drawn, [0, 1], "premise: two header rows");
 
-    type_cmd(&mut ed, ":seen");
     assert_eq!(
-        ed.state.status_msg.text(),
-        Some(
-            format!(
-                "(({} {}) ({} {}))",
-                drawn[0],
-                drawn[0] + 1,
-                drawn[1],
-                drawn[1] + 1
-            )
-            .as_str()
+        log_probe(&mut ed, tmp.path(), "seen"),
+        format!(
+            "(({} {}) ({} {}))",
+            drawn[0],
+            drawn[0] + 1,
+            drawn[1],
+            drawn[1] + 1
         )
     );
 }
@@ -1041,12 +1036,7 @@ fn on_viewport_change_fires_when_only_the_header_rows_change() {
     );
     let fires = |ed: &mut Editor| -> usize {
         type_cmd(ed, ":fires");
-        ed.state
-            .status_msg
-            .text()
-            .expect("a count")
-            .parse()
-            .expect("a count")
+        status(ed).parse().expect("a count")
     };
     ed.drain_async_sources();
     ed.settle();

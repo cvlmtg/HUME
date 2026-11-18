@@ -11,7 +11,7 @@ use crate::BufferVisibility;
 
 /// The lines every pane showing a buffer shows, as
 /// `(buffer-viewport-ranges pane)` reports them.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Default)]
 pub struct ViewportLines {
     /// Each pane's [`viewport_range`](BufferHost::viewport_range), joined by
     /// [`hume_rope::line::join_line_ranges`] and each given up to the line
