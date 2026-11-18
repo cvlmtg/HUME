@@ -78,32 +78,10 @@ fn open_with_lsp(
     rig.ed
 }
 
-/// The ranked labels the open completion session would show, top 20: a
-/// local copy of `tests/completion/mod.rs`'s `labels`, since that one is
-/// private to a sibling module tree.
-fn labels(ed: &Editor) -> Vec<String> {
-    ed.state
-        .input
-        .buffer_completion()
-        .map(|s| {
-            s.top(20, &ed.state.config.completion_sources)
-                .iter()
-                .map(|v| v["label"].as_str().unwrap().to_string())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
-/// Ctrl-Space, then settle so the queued Steel source answers.
-fn trigger(ed: &mut Editor) {
-    ed.feed_key(key_ctrl(' '));
-    ed.settle();
-}
-
 /// Types `text` char by char without entering or leaving Insert mode,
 /// unlike `tests/mod.rs`'s `type_text`, which brackets its typing with its
 /// own `i`/Escape and so always ends back in Normal mode. Every test here
-/// needs to stay in Insert for `trigger`'s Ctrl-Space (gated on Insert mode)
+/// needs to stay in Insert for `trigger_completion`'s Ctrl-Space (gated on Insert mode)
 /// to do anything at all, so the caller enters Insert itself first.
 fn type_in_insert(ed: &mut Editor, text: &str) {
     for ch in text.chars() {
@@ -118,12 +96,12 @@ fn type_in_insert(ed: &mut Editor, text: &str) {
 /// for that plugin's fetch state), so this drives the same observable
 /// behaviour a user would: press Ctrl-Space, see what's offered, and if the
 /// word being waited on isn't there yet, let the background walk advance
-/// (`trigger`'s own `settle()`) and try again.
+/// (`trigger_completion`'s own `settle()`) and try again.
 fn wait_for_word(ed: &mut Editor, target: &str) {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
-        trigger(ed);
-        if labels(ed).iter().any(|l| l == target) {
+        trigger_completion(ed);
+        if menu_labels(ed).iter().any(|l| l == target) {
             return;
         }
         assert!(
@@ -165,8 +143,8 @@ fn numbered_text(count: usize, line: impl Fn(usize) -> String) -> String {
 fn wait_for_word_gone(ed: &mut Editor, target: &str) {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
-        trigger(ed);
-        if !labels(ed).iter().any(|l| l == target) {
+        trigger_completion(ed);
+        if !menu_labels(ed).iter().any(|l| l == target) {
             return;
         }
         assert!(
@@ -187,8 +165,8 @@ fn ctrl_space_offers_identifiers_from_the_buffer() {
     std::fs::write(&path, "alpha beta\n").unwrap();
     open(&mut ed, &path);
     ed.feed_key(key('i'));
-    trigger(&mut ed);
-    let got = labels(&ed);
+    trigger_completion(&mut ed);
+    let got = menu_labels(&ed);
     assert!(got.contains(&"alpha".to_string()), "{got:?}");
     assert!(got.contains(&"beta".to_string()), "{got:?}");
 }
@@ -250,8 +228,8 @@ fn the_partially_typed_token_is_not_offered_back() {
     ed.feed_key(key_down());
     ed.feed_key(key('i'));
     type_in_insert(&mut ed, "hello");
-    trigger(&mut ed);
-    let got = labels(&ed);
+    trigger_completion(&mut ed);
+    let got = menu_labels(&ed);
     assert!(!got.contains(&"hello".to_string()), "{got:?}");
     // An empty menu would vacuously satisfy the assertion above without
     // proving anything. "helloworld"
@@ -279,8 +257,8 @@ fn backspace_widens_the_candidate_list_again() {
     ed.feed_key(key_down());
     ed.feed_key(key('i'));
     type_in_insert(&mut ed, "catal");
-    trigger(&mut ed);
-    let narrow = labels(&ed);
+    trigger_completion(&mut ed);
+    let narrow = menu_labels(&ed);
     assert!(narrow.contains(&"catalog".to_string()), "{narrow:?}");
     assert!(!narrow.contains(&"cat".to_string()), "{narrow:?}");
 
@@ -294,7 +272,7 @@ fn backspace_widens_the_candidate_list_again() {
     ed.feed_key(key_backspace());
     ed.feed_key(key_backspace());
     ed.settle();
-    let widened = labels(&ed);
+    let widened = menu_labels(&ed);
     assert!(widened.contains(&"cat".to_string()), "{widened:?}");
     assert!(widened.contains(&"catalog".to_string()), "{widened:?}");
 }
@@ -362,9 +340,9 @@ fn a_deleted_word_stays_while_it_occurs_elsewhere() {
     ed.feed_key(key('i'));
     wait_for_word(&mut ed, "beta");
     assert!(
-        labels(&ed).contains(&"alpha".to_string()),
+        menu_labels(&ed).contains(&"alpha".to_string()),
         "{:?}",
-        labels(&ed)
+        menu_labels(&ed)
     );
     leave_insert(&mut ed);
 
@@ -389,7 +367,7 @@ fn a_deleted_word_stays_while_its_case_twin_occurs() {
     edit_range(&mut ed, tmp.path(), 2, 7, "zeta");
     ed.feed_key(key('i'));
     wait_for_word(&mut ed, "zeta");
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(got.contains(&"Apply".to_string()), "{got:?}");
     assert!(got.contains(&"apply".to_string()), "{got:?}");
     leave_insert(&mut ed);
@@ -399,9 +377,9 @@ fn a_deleted_word_stays_while_its_case_twin_occurs() {
     wait_for_word(&mut ed, "eta");
     wait_for_word_gone(&mut ed, "apply");
     assert!(
-        !labels(&ed).contains(&"Apply".to_string()),
+        !menu_labels(&ed).contains(&"Apply".to_string()),
         "{:?}",
-        labels(&ed)
+        menu_labels(&ed)
     );
 }
 
@@ -421,7 +399,7 @@ fn a_removed_word_does_not_add_a_twin_the_index_never_held() {
     edit_range(&mut ed, tmp.path(), 2, 7, "zeta");
     ed.feed_key(key('i'));
     wait_for_word(&mut ed, "zeta");
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(!got.contains(&"ix".to_string()), "{got:?}");
     assert!(!got.contains(&"Ix".to_string()), "{got:?}");
 }
@@ -444,7 +422,7 @@ fn an_edit_rereads_only_the_lines_it_changed() {
     edit_range(&mut ed, tmp.path(), 13, 13, " new-word");
     ed.feed_key(key('i'));
     wait_for_word(&mut ed, "new-word");
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(got.contains(&"foo".to_string()), "{got:?}");
     assert!(got.contains(&"bar".to_string()), "{got:?}");
     assert!(!got.contains(&"foo-bar".to_string()), "{got:?}");
@@ -473,11 +451,11 @@ fn an_edit_during_a_walk_keeps_the_words_already_read() {
     std::thread::sleep(Duration::from_millis(200));
     ed.settle();
     ed.feed_key(key('i'));
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     assert!(
-        labels(&ed).contains(&"earlyw".to_string()),
+        menu_labels(&ed).contains(&"earlyw".to_string()),
         "{:?}",
-        labels(&ed)
+        menu_labels(&ed)
     );
 }
 
@@ -551,9 +529,9 @@ fn a_reindex_after_a_complete_answer_leaves_the_selection_alone() {
     ed.feed_key(key('i'));
     wait_for_word(&mut ed, "gamma");
     assert!(
-        labels(&ed).len() >= 2,
+        menu_labels(&ed).len() >= 2,
         "sanity: enough candidates to move off row 0: {:?}",
-        labels(&ed)
+        menu_labels(&ed)
     );
 
     ed.feed_key(key_down());
@@ -638,9 +616,9 @@ fn fuzzy_match_is_opt_in() {
     ed.feed_key(key_down());
     ed.feed_key(key('i'));
     type_in_insert(&mut ed, "rtp");
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     assert!(
-        !labels(&ed).contains(&"roundtrip".to_string()),
+        !menu_labels(&ed).contains(&"roundtrip".to_string()),
         "default 'string match must reject a subsequence-only candidate"
     );
     drop(ed);
@@ -653,9 +631,9 @@ fn fuzzy_match_is_opt_in() {
     ed2.feed_key(key_down());
     ed2.feed_key(key('i'));
     type_in_insert(&mut ed2, "rtp");
-    trigger(&mut ed2);
+    trigger_completion(&mut ed2);
     assert!(
-        labels(&ed2).contains(&"roundtrip".to_string()),
+        menu_labels(&ed2).contains(&"roundtrip".to_string()),
         "#:config (hash 'match 'fuzzy) must accept a subsequence match"
     );
 }
@@ -676,8 +654,8 @@ fn word_chars_extends_what_counts_as_a_word() {
     std::fs::write(&path, "foo-bar\n").unwrap();
     open(&mut ed, &path);
     ed.feed_key(key('i'));
-    trigger(&mut ed);
-    let got = labels(&ed);
+    trigger_completion(&mut ed);
+    let got = menu_labels(&ed);
     assert!(got.contains(&"foo-bar".to_string()), "{got:?}");
     // Negative control: without this, "foo-bar" being present would just as
     // well be explained by "foo" and "bar" each separately matching the
@@ -703,8 +681,8 @@ fn non_ascii_punctuation_does_not_merge_the_words_around_it() {
     std::fs::write(&path, "foo\u{2014}bar\n").unwrap(); // em dash
     open(&mut ed, &path);
     ed.feed_key(key('i'));
-    trigger(&mut ed);
-    let got = labels(&ed);
+    trigger_completion(&mut ed);
+    let got = menu_labels(&ed);
     assert!(got.contains(&"foo".to_string()), "{got:?}");
     assert!(got.contains(&"bar".to_string()), "{got:?}");
     assert!(!got.contains(&"foo\u{2014}bar".to_string()), "{got:?}");
@@ -722,8 +700,8 @@ fn a_curly_apostrophe_splits_the_word_around_it() {
     std::fs::write(&path, "l\u{2019}\u{e9}l\u{e9}ment\n").unwrap(); // l'élément
     open(&mut ed, &path);
     ed.feed_key(key('i'));
-    trigger(&mut ed);
-    let got = labels(&ed);
+    trigger_completion(&mut ed);
+    let got = menu_labels(&ed);
     assert!(got.contains(&"\u{e9}l\u{e9}ment".to_string()), "{got:?}");
 }
 
@@ -742,8 +720,8 @@ fn a_combining_mark_stays_attached_to_its_word() {
     std::fs::write(&path, "cafe\u{0301} latte\n").unwrap();
     open(&mut ed, &path);
     ed.feed_key(key('i'));
-    trigger(&mut ed);
-    let got = labels(&ed);
+    trigger_completion(&mut ed);
+    let got = menu_labels(&ed);
     assert!(got.contains(&"cafe\u{0301}".to_string()), "{got:?}");
     assert!(got.contains(&"latte".to_string()), "{got:?}");
 }
@@ -968,13 +946,13 @@ fn the_exact_token_exclusion_tracks_further_typing() {
     ed.feed_key(key_down());
     ed.feed_key(key('i'));
     type_in_insert(&mut ed, "ca");
-    trigger(&mut ed);
-    let got = labels(&ed);
+    trigger_completion(&mut ed);
+    let got = menu_labels(&ed);
     assert!(got.contains(&"cat".to_string()), "{got:?}");
 
     ed.feed_key(key('t'));
     ed.settle();
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(
         !got.contains(&"cat".to_string()),
         "typing to an exact word match must exclude it once re-invoked: {got:?}"
@@ -1003,7 +981,7 @@ fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
     // reached `late_word` (300 lines at 20 per tick needs multiple ticks).
     ed.feed_key(key_ctrl(' '));
     ed.settle();
-    assert!(!labels(&ed).contains(&"late_word".to_string()));
+    assert!(!menu_labels(&ed).contains(&"late_word".to_string()));
     assert!(
         ed.state
             .input
@@ -1017,7 +995,7 @@ fn a_menu_opened_before_the_walk_finishes_catches_up_once_it_does() {
     let deadline = Instant::now() + Duration::from_secs(2);
     loop {
         ed.settle();
-        if labels(&ed).contains(&"late_word".to_string()) {
+        if menu_labels(&ed).contains(&"late_word".to_string()) {
             return;
         }
         assert!(
@@ -1044,15 +1022,15 @@ fn a_global_word_chars_change_reindexes_an_already_open_buffer() {
     std::fs::write(&path, "foo-bar\n").unwrap();
     open(&mut ed, &path);
     ed.feed_key(key('i'));
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     assert!(
-        !labels(&ed).contains(&"foo-bar".to_string()),
+        !menu_labels(&ed).contains(&"foo-bar".to_string()),
         "sanity: default word-chars must not join foo-bar yet: {:?}",
-        labels(&ed)
+        menu_labels(&ed)
     );
 
     // Two Escapes, not one: the first closes the still-open completion
-    // popup from `trigger` above, the second leaves Insert mode. A single
+    // popup from `trigger_completion` above, the second leaves Insert mode. A single
     // Escape here would leave the editor in Insert mode, and the ":set..."
     // below would be typed as literal buffer text instead of run as a
     // command.
@@ -1091,11 +1069,11 @@ fn buffer_words_and_lsp_rank_together_lsp_first() {
     let mut ed = open_with_lsp(&guard, tmp.path(), "-[b]>uffer_word\n", backend);
 
     ed.feed_key(key('i'));
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     ed.drain_lsp();
     ed.settle();
 
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(
         got.iter().any(|l| l == "buffer_word"),
         "buffer-words' own candidate missing: {got:?}"
@@ -1143,11 +1121,11 @@ fn accepting_a_buffer_words_item_never_sends_completion_item_resolve() {
     let mut ed = open_with_lsp(&guard, tmp.path(), "-[b]>ufferWord\n", backend);
 
     ed.feed_key(key('i'));
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     ed.drain_lsp();
     ed.settle();
 
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert_eq!(
         got,
         vec!["bufferWord"],
@@ -1191,11 +1169,11 @@ fn a_plain_item_lsp_and_buffer_words_both_answer_is_shown_once_as_the_higher_pri
     let mut ed = open_with_lsp(&guard, tmp.path(), "-[b]>ufferWord\n", backend);
 
     ed.feed_key(key('i'));
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     ed.drain_lsp();
     ed.settle();
 
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert_eq!(
         got,
         vec!["bufferWord"],
@@ -1251,11 +1229,11 @@ fn once_something_is_typed_lsp_always_outranks_buffer_words() {
     ed.feed_key(key_down());
     ed.feed_key(key('i'));
     type_in_insert(&mut ed, "buf");
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     ed.drain_lsp();
     ed.settle();
 
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(
         got.iter().any(|l| l == "buffer_word_target"),
         "buffer-words' own candidate missing: {got:?}"
@@ -1289,7 +1267,7 @@ fn a_capitalized_word_is_offered_lowercase_after_a_lowercase_prefix() {
     ed.feed_key(key('i'));
     type_in_insert(&mut ed, "ap");
     wait_for_word(&mut ed, "apply");
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(!got.contains(&"Apply".to_string()), "{got:?}");
 
     for _ in 0..2 {
@@ -1297,7 +1275,7 @@ fn a_capitalized_word_is_offered_lowercase_after_a_lowercase_prefix() {
     }
     type_in_insert(&mut ed, "él");
     wait_for_word(&mut ed, "élan");
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(!got.contains(&"Élan".to_string()), "{got:?}");
 }
 
@@ -1318,7 +1296,7 @@ fn a_lowercase_word_is_offered_capitalized_after_an_uppercase_prefix() {
     ed.feed_key(key('i'));
     type_in_insert(&mut ed, "Ap");
     wait_for_word(&mut ed, "Apply");
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(!got.contains(&"apply".to_string()), "{got:?}");
 }
 
@@ -1340,7 +1318,7 @@ fn mixed_case_and_all_caps_words_get_no_twin() {
 
     type_in_insert(&mut ed, "Hash");
     wait_for_word(&mut ed, "HashMap");
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(!got.contains(&"hashMap".to_string()), "{got:?}");
 
     for _ in 0..4 {
@@ -1348,7 +1326,7 @@ fn mixed_case_and_all_caps_words_get_no_twin() {
     }
     type_in_insert(&mut ed, "MAX");
     wait_for_word(&mut ed, "MAX_LEN");
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(!got.contains(&"mAX_LEN".to_string()), "{got:?}");
 
     for _ in 0..3 {
@@ -1356,6 +1334,6 @@ fn mixed_case_and_all_caps_words_get_no_twin() {
     }
     type_in_insert(&mut ed, "iPho");
     wait_for_word(&mut ed, "iPhone");
-    let got = labels(&ed);
+    let got = menu_labels(&ed);
     assert!(!got.contains(&"IPhone".to_string()), "{got:?}");
 }

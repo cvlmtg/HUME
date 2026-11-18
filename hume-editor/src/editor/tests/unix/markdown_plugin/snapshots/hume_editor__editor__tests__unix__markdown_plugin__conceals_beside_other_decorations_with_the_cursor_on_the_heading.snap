@@ -1,5 +1,5 @@
 ---
-source: hume-editor/src/editor/tests/unix/markdown_plugin.rs
+source: hume-editor/src/editor/tests/unix/markdown_plugin/mod.rs
 assertion_line: 1911
 expression: p.snapshot()
 ---

@@ -26,20 +26,6 @@ mod minibuf;
 mod render;
 mod sources;
 
-/// The ranked labels the open Insert-mode session would show, top 10.
-fn labels(ed: &Editor) -> Vec<String> {
-    ed.state
-        .input
-        .buffer_completion()
-        .map(|s| {
-            s.top(10, &ed.state.config.completion_sources)
-                .iter()
-                .map(|v| v["label"].as_str().unwrap().to_string())
-                .collect()
-        })
-        .unwrap_or_default()
-}
-
 /// The completion popup's picked row, `None` while a `:` line popup has
 /// nothing picked.
 fn picked_row(ed: &Editor) -> Option<usize> {
@@ -51,19 +37,13 @@ fn selected_row(ed: &Editor) -> usize {
     picked_row(ed).expect("a row is picked")
 }
 
-/// Ctrl-Space, then settle so the queued Steel source answers.
-fn trigger(ed: &mut Editor) {
-    ed.feed_key(key_ctrl(' '));
-    ed.settle();
-}
-
 /// `run`s `script`, enters Insert with a real `i`, triggers: the setup
 /// every Insert-mode test starts from, for a test whose own registration
 /// isn't [`insert_with_source`]'s default single-word-source shape.
 fn insert_with_script(ed: &mut Editor, tmp: &std::path::Path, script: &str) {
     run(ed, tmp, script);
     ed.feed_key(key('i'));
-    trigger(ed);
+    trigger_completion(ed);
 }
 
 /// [`insert_with_script`] over a `'word`-token source answering `items`

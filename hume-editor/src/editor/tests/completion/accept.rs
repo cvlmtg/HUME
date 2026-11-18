@@ -86,7 +86,7 @@ fn accept_with_no_text_edit_replaces_the_run_of_the_sources_token_chars() {
         ),
     );
     ed.feed_key(key('i'));
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     accept_via_steel(&mut ed);
     assert_eq!(ed.doc().text().to_string(), "foo-bar bar\n");
 }
@@ -646,7 +646,7 @@ fn accepting_consumes_each_cursors_own_word_run_not_a_uniform_count() {
             "",
         ),
     );
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     type_chars(&mut ed, "st");
     ed.feed_key(key_enter());
     assert_eq!(
@@ -683,7 +683,7 @@ fn accepting_a_server_text_edit_also_lands_at_every_cursor() {
             "",
         ),
     );
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     ed.feed_key(key_enter());
     assert_eq!(ed.doc().text().to_string(), "STD STD\n");
 }
@@ -718,7 +718,7 @@ fn a_non_resolve_sources_text_edit_decodes_character_as_a_char_count() {
             "",
         ),
     );
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     ed.feed_key(key_enter());
     assert_eq!(
         ed.doc().text().to_string(),
@@ -747,7 +747,7 @@ fn additional_text_edits_land_once_not_once_per_cursor() {
             "",
         ),
     );
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     ed.feed_key(key_enter());
     let text = ed.doc().text().to_string();
     assert_eq!(text, "// header\nstd std\n");
@@ -824,7 +824,7 @@ fn accepting_with_additional_text_edits_between_cursors_lands_correctly_at_both(
             "",
         ),
     );
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     ed.feed_key(key_enter());
     assert_eq!(ed.doc().text().to_string(), "std Hstd\n");
 }
@@ -888,7 +888,7 @@ fn token_remap_keeps_the_filter_correct_when_primary_is_not_the_first_cursor() {
     open_completion_session(&mut ed, &["stable", "xyz"]);
     type_chars(&mut ed, "st");
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["stable"],
         "ranked against exactly what was typed at the primary"
     );

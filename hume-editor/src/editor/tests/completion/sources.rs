@@ -21,7 +21,7 @@ fn ctrl_space_invokes_a_registered_source_and_shows_its_answer() {
                  (hash "label" "third" "sortText" "c"))"#,
     );
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["first", "second", "third"],
         "with an empty token, items rank by sortText ascending"
     );
@@ -98,7 +98,7 @@ fn typing_a_token_char_keeps_the_menu_open_and_narrows_it() {
     for ch in "foo-ba".chars() {
         ed.feed_key(key(ch));
     }
-    assert_eq!(labels(&ed), vec!["foo-bar", "foo-baz"]);
+    assert_eq!(menu_labels(&ed), vec!["foo-bar", "foo-baz"]);
 }
 
 /// An edit to another buffer, while the menu is open, shifts none of the
@@ -118,7 +118,7 @@ fn an_edit_to_another_buffer_leaves_the_open_menu_alone() {
     );
     type_chars(&mut ed, "fo");
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["fobaz", "foobar"],
         "setup: `fo` narrows the menu"
     );
@@ -141,7 +141,7 @@ fn an_edit_to_another_buffer_leaves_the_open_menu_alone() {
     assert_eq!(ed.state.buffers.get(other).text().to_string(), "zzzabc\n");
 
     ed.feed_key(key('o'));
-    assert_eq!(labels(&ed), vec!["foobar"]);
+    assert_eq!(menu_labels(&ed), vec!["foobar"]);
 }
 
 #[test]
@@ -163,7 +163,7 @@ fn ctrl_space_outside_insert_mode_only_reports() {
 fn ctrl_space_with_no_buffer_source_registered_reports() {
     let mut ed = editor_from("-[a]>bcdef\n");
     ed.feed_key(key('i'));
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     assert!(ed.state.input.buffer_completion().is_none());
     assert_eq!(status(&ed), "no completion sources for this buffer");
 }
@@ -182,7 +182,7 @@ fn a_word_token_seeds_the_filter_from_the_word_before_the_cursor() {
         &completion_labels(&["kitty_support", "AsMut", "f32"]),
     );
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["kitty_support"],
         "only the \"ki\" subsequence match survives the seeded filter"
     );
@@ -224,7 +224,7 @@ fn the_session_is_open_but_empty_until_the_source_answers() {
     assert!(session.is_pending());
     assert!(session.is_empty());
     ed.execute_keymap_command("answer", Count::UNTYPED, false);
-    assert_eq!(labels(&ed), vec!["late"]);
+    assert_eq!(menu_labels(&ed), vec!["late"]);
 }
 
 /// An answer for a superseded invocation (the source was called again
@@ -247,12 +247,15 @@ fn an_answer_to_a_superseded_invocation_is_dropped() {
            (define-command! "answer-second" "" (lambda ()
              (completion-emit! (car calls) (list (hash "label" "fresh")))))"#,
     );
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     ed.execute_keymap_command("answer-first", Count::UNTYPED, false);
     assert_eq!(status(&ed), "dropped");
-    assert!(labels(&ed).is_empty(), "the stale answer must not land");
+    assert!(
+        menu_labels(&ed).is_empty(),
+        "the stale answer must not land"
+    );
     ed.execute_keymap_command("answer-second", Count::UNTYPED, false);
-    assert_eq!(labels(&ed), vec!["fresh"]);
+    assert_eq!(menu_labels(&ed), vec!["fresh"]);
 }
 
 /// `#f` for the id is a stale id like any other: the answer is dropped
@@ -303,7 +306,7 @@ fn a_dropped_stale_answer_does_not_reset_the_selection() {
              (log! 'info (if (completion-emit! (car (reverse calls)) (list (hash "label" "OLD")))
                              "applied" "dropped"))))"#,
     );
-    assert_eq!(labels(&ed), vec!["foo", "fox"], "sanity");
+    assert_eq!(menu_labels(&ed), vec!["foo", "fox"], "sanity");
 
     // Typing narrows the token and, since the last answer was incomplete,
     // reinvokes the source, so the first invocation (`calls`'s oldest id) is
@@ -312,7 +315,7 @@ fn a_dropped_stale_answer_does_not_reset_the_selection() {
     ed.feed_key(key('f'));
     ed.settle();
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["foo", "fox"],
         "sanity: still both, narrowed to \"f\""
     );
@@ -355,7 +358,7 @@ fn a_landing_answer_resets_the_selection_to_row_zero() {
              (completion-emit! pending-id (list (hash "label" "zzz")))))"#,
     );
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["aaa", "abc"],
         "sanity: only source a has answered, b is still pending"
     );
@@ -366,7 +369,7 @@ fn a_landing_answer_resets_the_selection_to_row_zero() {
     // b's answer is a fresh, still-latest contribution, not stale.
     ed.execute_keymap_command("answer-b", Count::UNTYPED, false);
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["zzz", "aaa", "abc"],
         "sanity: b's higher-priority item now ranks first"
     );
@@ -405,7 +408,7 @@ fn an_unrelated_error_leaves_a_buffer_request_waiting() {
         "sanity: the timer raised"
     );
     ed.execute_keymap_command("late", Count::UNTYPED, false);
-    assert_eq!(labels(&ed), vec!["late"]);
+    assert_eq!(menu_labels(&ed), vec!["late"]);
 }
 
 /// A final answer closes its request: a second one for the same id is
@@ -428,7 +431,7 @@ fn a_second_final_answer_to_a_request_is_dropped() {
     );
     ed.execute_keymap_command("again", Count::UNTYPED, false);
     assert_eq!(status(&ed), "dropped");
-    assert_eq!(labels(&ed), vec!["x", "y"]);
+    assert_eq!(menu_labels(&ed), vec!["x", "y"]);
 }
 
 #[test]
@@ -468,7 +471,7 @@ fn a_malformed_item_is_skipped_with_a_trace_and_the_rest_survive() {
         tmp.path(),
         r#"(list (json-parse "[{\"label\": \"good\"}, {\"kind\": 1}]"))"#,
     );
-    assert_eq!(labels(&ed), vec!["good"]);
+    assert_eq!(menu_labels(&ed), vec!["good"]);
     assert!(
         ed.state
             .message_log
@@ -533,7 +536,7 @@ fn a_complete_source_is_not_reinvoked_on_typing() {
     ed.execute_keymap_command("report", Count::UNTYPED, false);
     assert_eq!(status(&ed), "1");
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["foobar"],
         "re-ranked locally against \"f\""
     );
@@ -572,7 +575,7 @@ fn a_raising_source_is_not_retried_on_every_keystroke() {
         "sanity: the trigger's own batch failed once"
     );
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["foo"],
         "the working source's answer survives"
     );
@@ -687,7 +690,7 @@ fn completion_emit_decodes_a_mixed_items_list() {
                        (json-parse "{\"items\": [{\"label\": \"listed\"}]}"))))
              #:target 'buffer)"#,
     );
-    let mut got = labels(&ed);
+    let mut got = menu_labels(&ed);
     got.sort();
     assert_eq!(got, vec!["arrayed", "hashed", "listed", "plain"]);
 }
@@ -730,7 +733,7 @@ fn a_span_from_a_buffer_source_is_refused() {
                (completion-emit! id (list "plain") #:span (hash 'start-char 0 'end-char 0)))
              #:target 'buffer)"#,
     );
-    assert!(labels(&ed).is_empty());
+    assert!(menu_labels(&ed).is_empty());
     assert!(
         ed.state
             .message_log
@@ -758,7 +761,7 @@ fn a_buffer_source_may_answer_in_parts() {
            (define-command! "last" "" (lambda ()
              (completion-emit! saved (list "plain" "plainer"))))"#,
     );
-    assert_eq!(labels(&ed), vec!["plain"]);
+    assert_eq!(menu_labels(&ed), vec!["plain"]);
     let pending = |ed: &Editor| {
         ed.state
             .input
@@ -767,7 +770,7 @@ fn a_buffer_source_may_answer_in_parts() {
     };
     assert!(pending(&ed));
     ed.execute_keymap_command("last", Count::UNTYPED, false);
-    assert_eq!(labels(&ed), vec!["plain", "plainer"]);
+    assert_eq!(menu_labels(&ed), vec!["plain", "plainer"]);
     assert!(!pending(&ed));
 }
 
@@ -785,7 +788,7 @@ fn a_prefix_from_a_buffer_source_is_refused() {
                (completion-emit! id (list "plain") #:prefix "pl"))
              #:target 'buffer)"#,
     );
-    assert!(labels(&ed).is_empty());
+    assert!(menu_labels(&ed).is_empty());
     assert!(
         ed.state
             .message_log
@@ -817,7 +820,7 @@ fn a_reinvoked_source_keeps_its_rows_until_the_new_answer_lands() {
     let session = ed.state.input.buffer_completion().expect("still open");
     assert!(session.is_pending(), "the second call is in flight");
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["foo"],
         "the first answer, narrowed to \"f\""
     );
@@ -877,7 +880,7 @@ fn two_sources_rank_together_by_score() {
             r#"(list (hash "label" "rnorm" "sortText" "z"))"#,
         ),
     );
-    assert_eq!(labels(&ed), vec!["rnorm", "random"]);
+    assert_eq!(menu_labels(&ed), vec!["rnorm", "random"]);
 }
 
 /// Priority is a tiebreaker applied *before* sortText: on a score tie the
@@ -895,7 +898,7 @@ fn priority_breaks_a_score_tie_before_sort_text() {
             r#"(list (hash "label" "zzz"))"#,
         ),
     );
-    assert_eq!(labels(&ed), vec!["zzz", "aaa"]);
+    assert_eq!(menu_labels(&ed), vec!["zzz", "aaa"]);
 }
 
 #[test]
@@ -949,12 +952,12 @@ fn a_trigger_char_reinvokes_only_its_own_source_into_the_open_session() {
            ;; two apply in emission order rather than racing each other.
            (set-completion-triggers! "rust" "dot" (list #\.))"#,
     );
-    assert_eq!(labels(&ed), vec!["dot1", "other"]);
+    assert_eq!(menu_labels(&ed), vec!["dot1", "other"]);
 
     ed.feed_key(key('.'));
     ed.settle();
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["dot2"],
         "the dot source answered afresh at the new cursor; \"other\"'s token would \
          hold \".\", so its answer is dropped"
@@ -991,8 +994,8 @@ fn ctrl_space_with_the_menu_up_reinvokes_and_keeps_the_session() {
     let mut ed = editor_from("-[a]>bcdef\n");
     insert_with_script(&mut ed, tmp.path(), &counting_source("#f"));
     ed.feed_key(key_tab());
-    trigger(&mut ed);
-    assert_eq!(labels(&ed), vec!["foobar"]);
+    trigger_completion(&mut ed);
+    assert_eq!(menu_labels(&ed), vec!["foobar"]);
     ed.execute_keymap_command("report", Count::UNTYPED, false);
     assert_eq!(status(&ed), "2");
     assert_eq!(selected_row(&ed), 0, "a fresh layer starts at row 0");
@@ -1013,7 +1016,7 @@ fn re_registering_a_name_replaces_the_source() {
             completion_source("test", &completion_labels(&["new"]), ""),
         ),
     );
-    assert_eq!(labels(&ed), vec!["new"]);
+    assert_eq!(menu_labels(&ed), vec!["new"]);
 }
 
 /// A Steel `'buffer` source registered under `"path"` (the same name the
@@ -1292,7 +1295,7 @@ fn accepting_cancels_the_calls_still_in_flight() {
             completion_source("words", r#"(list (hash "label" "foo"))"#, "")
         ),
     );
-    assert_eq!(labels(&ed), ["foo"]);
+    assert_eq!(menu_labels(&ed), ["foo"]);
     ed.feed_key(key_enter());
     ed.settle();
     assert_eq!(ed.doc().text().to_string(), "foo\n");

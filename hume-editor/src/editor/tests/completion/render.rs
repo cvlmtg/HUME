@@ -224,7 +224,7 @@ fn doc_box_flips_left_of_a_menu_near_the_right_edge() {
     );
     ed.feed_key(key('i'));
     type_chars(&mut ed, &format!("{} ", "x".repeat(40)));
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
 
     frame(&mut ed, 60, 8);
     let (rect, _) = doc_box(&ed).expect("doc box showing");
@@ -496,7 +496,7 @@ fn doc_box_fences_detail_in_the_buffers_language() {
     ed.set_buffer_language_explicit(bid, Some(rust), hume_core::ConfigOrigin::User)
         .expect_open();
     ed.feed_key(key('i'));
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
 
     frame(&mut ed, 60, 10);
     let view = ed.state.views.completion_doc.read();

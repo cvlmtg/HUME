@@ -172,7 +172,7 @@ fn typing_narrows_the_ranked_items() {
     ed.feed_key(key('i'));
     open_completion_session(&mut ed, &["foo", "foobar", "grape"]);
     ed.feed_key(key('g'));
-    assert_eq!(labels(&ed), vec!["grape"]);
+    assert_eq!(menu_labels(&ed), vec!["grape"]);
 }
 
 /// Typing resets the selection to row 0: the previous index has no
@@ -307,7 +307,7 @@ fn backspace_within_the_token_refilters_and_keeps_the_session_open() {
 
     ed.feed_key(key_backspace());
     assert!(ed.state.input.buffer_completion().is_some());
-    assert_eq!(labels(&ed), vec!["grape"], "back down to \"g\"");
+    assert_eq!(menu_labels(&ed), vec!["grape"], "back down to \"g\"");
 }
 
 /// With the cursor exactly at the token's start, Backspace deletes the char
@@ -343,12 +343,16 @@ fn backspace_within_a_seeded_prefix_narrows_instead_of_dismissing() {
     ed.feed_key(key('i'));
     type_chars(&mut ed, "fo");
     open_completion_session(&mut ed, &["foo", "bar"]);
-    assert_eq!(labels(&ed), vec!["foo"], "sanity: seeded \"fo\" narrows");
+    assert_eq!(
+        menu_labels(&ed),
+        vec!["foo"],
+        "sanity: seeded \"fo\" narrows"
+    );
 
     ed.feed_key(key_backspace());
 
     assert!(ed.state.input.buffer_completion().is_some());
-    assert_eq!(labels(&ed), vec!["foo"], "back down to \"f\"");
+    assert_eq!(menu_labels(&ed), vec!["foo"], "back down to \"f\"");
     assert_eq!(ed.doc().text().to_string(), "f\n");
 }
 
@@ -366,7 +370,7 @@ fn backspace_on_the_tokens_first_char_keeps_the_session() {
         "the token is now empty but not crossed"
     );
     assert_eq!(
-        labels(&ed),
+        menu_labels(&ed),
         vec!["bar", "foo"],
         "an empty token shows everything"
     );
@@ -517,7 +521,7 @@ fn typing_into_an_empty_token_narrows_the_list() {
 
     type_chars(&mut ed, "gr");
 
-    assert_eq!(labels(&ed), vec!["grape", "grid"]);
+    assert_eq!(menu_labels(&ed), vec!["grape", "grid"]);
 }
 
 /// A character outside the token's class typed at its end leaves the token.
@@ -658,7 +662,7 @@ fn an_edit_above_the_token_from_a_script_keeps_the_session_and_shifts_its_token(
     ed.settle();
 
     ed.feed_key(key('i'));
-    trigger(&mut ed);
+    trigger_completion(&mut ed);
     assert!(ed.state.input.buffer_completion().is_some(), "sanity");
 
     ed.execute_keymap_command("corrupt", Count::UNTYPED, false);

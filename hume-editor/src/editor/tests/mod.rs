@@ -784,6 +784,27 @@ fn completion_source(name: &str, items: &str, extra: &str) -> String {
     )
 }
 
+/// The ranked labels the open Insert-mode completion menu would show, top
+/// 20.
+fn menu_labels(ed: &Editor) -> Vec<String> {
+    ed.state
+        .input
+        .buffer_completion()
+        .map(|s| {
+            s.top(20, &ed.state.config.completion_sources)
+                .iter()
+                .map(|v| v["label"].as_str().unwrap().to_string())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Ctrl-Space, then settle so the queued Steel source answers.
+fn trigger_completion(ed: &mut Editor) {
+    ed.feed_key(key_ctrl(' '));
+    ed.settle();
+}
+
 /// `(list (hash "label" "a") (hash "label" "b") …)` for `labels`.
 fn completion_labels(labels: &[&str]) -> String {
     let items: Vec<String> = labels
