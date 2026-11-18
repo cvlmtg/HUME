@@ -1,6 +1,6 @@
 ;;; core:colorizer — names.scm. See README.md.
 
-(provide colorizer/names colorizer/shortest-name colorizer/longest-name)
+(provide colorizer/names colorizer/longest-name)
 
 (define colorizer/names
   (hash
@@ -152,9 +152,6 @@
     "whitesmoke" "f5f5f5"
     "yellow" "ffff00"
     "yellowgreen" "9acd32"))
-
-(define colorizer/shortest-name
-  (apply min (map string-length (hash-keys->list colorizer/names))))
 
 (define colorizer/longest-name
   (apply max (map string-length (hash-keys->list colorizer/names))))

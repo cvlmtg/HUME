@@ -55,8 +55,9 @@ Each line is scanned on its own: a literal, a name and a call all start and end 
 `string-matches` finds the candidates on a line in one native pass, with a pattern
 `scan.scm` compiles once at load: a `#`, a key of the functions table directly followed by `(`, and, for a
 `'named-languages` buffer, one more with every key of the names table. A line with no
-candidate is done. Otherwise the line becomes one `string->list`, walked once from its start,
-and each candidate is read where the walk reaches its offset, the char before it included, by
+candidate is done. Otherwise the line becomes one `string->list`, walked once from its start
+with `list-tail` from one candidate's offset to the next, which skips the chars between in one
+native call. Each candidate is read where the walk reaches its offset, the char before it included, by
 the same rules a walk from the line start applies (below). A candidate that starts inside the last painted piece is skipped,
 so the next candidate read is the next char a walk from the line start would reach.
 `string-ref` is never used: it walks the string from its start on each call.
@@ -197,7 +198,7 @@ so every render styles colors new to the session and the next frame re-bakes the
 
 The default of `'max-render-chars`, 7,100, bounds what dense text costs. Prose costs little
 per char, since only its candidates are read in Steel: every `screen_<n>` render at 200x60
-takes about 1 ms on the efficiency cores
+takes under 1 ms on the efficiency cores
 (`taskpolicy -c background cargo bench -p hume-editor --bench colorizer`). Minified CSS has
 a candidate every few chars, so it costs the most per char: one minified line takes 10.7 ms
 at 4,000 chars and 21.5 ms at 8,000, and the `long_lines` render, which spends the whole

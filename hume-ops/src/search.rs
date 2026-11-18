@@ -6,13 +6,14 @@
 //! # Coordinate system
 //!
 //! `regex-cursor` operates on byte offsets; HUME's selection model uses
-//! grapheme clusters. A match converts through `BufferText::covering_bytes`: its bytes
+//! grapheme clusters. A match converts through `ClusterRange::covering_bytes`: its bytes
 //! become chars, and the chars widen to the clusters that hold them, so a
 //! pattern matching a lone combining mark selects the whole cluster it sits
 //! in.
 
+use regex_cursor::regex_automata::Match;
 use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
-use ropey::RopeSlice;
+use ropey::{Rope, RopeSlice};
 
 use hume_editing::selection::{Facing, Selection, SelectionView};
 use hume_editing::state::EditState;
@@ -234,13 +235,17 @@ pub fn find_matches_in_range(
 /// Return all non-overlapping regex matches in the string `text`, in order,
 /// as cluster ranges of `text` as given, with no final line break added and
 /// its `\r`s kept. Zero-width matches are skipped.
+///
+/// The search reads `text` itself, and the matches widen against a rope
+/// built only once one is found: a rope of one chunk would count chars from
+/// the start of `text` for every match.
 pub fn find_all_str_matches(text: &str, regex: &Regex) -> Vec<ClusterRange> {
-    let slice = RopeSlice::from(text);
-    disjoint(
-        regex
-            .find_iter(Input::new(text))
-            .filter_map(|m| ClusterRange::covering_bytes(slice, m.range())),
-    )
+    let mut found = regex.find_iter(Input::new(text)).peekable();
+    if found.peek().is_none() {
+        return Vec::new();
+    }
+    let rope = Rope::from_str(text);
+    disjoint(found, rope.slice(..), 0)
 }
 
 /// The matches in `chars`, searched as a text of its own, as cluster ranges
@@ -250,22 +255,31 @@ fn matches_in(
     regex: &Regex,
     chars: ExclusiveRange<CharOffset>,
 ) -> Vec<ClusterRange> {
-    let start_byte = text.char_to_byte(chars.start);
     let input = Input::new(RopeyCursor::new(text.slice(chars)));
     disjoint(
-        regex
-            .find_iter(input)
-            .filter_map(|m| text.covering_bytes(start_byte + m.start()..start_byte + m.end())),
+        regex.find_iter(input),
+        text.full_slice(),
+        text.char_to_byte(chars.start),
     )
 }
 
-/// `ranges`, matches widened to clusters in match order, without any that
-/// overlaps the one kept before it. Two matches that widen to the same
-/// cluster (a base char and its combining mark matched apart) keep only the
-/// first, so the list stays sorted and non-overlapping.
-fn disjoint(ranges: impl Iterator<Item = ClusterRange>) -> Vec<ClusterRange> {
+/// `found`, matches at bytes `start_byte` on in `whole`, widened to clusters
+/// in match order, without any that is empty or overlaps the one kept
+/// before it. Two matches that widen to the same cluster (a base char and its
+/// combining mark matched apart) keep only the first, so the list stays
+/// sorted and non-overlapping.
+fn disjoint(
+    found: impl Iterator<Item = Match>,
+    whole: RopeSlice<'_>,
+    start_byte: usize,
+) -> Vec<ClusterRange> {
     let mut matches: Vec<ClusterRange> = Vec::new();
-    for range in ranges {
+    for m in found {
+        let Some(range) =
+            ClusterRange::covering_bytes(whole, start_byte + m.start()..start_byte + m.end())
+        else {
+            continue;
+        };
         if matches
             .last()
             .is_none_or(|prev| prev.end() <= ClusterBound::from(range.start()))

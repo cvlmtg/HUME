@@ -1,27 +1,25 @@
 use super::*;
+use crate::builtins::args::{list_items, pair_fields};
+use crate::testing::test_support::str_val;
 
 fn compiled(pattern: &str) -> ArgRegex {
-    let re = regex(pattern.into_steelval().unwrap()).expect("regex must compile");
+    let re = regex(str_val(pattern)).expect("regex must compile");
     ArgRegex::from_steelval(&re).expect("regex returns a regex value")
 }
 
 /// The `(start . end)` pairs `string-matches` returns for `pattern` on `text`.
 fn matches(text: &str, pattern: &str) -> Vec<(isize, isize)> {
-    let SteelVal::ListV(list) = string_matches(text.into_steelval().unwrap(), compiled(pattern))
-        .expect("string-matches must succeed")
-    else {
-        panic!("expected a list");
-    };
-    list.into_iter()
-        .map(|v| {
-            let SteelVal::Pair(pair) = &v else {
-                panic!("expected a pair, got {v:?}");
-            };
-            match (pair.car(), pair.cdr()) {
+    let list =
+        string_matches(str_val(text), compiled(pattern)).expect("string-matches must succeed");
+    list_items(list, "string-matches")
+        .expect("expected a list")
+        .into_iter()
+        .map(
+            |v| match pair_fields(v, "string-matches", "a pair").expect("expected a pair") {
                 (SteelVal::IntV(start), SteelVal::IntV(end)) => (start, end),
                 other => panic!("expected two integers, got {other:?}"),
-            }
-        })
+            },
+        )
         .collect()
 }
 
@@ -84,14 +82,14 @@ fn the_verbatim_flag_matches_literally() {
 
 #[test]
 fn a_regex_prints_its_pattern() {
-    let re = regex("v/a.b".into_steelval().unwrap()).unwrap();
+    let re = regex(str_val("v/a.b")).unwrap();
     assert_eq!(re.to_string(), "#<regex \"v/a.b\">");
 }
 
 #[test]
 fn an_invalid_or_empty_pattern_raises() {
     for pattern in ["(", "", "v/"] {
-        let err = regex(pattern.into_steelval().unwrap()).unwrap_err();
+        let err = regex(str_val(pattern)).unwrap_err();
         assert!(
             err.to_string()
                 .contains(&format!("{pattern:?} is not a valid search pattern")),
@@ -117,9 +115,7 @@ fn a_non_string_pattern_raises() {
 
 #[test]
 fn a_value_that_is_not_a_regex_is_refused() {
-    let err = ArgRegex::from_steelval(&"ab".into_steelval().unwrap())
-        .err()
-        .unwrap();
+    let err = ArgRegex::from_steelval(&str_val("ab")).err().unwrap();
     assert!(
         err.to_string().contains("expected a regex, got"),
         "got: {err}"

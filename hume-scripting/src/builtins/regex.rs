@@ -15,7 +15,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::{Custom, FromSteelVal, IntoSteelVal as _, SteelVal};
 
 use super::SteelResult;
-use super::args::{string_arg, string_ref_arg};
+use super::args::{cons_pair, list_of, string_arg, string_ref_arg};
 use super::errors::generic_err;
 
 /// The Steel value `(regex pattern)` returns.
@@ -73,13 +73,13 @@ pub(crate) fn string_matches(text: SteelVal, re: ArgRegex) -> SteelResult {
         .into_iter()
         .map(|range| {
             let chars = range.chars();
-            steel::primitives::lists::cons(
-                &mut SteelVal::IntV(chars.start.index() as isize),
-                &mut SteelVal::IntV(chars.end.index() as isize),
+            cons_pair(
+                SteelVal::IntV(chars.start.index() as isize),
+                SteelVal::IntV(chars.end.index() as isize),
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
-    pairs.into_steelval()
+    Ok(list_of(pairs))
 }
 
 #[cfg(test)]

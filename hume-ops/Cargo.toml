@@ -16,7 +16,7 @@ hume-editing = { path = "../hume-editing" }
 hume-core = { path = "../hume-core" }
 hume-rope = { path = "../hume-rope" }
 ropey.workspace = true
-regex-cursor = "0.1.5"
+regex-cursor.workspace = true
 regex-syntax = "0.8"
 unicode-segmentation.workspace = true
 rustc-hash.workspace = true

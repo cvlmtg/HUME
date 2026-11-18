@@ -46,6 +46,7 @@ codegen-units = 1
 
 [workspace.dependencies]
 ropey = { version = "1.6.1", default-features = false, features = ["simd"] }
+regex-cursor = "0.1.5"
 unicode-segmentation = "1.13.2"
 unicode-width = "0.2"
 bitflags = "2"
