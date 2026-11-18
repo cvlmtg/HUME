@@ -74,15 +74,17 @@ pub struct HeaderLines {
     count: usize,
 }
 
-impl HeaderLines {
-    pub fn as_slice(&self) -> &[ContentLine] {
+impl std::ops::Deref for HeaderLines {
+    type Target = [ContentLine];
+
+    fn deref(&self) -> &[ContentLine] {
         &self.lines[..self.count]
     }
 }
 
 impl PartialEq for HeaderLines {
     fn eq(&self, other: &Self) -> bool {
-        self.as_slice() == other.as_slice()
+        self[..] == other[..]
     }
 }
 
@@ -178,18 +180,13 @@ impl PaneRows {
     }
 
     /// The line each header row draws, top row first.
-    pub fn headers(&self) -> &[ContentLine] {
-        self.headers.as_slice()
-    }
-
-    /// [`Self::headers`] as a value to keep past these rows.
-    pub fn header_lines(&self) -> HeaderLines {
-        self.headers
+    pub fn headers(&self) -> &HeaderLines {
+        &self.headers
     }
 
     /// The display line drawn on the first row below the header rows.
     pub fn body_top(&self, dlm: &mut DisplayLineMap<'_>) -> DisplayLinePos {
-        dlm.advance_saturating(self.top, self.headers.count as isize)
+        dlm.advance_saturating(self.top, self.headers.len() as isize)
     }
 
     /// What pane row `row` shows.
@@ -204,7 +201,7 @@ impl PaneRows {
     /// past the pane's last row, or under a header row.
     pub fn row_of(&self, dlm: &mut DisplayLineMap<'_>, pos: DisplayLinePos) -> Option<usize> {
         dlm.distance(self.top, pos, self.height - 1)
-            .filter(|&row| row >= self.headers.count)
+            .filter(|&row| row >= self.headers.len())
     }
 }
 

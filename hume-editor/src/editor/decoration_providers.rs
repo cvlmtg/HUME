@@ -124,7 +124,7 @@ impl Editor {
                 let header_chars = rows
                     .iter()
                     .filter(|(row_pid, _)| *row_pid == pid)
-                    .flat_map(|(_, settled)| settled.rows.headers())
+                    .flat_map(|(_, settled)| settled.rows.headers().iter())
                     .filter(|&&line| !lines.contains(line))
                     .map(|&line| text.lines().range(line).chars())
                     .collect();

@@ -325,7 +325,7 @@ impl ShownLines {
     ) -> Self {
         Self {
             visible: pane_visible_range(dlm, viewport, height, content_lines),
-            headers: rows.map(PaneRows::header_lines).unwrap_or_default(),
+            headers: rows.map(|rows| *rows.headers()).unwrap_or_default(),
         }
     }
 
@@ -334,7 +334,6 @@ impl ShownLines {
         &self,
     ) -> impl Iterator<Item = ExclusiveRange<ContentLine>> + '_ {
         self.headers
-            .as_slice()
             .iter()
             .map(|&line| InclusiveRange::new(line, line).to_exclusive())
     }

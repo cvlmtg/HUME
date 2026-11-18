@@ -255,7 +255,7 @@ pub(crate) fn render_pane(
         ..compose_ctx
     };
     let header_bg = pane_ctx.theme.ui().context.bg;
-    for (header_row, &header) in (0u16..).zip(rows.headers()) {
+    for (header_row, &header) in (0u16..).zip(rows.headers().iter()) {
         let line = enter_line(header, last_content_line, header_providers, pane_ctx, style);
         let rendered = crate::style::style_unselected_line(
             &mut header_dlm,

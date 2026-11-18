@@ -164,7 +164,10 @@ fn a_line_under_several_header_rows_is_queried_once() {
         settings: SHOWN,
     };
     let rows = rows_of(&mut dlm, top(4), 24, inputs);
-    assert_eq!(rows.headers(), [ContentLine::new(0), ContentLine::new(1)]);
+    assert_eq!(
+        rows.headers()[..],
+        [ContentLine::new(0), ContentLine::new(1)]
+    );
     assert_eq!(table.header_queries(), 1);
 }
 
@@ -196,7 +199,10 @@ fn rows_map_header_rows_to_their_lines_and_the_rest_to_display_lines() {
     let rows = rows_of(&mut dlm, top(4), 5, inputs);
     let at = |line: usize, slot: usize| DisplayLinePos::new(ContentLine::new(line), slot);
 
-    assert_eq!(rows.headers(), [ContentLine::new(0), ContentLine::new(1)]);
+    assert_eq!(
+        rows.headers()[..],
+        [ContentLine::new(0), ContentLine::new(1)]
+    );
     assert_eq!(rows.body_top(&mut dlm), at(4, 2));
     assert_eq!(
         (0..5)
@@ -230,12 +236,12 @@ fn disabled_or_sourceless_yields_nothing() {
         source: Some(&table),
         settings: ContextSettings::OFF,
     };
-    assert_eq!(rows_of(&mut dlm, top(5), 24, disabled).headers(), []);
+    assert_eq!(rows_of(&mut dlm, top(5), 24, disabled).headers()[..], []);
     let sourceless = ScopeHeaderInputs {
         source: None,
         settings: SHOWN,
     };
-    assert_eq!(rows_of(&mut dlm, top(5), 24, sourceless).headers(), []);
+    assert_eq!(rows_of(&mut dlm, top(5), 24, sourceless).headers()[..], []);
 }
 
 #[test]
@@ -259,7 +265,7 @@ fn a_header_line_a_fold_hides_is_not_shown() {
         settings: SHOWN,
     };
     let rows = rows_of(&mut dlm, top(11), 24, inputs);
-    assert_eq!(rows.headers(), [ContentLine::new(0)]);
+    assert_eq!(rows.headers()[..], [ContentLine::new(0)]);
 }
 
 /// A HIGHLIGHT and INLINE source that tints bytes 0..1 of every line with
