@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.22.0] - 2026-11-18
+
 ### Breaking changes
 - `buffer-search` takes a pattern compiled with `regex` instead of a string: write `(buffer-search pane (regex "foo"))`.
 - `on-viewport-change` handlers take a third argument, the lines the pane's scope headers show: write `(lambda (pane range headers) ...)`.
