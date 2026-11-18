@@ -522,7 +522,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
     let mut host = ScriptingHost::for_testing(&Dirs::none());
     // Captures the hook's own `(first . end)` payload so the assertion
     // compares two independently-reached values, not the builtin against
-    // itself. Both paths share `geometry::pane_visible_range`, so this
+    // itself. Both paths share `geometry::ShownLines::read`, so this
     // pins that they stay in sync, not just that the builtin returns
     // *something*.
     eval_with_real_host(

@@ -144,8 +144,8 @@ panes' scope header rows, as given. Both queries take the list as
 several ranges reach it, such as a table or a code block two panes both show part of. The
 lines between two panes far apart are not fetched, and lines outside every range are drawn
 raw until a render covers them. The line above a range is in it so that a table ending
-just above a pane's first shown line comes back: the empty line after it, at the top of
-the pane, carries that table's bottom border (see [Tables](#tables)). A header line opens a
+just above a pane's first shown line comes back: the empty line after it, on the pane's
+first row below its scope headers, carries that table's bottom border (see [Tables](#tables)). A header line opens a
 scope, so it is never the empty line a border is drawn on, and the line above it is not
 fetched.
 

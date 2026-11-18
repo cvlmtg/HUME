@@ -717,6 +717,33 @@ fn buffer_viewport_ranges_join_header_lines_across_panes() {
     );
 }
 
+/// With `fn b` as the top line, header row 1 draws that line itself:
+/// `viewport-range` starts at the line on the first row below the header
+/// rows, so it holds neither header line.
+#[test]
+fn viewport_range_starts_on_the_first_body_row() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let pid = ed.view.focused_pane();
+    wheel_down(&mut ed, pid, 34);
+    let drawn = drawn_lines(&mut ed, pid, 3);
+    assert_eq!(
+        drawn[..2],
+        [0, top_line(&ed, pid)],
+        "premise: header row 1 draws the top line"
+    );
+
+    assert_eq!(
+        log_probe(
+            &mut ed,
+            tmp.path(),
+            r#"(number->string (hash-ref (viewport-range bid) 'start-line))"#
+        ),
+        drawn[2].to_string()
+    );
+}
+
 #[test]
 fn pane_of_height_one_shows_no_header() {
     let source = nested_markdown(3);
@@ -989,18 +1016,22 @@ fn on_viewport_change_hands_the_header_lines_to_its_handler() {
     );
 }
 
-/// Turning headers on over a scrolled pane adds header rows over the same
-/// body lines, and that alone fires `on-viewport-change` again.
+/// With more scopes than header rows, `context-outer-level` swaps which
+/// header the rows keep over the same body lines, and that alone fires
+/// `on-viewport-change` again.
 #[test]
 fn on_viewport_change_fires_when_only_the_header_rows_change() {
     let tmp = tempfile::tempdir().unwrap();
-    let source = two_fn_impl();
-    let mut ed = rust_context_editor(&source);
+    let mut ed = markdown_context_editor(&nested_markdown(4));
     ed.state.settings.hook_viewport_debounce_ms = 0;
-    run_set(&mut ed, "buffer context-enabled=false").expect("the setting applies");
     let pid = ed.view.focused_pane();
-    seek_to_line(&mut ed, 20);
-    wheel_down(&mut ed, pid, 10);
+    seek_to_line(&mut ed, 40);
+    ed.render_to_buf(VIEW);
+    assert_eq!(
+        drawn_lines(&mut ed, pid, 3),
+        [1, 2, 3],
+        "premise: the inner three headers"
+    );
     run(
         &mut ed,
         tmp.path(),
@@ -1022,15 +1053,15 @@ fn on_viewport_change_fires_when_only_the_header_rows_change() {
     let body = crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid).visible;
     let before = fires(&mut ed);
 
-    run_set(&mut ed, "buffer context-enabled=true").expect("the setting applies");
+    run_set(&mut ed, "buffer context-outer-level=true").expect("the setting applies");
     ed.render_to_buf(VIEW);
     ed.drain_async_sources();
     ed.settle();
 
     assert_eq!(
-        drawn_lines(&mut ed, pid, 2),
-        [0, 1],
-        "premise: two header rows"
+        drawn_lines(&mut ed, pid, 3),
+        [0, 2, 3],
+        "premise: the outer header kept"
     );
     assert_eq!(
         crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid).visible,

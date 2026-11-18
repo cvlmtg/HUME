@@ -1334,9 +1334,9 @@ fn the_empty_line_between_two_tables_at_the_window_top_carries_the_upper_tables_
     let bid = p.open("a.md", &text);
     let pid = p.ed.view.focused_pane();
     // `z k` puts the cursor line on the first row below the pinned header
-    // row, which covers the line above it.
+    // row.
     run_set(&mut p.ed, "global scroll-margin=0").expect("the setting applies");
-    seek_to_line(&mut p.ed, SHARED + 1);
+    seek_to_line(&mut p.ed, SHARED);
     keys(&mut p.ed, "zk");
     p.render();
     assert_eq!(

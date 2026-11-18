@@ -278,36 +278,21 @@ impl EditorState {
     }
 }
 
-/// The lines `viewport` shows on `dlm`'s layout in a pane of `height` rows,
-/// end-exclusive, so the hook payload and `(viewport-range bid)` agree: every
-/// line with a row on screen, one cut off at the bottom edge or shown only by
-/// its virtual lines included, and the lines a fold hides under a shown fold
-/// head. A plugin provides a line's virtual lines while the line is in range,
-/// so a line still showing one must stay in it.
-///
-/// Never points past the buffer's last *content* line (not ropey's phantom
-/// line past the structural trailing `\n`). A `height == 0` pane still
-/// reports its top line rather than an empty range.
-pub(in crate::editor) fn pane_visible_range(
-    dlm: &mut DisplayLineMap<'_>,
-    viewport: &mut Viewport,
-    height: usize,
-    content_lines: hume_rope::line::ContentLineCount,
-) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
-    let top = viewport.top_at(dlm);
-    let bottom = super::frame::visible_bottom(dlm, top, height);
-    let end_line = dlm
-        .hidden()
-        .line_after_shown(bottom.line, 1)
-        .min(content_lines.end_exclusive());
-    hume_rope::offset::ExclusiveRange::new(top.line, end_line)
-}
-
 /// What a pane shows: the lines of its body and of its scope header rows.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(in crate::editor) struct ShownLines {
-    /// The body's lines, as [`pane_visible_range`] gives them: what
-    /// `(viewport-range pane)` returns.
+    /// The body's lines, end-exclusive, what `(viewport-range pane)`
+    /// returns: from the line on the first row below the header rows to the
+    /// last line with a row on screen, one cut off at the bottom edge or
+    /// shown only by its virtual lines included, and the lines a fold hides
+    /// under a shown fold head. A plugin provides a line's virtual lines
+    /// while the line is in range, so a line still showing one must stay in
+    /// it. Each header line sits above the line its row would show, so no
+    /// header line is in this pane's range.
+    ///
+    /// Never points past the buffer's last *content* line (not ropey's
+    /// phantom line past the structural trailing `\n`). A `height == 0` pane
+    /// still reports its top line rather than an empty range.
     pub(in crate::editor) visible: ExclusiveRange<ContentLine>,
     /// The line each header row draws, top row first.
     pub(in crate::editor) headers: HeaderLines,
@@ -323,8 +308,15 @@ impl ShownLines {
         content_lines: hume_rope::line::ContentLineCount,
         rows: Option<&PaneRows>,
     ) -> Self {
+        let top = viewport.top_at(dlm);
+        let body_top = rows.map_or(top, |rows| rows.body_top(dlm));
+        let bottom = super::frame::visible_bottom(dlm, top, height);
+        let end_line = dlm
+            .hidden()
+            .line_after_shown(bottom.line, 1)
+            .min(content_lines.end_exclusive());
         Self {
-            visible: pane_visible_range(dlm, viewport, height, content_lines),
+            visible: ExclusiveRange::new(body_top.line, end_line),
             headers: rows.map(|rows| *rows.headers()).unwrap_or_default(),
         }
     }

@@ -77,7 +77,7 @@ impl Editor {
     /// `lines` counts one buffer line per row from the top plus one more row,
     /// skipping the lines a closed fold hides, and `chars` spans the same
     /// lines. The stores these fill are what lays the pane out, so the exact
-    /// range `geometry::pane_visible_range` reads from that layout is not
+    /// range `geometry::ShownLines::read` reads from that layout is not
     /// known yet. Both are end-exclusive.
     ///
     /// `rows` are the rows the reveal that just ran settled, from which the

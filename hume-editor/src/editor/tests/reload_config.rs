@@ -1191,7 +1191,7 @@ fn resync_refires_diagnostics_changed_for_a_crashed_servers_surviving_cache() {
 /// The exact `(first, end)` bounds this hook reports are covered separately
 /// by `viewport_range_matches_the_on_viewport_change_hooks_own_computation`
 /// (`lsp_introspect.rs`); this test is about the resync replay's fan-out
-/// across panes, not `pane_visible_range`'s own math.
+/// across panes, not `ShownLines::read`'s own math.
 #[test]
 fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
     let tmp = tempfile::tempdir().unwrap();
