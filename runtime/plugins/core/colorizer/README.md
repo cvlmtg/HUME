@@ -49,8 +49,9 @@ tables and each buffer's line table grow through.
 A render reads `(buffer-viewport-ranges pane)`, the lines every pane on the buffer shows:
 its `'ranges`, already sorted and with overlapping or touching ranges joined, and its
 `'headers`, the lines scope header rows show in ranges of the same shape, sorted in among
-them. Each range is read with one `buffer-lines #:range`. The char offset of each line is the previous line's plus its
-`string-length` plus one, starting at `line->char-offset` of the range's first line.
+them. Each range is read with one `buffer-lines #:range`. The char offset of each line is
+the previous line's plus its `string-length` plus one, starting at `line->char-offset` of
+the range's first line.
 
 Each line is scanned on its own: a literal, a name and a call all start and end on one line.
 `string-matches` finds the candidates on a line in one native pass, with a pattern

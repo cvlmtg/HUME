@@ -152,8 +152,8 @@ pub trait BufferHost {
     /// unknown.
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<UndoNode>>;
 
-    /// The content lines visible in `pane`'s pane, for
-    /// `(viewport-range pane)` (0-based, end-exclusive). A pane on a
+    /// The content lines `pane`'s pane shows below its scope header rows,
+    /// for `(viewport-range pane)` (0-based, end-exclusive). A pane on a
     /// background tab answers too, with the lines it shows once that tab is
     /// focused again: its size follows the terminal, and its view follows
     /// its cursor.

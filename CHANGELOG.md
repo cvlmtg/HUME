@@ -26,7 +26,7 @@
 - `set-conceals!` hides part of a line or draws other text in its place.
 - `syntax-captures` returns the nodes a tree-sitter query captures in a buffer.
 - The `on-syntax-changed` hook runs after a buffer's syntax tree is parsed.
-- `buffer-viewport-ranges` returns the lines every pane on a buffer shows, and those its scope headers show apart, and `lsp-cancel!` cancels a pending request filed under a `#:supersede` key.
+- `buffer-viewport-ranges` returns the lines every pane on a buffer shows, with the lines its scope headers show as a separate list, and `lsp-cancel!` cancels a pending request filed under a `#:supersede` key.
 - `stdlib/lsp-batch` sends several language server requests as one batch and calls back once all have answered.
 - `regex` compiles a search pattern once, and `string-matches` returns every place it matches in a string.
 - A grammar's `folds.scm` can use `#trim!` and `#not-has-parent?`, its `textobjects.scm` `#make-range!` and `#offset!`, and its `context.scm` `#make-range!`.
@@ -46,7 +46,7 @@
 - Formatting several selections waits for every range and reports the first failing one in selection order.
 - Elm no longer folds parenthesized calls, and MoonBit's function and parameter text objects select the right text.
 - A plugin naming more distinct scopes than a session can hold gets an error instead of drawing text in the wrong colors.
-- `viewport-range`, `buffer-viewport-ranges` and the `on-viewport-change` hook name only the lines on screen, so plugins skip the lines below the bottom edge with wrapping on and the lines under the scope headers.
+- `viewport-range`, `buffer-viewport-ranges` and the `on-viewport-change` hook name only the lines on screen, so plugins skip the lines below the bottom edge with wrapping on and the lines the scope header rows cover.
 - `diff-buffer-lines` works inside a drawer's or picker's `#:render` and a popup formatter.
 
 ## [0.21.0] - 2026-11-12

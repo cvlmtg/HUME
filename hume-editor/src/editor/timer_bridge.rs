@@ -16,8 +16,8 @@ use hume_core::TimerId;
 
 /// What firing a `TimerId` actually does: a Steel closure (the `after!`
 /// builtin) or a native Rust action (the viewport-change debounce, which has no Steel
-/// closure to call: the fire site always reads the *current* visible range,
-/// not whatever it was when the timer was scheduled; likewise the
+/// closure to call: the fire site always reads the lines the pane shows *now*,
+/// not whatever they were when the timer was scheduled; likewise the
 /// diagnostics-pull debounce, which pulls for the buffer as it is when it
 /// fires).
 pub(super) enum TimerPayload {

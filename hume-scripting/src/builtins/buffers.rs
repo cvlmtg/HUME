@@ -661,9 +661,9 @@ pub(crate) fn line_to_char_offset(ctx: &mut SteelCtx, bid: BufferId, line: usize
     ))
 }
 
-/// `(viewport-range pane)` → `(hash 'start-line first-line 'end-line end-line)` visible in
-/// `pane`'s own pane: 0-based, end-exclusive, matching `buffer-lines`'
-/// range convention. Raises when `pane` carries no pane, a closed one, or
+/// `(viewport-range pane)` → `(hash 'start-line first-line 'end-line end-line)` of the
+/// lines `pane`'s own pane shows below its scope header rows: 0-based,
+/// end-exclusive, matching `buffer-lines`' range convention. Raises when `pane` carries no pane, a closed one, or
 /// one that no longer shows `pane`'s buffer. Answers for a background-tab
 /// pane too, with the lines it shows once that tab is focused. Reads live
 /// view state, which only exists at command dispatch, hook fire, or a

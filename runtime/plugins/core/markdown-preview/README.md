@@ -139,15 +139,14 @@ Each render replaces the plugin's three sources (`"markdown-preview"` for concea
 backgrounds and extra highlights) as a whole, for every pane on the buffer. So it covers
 the lines `(buffer-viewport-ranges pane)` gives at once: each of its `'ranges`, starting
 one line above the first line it names, and each of its `'headers`, the lines of the
-panes' scope header rows, as given. Both queries take the list as
-`#:ranges`, and `syntax-captures` returns a match once even when
-several ranges reach it, such as a table or a code block two panes both show part of. The
-lines between two panes far apart are not fetched, and lines outside every range are drawn
-raw until a render covers them. The line above a range is in it so that a table ending
-just above a pane's first shown line comes back: the empty line after it, on the pane's
-first row below its scope headers, carries that table's bottom border (see [Tables](#tables)). A header line opens a
-scope, so it is never the empty line a border is drawn on, and the line above it is not
-fetched.
+panes' scope header rows, as given. Both queries take the list as `#:ranges`, and
+`syntax-captures` returns a match once even when several ranges reach it, such as a table
+or a code block two panes both show part of. The lines between two panes far apart are not
+fetched, and lines outside every range are drawn raw until a render covers them. The line
+above a range is in it so that a table ending just above a pane's first shown line comes
+back: the empty line after it, on the pane's first row below its scope headers, carries
+that table's bottom border (see [Tables](#tables)). A header line opens a scope, so it is
+never the empty line a border is drawn on, and the line above it is not fetched.
 
 The per-buffer state, a render's line memo and the tables the block elements fill grow
 through `md-preview/box-insert!`, which empties the box before its `hash-insert`. Steel

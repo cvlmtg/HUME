@@ -1,5 +1,5 @@
 //! A pane's geometry between and during frames: the screen layout, each
-//! pane's size, gutter and content widths, its visible line range, and the
+//! pane's size, gutter and content widths, the lines it shows, and the
 //! layout key whose change reveals the cursor.
 
 use hume_core::{BufferId, PaneId};
