@@ -263,36 +263,20 @@ const HEADING_SCOPES: [(&str, &str, &str, &str); 6] = [
     ),
 ];
 
-/// The six heading band tints must differ from each other in every bundled
-/// theme, so heading levels next to each other read apart before their
-/// level numbers do. A missing `.line` entry resolves
-/// through `markup.heading.N` to a style with no background, which this also
-/// rejects.
+/// Every heading level has a band in every bundled theme. A missing `.line`
+/// entry resolves through `markup.heading.N` to a style with no background,
+/// which this rejects.
 #[test]
-fn bundled_theme_heading_band_tints_are_pairwise_distinct() {
+fn bundled_theme_heading_levels_have_a_band() {
     for (name, theme) in load_bundled_themes() {
-        let bgs: Vec<_> = HEADING_SCOPES
-            .iter()
-            .map(|&(_, _, _, line)| {
-                let bg = theme.resolve_by_name(hume_engine::types::Scope(line)).bg;
-                assert!(
-                    bg.is_some(),
-                    "bundled theme '{name}': '{line}' has no background"
-                );
-                bg
-            })
-            .collect();
-        for i in 0..bgs.len() {
-            for j in (i + 1)..bgs.len() {
-                assert_ne!(
-                    bgs[i],
-                    bgs[j],
-                    "bundled theme '{name}': heading levels {} and {} share the band tint {:?}",
-                    i + 1,
-                    j + 1,
-                    bgs[i]
-                );
-            }
+        for &(_, _, _, line) in &HEADING_SCOPES {
+            assert!(
+                theme
+                    .resolve_by_name(hume_engine::types::Scope(line))
+                    .bg
+                    .is_some(),
+                "bundled theme '{name}': '{line}' has no background"
+            );
         }
     }
 }

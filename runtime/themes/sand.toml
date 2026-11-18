@@ -5,7 +5,7 @@
 "ui.window.focused" = { fg = "sand" }
 "ui.popup" = { fg = "fg", bg = "surface" }
 "ui.popup.scroll" = { fg = "sand", bg = "surface" }
-"ui.context" = { bg = "surface" }
+"ui.context" = { bg = "context" }
 "ui.menu" = { fg = "fg", bg = "surface" }
 "ui.menu.selected" = { fg = "bright_fg", bg = "plum" }
 "ui.menu.scroll" = { fg = "sand", bg = "surface" }
@@ -29,7 +29,7 @@
 "ui.statusline.search" = { fg = "bg", bg = "muted", modifiers = [ "bold" ] }
 "ui.statusline.command" = { fg = "bg", bg = "green", modifiers = [ "bold" ] }
 "ui.statusline.sift" = { fg = "bg", bg = "blue", modifiers = [ "bold" ] }
-"ui.tabline" = { fg = "muted", bg = "surface" }
+"ui.tabline" = { fg = "muted", bg = "context" }
 "ui.tabline.active" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
 "ui.virtual" = { fg = "muted" }
 "ui.virtual.whitespace" = { fg = "surface" }
@@ -155,31 +155,32 @@
 # HUME's markdown preview: heading level, heading text, heading band and code-block band.
 "markup.heading.1.marker" = { fg = "sand" }
 "markup.heading.1.text" = { fg = "sand", modifiers = [ "bold" ] }
-"markup.heading.1.line" = { bg = "heading_1_bg" }
+"markup.heading.1.line" = { bg = "context" }
 "markup.heading.2.marker" = { fg = "sand" }
 "markup.heading.2.text" = { fg = "sand", modifiers = [ "bold" ] }
-"markup.heading.2.line" = { bg = "heading_2_bg" }
+"markup.heading.2.line" = { bg = "context" }
 "markup.heading.3.marker" = { fg = "sand" }
 "markup.heading.3.text" = { fg = "sand", modifiers = [ "bold" ] }
-"markup.heading.3.line" = { bg = "heading_3_bg" }
+"markup.heading.3.line" = { bg = "context" }
 "markup.heading.4.marker" = { fg = "sand" }
 "markup.heading.4.text" = { fg = "sand", modifiers = [ "bold" ] }
-"markup.heading.4.line" = { bg = "heading_4_bg" }
+"markup.heading.4.line" = { bg = "context" }
 "markup.heading.5.marker" = { fg = "sand" }
 "markup.heading.5.text" = { fg = "sand", modifiers = [ "bold" ] }
-"markup.heading.5.line" = { bg = "heading_5_bg" }
+"markup.heading.5.line" = { bg = "context" }
 "markup.heading.6.marker" = { fg = "muted" }
 "markup.heading.6.text" = { fg = "muted", modifiers = [ "bold" ] }
-"markup.heading.6.line" = { bg = "heading_6_bg" }
+"markup.heading.6.line" = { bg = "context" }
 "markup.raw.block.line" = { bg = "code_block_bg" }
 
 [palette]
 "bg" = "#140e0a"
-"surface" = "#2d211a"
+"context" = "#2D211A"
+"surface" = "#3C2E20"
 "fg" = "#F4EADC"
-"muted" = "#907A5D"
+"muted" = "#927C5F"
 "sand" = "#D4A373"
-"plum" = "#ad7ca8"
+"plum" = "#AD7CA8"
 "dark_plum" = "#8B4B87"
 "red" = "#E5595A"
 "green" = "#94B36A"
@@ -191,10 +192,4 @@
 "diff_minus_bg" = "#351A17"
 "diff_minus_word_bg" = "#5F2927"
 "diff_delta_bg" = "#17283A"
-"heading_1_bg" = "#33261B"
-"heading_2_bg" = "#2F2319"
-"heading_3_bg" = "#2B2017"
-"heading_4_bg" = "#271D14"
-"heading_5_bg" = "#231A12"
-"heading_6_bg" = "#1B140F"
 "code_block_bg" = "#241D19"
