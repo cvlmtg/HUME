@@ -6,7 +6,8 @@
 //! renderer about which display line a position is on.
 
 use hume_engine::display_lines::{DisplayColTarget, DisplayLineMap, DisplayLinePos};
-use hume_engine::pane::{ViewGeometry, Viewport};
+use hume_engine::pane::Viewport;
+use hume_engine::scope_headers::PaneRows;
 use hume_rope::cluster::ClusterStart;
 use hume_rope::column::DisplayLineCol;
 use hume_rope::line::ContentLine;
@@ -16,13 +17,13 @@ use hume_rope::line::ContentLine;
 /// `viewport.horizontal_offset`.
 ///
 /// `None` when the position is outside the viewport or under a header row of
-/// the view `geo` lays out. That is a steady state: the cursor occupies only
+/// `rows`. That is a steady state: the cursor occupies only
 /// content display lines, so a pure view scroll into a virtual-line block
 /// (an inline diff's ghost lines) can carry the viewport past where the
 /// cursor can follow. The caret stays hidden until a cursor motion resyncs
 /// the view.
 pub(in crate::editor) fn content_pos(
-    geo: ViewGeometry<'_>,
+    rows: &PaneRows,
     viewport: &mut Viewport,
     dlm: &mut DisplayLineMap<'_>,
     cursor: hume_rope::cluster::ClusterStart,
@@ -34,7 +35,7 @@ pub(in crate::editor) fn content_pos(
         // cursor and the scroll it drives move on.
         return None;
     }
-    let screen_row = geo.rows(dlm, viewport).row_of(dlm, cursor_pos)?;
+    let screen_row = rows.row_of(dlm, cursor_pos)?;
     Some(place(viewport, cursor_display_col, screen_row))
 }
 

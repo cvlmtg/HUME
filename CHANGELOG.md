@@ -47,7 +47,7 @@
 - Elm no longer folds parenthesized calls, and MoonBit's function and parameter text objects select the right text.
 - A plugin naming more distinct scopes than a session can hold gets an error instead of drawing text in the wrong colors.
 - `viewport-range`, `buffer-viewport-ranges` and the `on-viewport-change` hook name only the lines on screen, so plugins skip the lines below the bottom edge with wrapping on and the lines the scope header rows cover.
-- `diff-buffer-lines`, `lsp-position->char-offset` and `lsp-range->char-range` work inside a drawer's or picker's `#:render` and a popup formatter.
+- `diff-buffer-lines`, `lsp-document-params`, `lsp-position->char-offset` and `lsp-range->char-range` work inside a drawer's or picker's `#:render` and a popup formatter.
 
 ## [0.21.0] - 2026-11-12
 

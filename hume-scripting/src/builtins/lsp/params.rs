@@ -46,8 +46,7 @@ fn ranges_params_value(params: RangesParams) -> SteelVal {
 
 /// `(lsp-document-params pane)` → `{"textDocument" {"uri"}}` for the buffer
 /// `pane` names. Reads only the buffer, so a value with no pane works.
-pub(crate) fn lsp_document_params(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
-    require_cap(ctx.host.lsp())?;
+pub(crate) fn lsp_document_params(_ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     Ok(string_hash([(
         "textDocument",
         text_document(DocUri::new(bid)),

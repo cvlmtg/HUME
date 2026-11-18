@@ -334,7 +334,7 @@ impl ShownLines {
 
 /// The lines pane `pid` shows between frames, for `(viewport-range pane)`,
 /// `(buffer-viewport-ranges pane)` and the `OnViewportChange` payload, read
-/// from the settled view (`frame::settled_pane_view`).
+/// from the settled view (`frame::settled_pane_rows`).
 pub(in crate::editor) fn shown_lines(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -343,16 +343,13 @@ pub(in crate::editor) fn shown_lines(
     let size = state.pane_size(view, pid);
     let key = state.layout_key(view, pid, size);
     let doc = state.buffers.get(view.panes[pid].buffer_id());
-    let (mut dlm, viewport) = super::frame::settled_pane_view(
+    let (mut dlm, viewport, rows) = super::frame::settled_pane_rows(
         &state.buffers,
         &mut state.panes.entries,
         &mut view.panes,
         pid,
         &key,
     );
-    let rows = key
-        .geometry(doc.syntax_source())
-        .map(|geo| geo.rows(&mut dlm, viewport));
     ShownLines::read(
         &mut dlm,
         viewport,

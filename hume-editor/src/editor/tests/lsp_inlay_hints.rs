@@ -110,11 +110,12 @@ fn hint_arriving_this_frame_is_visible_to_the_scroll_step_that_places_the_cursor
     let Editor { state, view, .. } = &mut ed;
     let mut dlm =
         view.panes[pid].display_lines(state.buffers.get(bid).text().rope(), layout_key.inputs());
-    let geo = layout_key
+    let rows = layout_key
         .geometry(state.buffers.get(bid).syntax_source())
-        .expect("the pane has rows");
+        .expect("the pane has rows")
+        .rows(&mut dlm, &mut vp);
     assert_eq!(
-        crate::editor::cursor::content_pos(geo, &mut vp, &mut dlm, cursor_char),
+        crate::editor::cursor::content_pos(&rows, &mut vp, &mut dlm, cursor_char),
         Some((0, 2)),
         "scroll must have already accounted for the hint's extra display \
          line, placing the cursor at the last visible row rather than \

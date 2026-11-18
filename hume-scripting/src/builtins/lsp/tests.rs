@@ -1205,6 +1205,28 @@ fn position_params_hash_carries_a_doc_uri_and_a_doc_pos() {
     );
 }
 
+/// The params name only the buffer, so a host with no LSP (a drawer row
+/// renderer's) still gets them.
+#[test]
+fn lsp_document_params_answers_without_an_lsp_host() {
+    let mut h = SteelCtxTestHarness::new();
+    let mut ctx = h.ctx();
+    let params = lsp_document_params(&mut ctx, default_bid()).expect("params");
+    let SteelVal::HashMapV(map) = params else {
+        panic!("expected a hash");
+    };
+    let document = map
+        .get(&"textDocument".into_steelval().unwrap())
+        .expect("a textDocument key");
+    assert_eq!(
+        crate::json::steel_to_params(document).unwrap(),
+        crate::Params::Object(vec![(
+            "uri".to_string(),
+            crate::Params::Doc(crate::DocSpan::Uri(crate::DocUri::new(default_bid())))
+        )])
+    );
+}
+
 /// A hand-built position/range is rejected outright, before this builtin
 /// ever asks for the LSP host: a hashmap is not a handle at all,
 /// and a handle with `WireOrigin::Local` has no encoding to read. This is
@@ -1236,7 +1258,7 @@ fn lsp_position_to_char_offset_untagged_handle_errors() {
 #[test]
 fn lsp_reads_without_lsp_host_error() {
     type Call = fn(&mut SteelCtx) -> SteelResult;
-    let calls: [(&str, Call); 16] = [
+    let calls: [(&str, Call); 15] = [
         ("lsp-language-servers", |ctx| {
             lsp_language_servers(ctx, "rust".into_steelval().unwrap())
         }),
@@ -1263,9 +1285,6 @@ fn lsp_reads_without_lsp_host_error() {
         ("lsp-server-status", lsp_server_status),
         ("lsp-server-registered?", |ctx| {
             lsp_server_registered(ctx, "rust-analyzer".into_steelval().unwrap())
-        }),
-        ("lsp-document-params", |ctx| {
-            lsp_document_params(ctx, default_bid())
         }),
         ("lsp-position-params", |ctx| {
             lsp_position_params(ctx, default_shown())

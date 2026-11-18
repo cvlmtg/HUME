@@ -935,9 +935,9 @@ impl EditorState {
 /// something changed elsewhere in the buffer it shows.
 ///
 /// Every frame runs it per pane, [`Editor::settle_views`] before each input,
-/// [`settled_pane_view`] and [`settle_pane`] before a read between frames,
-/// and a view move runs it after moving the view, so `parked` describes the
-/// view the move left.
+/// [`settled_pane_view`], [`settled_pane_rows`] and [`settle_pane`] before a
+/// read between frames, and a view move runs it after moving the view, so
+/// `parked` describes the view the move left.
 pub(in crate::editor) fn reveal_due_cursor(
     buffers: &BufferStore,
     entries: &mut PaneEntries,
@@ -980,8 +980,30 @@ pub(in crate::editor) fn settled_pane_view<'a>(
     pid: PaneId,
     layout_key: &LayoutKey,
 ) -> (DisplayLineMap<'a>, &'a mut Viewport) {
-    let (pane, rope) = settled(buffers, entries, panes, pid, layout_key);
-    pane.display_lines_and_viewport(rope, layout_key.inputs())
+    let (pane, doc, _) = settled(buffers, entries, panes, pid, layout_key);
+    pane.display_lines_and_viewport(doc.text().rope(), layout_key.inputs())
+}
+
+/// [`settled_pane_view`] with the rows of the settled view, `None` for a
+/// pane with no rows: those the reveal laid out when [`settle`] ran one,
+/// else walked from the settled top.
+#[allow(clippy::disallowed_methods)] // settled first
+pub(in crate::editor) fn settled_pane_rows<'a>(
+    buffers: &'a BufferStore,
+    entries: &mut PaneEntries,
+    panes: &'a mut PanePool,
+    pid: PaneId,
+    layout_key: &LayoutKey,
+) -> (DisplayLineMap<'a>, &'a mut Viewport, Option<PaneRows>) {
+    let (pane, doc, revealed) = settled(buffers, entries, panes, pid, layout_key);
+    let (mut dlm, viewport) =
+        pane.display_lines_and_viewport(doc.text().rope(), layout_key.inputs());
+    let rows = revealed.map(|settled| settled.rows).or_else(|| {
+        layout_key
+            .geometry(doc.syntax_source())
+            .map(|geo| geo.rows(&mut dlm, viewport))
+    });
+    (dlm, viewport, rows)
 }
 
 /// [`settled_pane_view`] with the pane's raw layout beside the drawn one,
@@ -994,22 +1016,23 @@ pub(in crate::editor) fn settled_view_layouts<'a>(
     pid: PaneId,
     layout_key: &LayoutKey,
 ) -> ViewLayouts<'a> {
-    let (pane, rope) = settled(buffers, entries, panes, pid, layout_key);
-    pane.view_layouts(rope, layout_key.inputs())
+    let (pane, doc, _) = settled(buffers, entries, panes, pid, layout_key);
+    pane.view_layouts(doc.text().rope(), layout_key.inputs())
 }
 
-/// Pane `pid` and the text it shows, after [`settle`].
+/// Pane `pid` and the buffer it shows after [`settle`], with what
+/// [`settle`] returned.
 fn settled<'a>(
     buffers: &'a BufferStore,
     entries: &mut PaneEntries,
     panes: &'a mut PanePool,
     pid: PaneId,
     layout_key: &LayoutKey,
-) -> (&'a mut Pane, &'a ropey::Rope) {
-    settle(buffers, entries, panes, pid, layout_key);
+) -> (&'a mut Pane, &'a Buffer, Option<SettledPane>) {
+    let revealed = settle(buffers, entries, panes, pid, layout_key);
     let pane = &mut panes[pid];
-    let rope = buffers.get(pane.buffer_id()).text().rope();
-    (pane, rope)
+    let doc = buffers.get(pane.buffer_id());
+    (pane, doc, revealed)
 }
 
 /// [`settled_pane_view`] for a reader that wants no display lines back:
@@ -1029,17 +1052,19 @@ pub(in crate::editor) fn settle_pane(state: &mut EditorState, view: &mut EngineV
 }
 
 /// Run [`reveal_due_cursor`] on pane `pid` unless its view is already
-/// settled for `layout_key`.
+/// settled for `layout_key`, returning the view the reveal settled. `None`
+/// when the view was settled already or the pane has no rows.
 fn settle(
     buffers: &BufferStore,
     entries: &mut PaneEntries,
     panes: &mut PanePool,
     pid: PaneId,
     layout_key: &LayoutKey,
-) {
-    if !view_settled(entries, panes, pid, layout_key) {
-        reveal_due_cursor(buffers, entries, panes, pid, layout_key);
+) -> Option<SettledPane> {
+    if view_settled(entries, panes, pid, layout_key) {
+        return None;
     }
+    reveal_due_cursor(buffers, entries, panes, pid, layout_key)
 }
 
 /// Whether nothing [`reveal_due_cursor`] reads for pane `pid` has changed

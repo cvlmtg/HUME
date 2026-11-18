@@ -58,7 +58,7 @@ pub(in crate::editor) fn focused_cursor(ed: &Editor) -> ClusterStart {
 /// moves the cursor or the viewport. That saves re-walking the display-line
 /// list (a full per-line format in wrap mode). A key handler measuring a box
 /// between frames passes `None`, and the walk settles the view first
-/// (`frame::settled_pane_view`).
+/// (`frame::settled_pane_rows`).
 ///
 /// `screen` is the frame's layout, or [`EditorState::screen_layout`] for a
 /// key handler, so a band opened or closed since the last frame counts.
@@ -78,19 +78,17 @@ pub(in crate::editor) fn popup_placement(
         _ => {
             // Every read of `ed` the map needs resolves before the pane
             // is borrowed mutably; the viewport comes back out of
-            // `settled_pane_view`'s own split rather than being held across it.
+            // `settled_pane_rows`'s own split rather than being held across it.
             let key = ed.state.layout_key(&ed.view, focused, size);
             let Editor { state, view, .. } = ed;
-            let doc = state.buffers.get(view.panes[focused].buffer_id());
-            let (mut dlm, vp) = crate::editor::frame::settled_pane_view(
+            let (mut dlm, vp, rows) = crate::editor::frame::settled_pane_rows(
                 &state.buffers,
                 &mut state.panes.entries,
                 &mut view.panes,
                 focused,
                 &key,
             );
-            let geo = key.geometry(doc.syntax_source())?;
-            super::super::cursor::content_pos(geo, vp, &mut dlm, anchor)?
+            super::super::cursor::content_pos(&rows?, vp, &mut dlm, anchor)?
         }
     };
     let screen = super::super::mouse::content_pos_to_screen(

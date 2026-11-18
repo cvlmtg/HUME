@@ -73,10 +73,11 @@ fn content_pos_agrees_with_the_actual_render_for_a_top_line_before_block() {
     let mut dlm =
         view.panes[pid].display_lines(state.buffers.get(bid).text().rope(), layout_key.inputs());
 
-    let geo = layout_key
+    let rows = layout_key
         .geometry(state.buffers.get(bid).syntax_source())
-        .expect("the pane has rows");
-    let pos = crate::editor::cursor::content_pos(geo, &mut vp, &mut dlm, cursor_char);
+        .expect("the pane has rows")
+        .rows(&mut dlm, &mut vp);
+    let pos = crate::editor::cursor::content_pos(&rows, &mut vp, &mut dlm, cursor_char);
     assert_eq!(
         pos.map(|(_, row)| row),
         Some(1),
@@ -562,11 +563,13 @@ fn content_pos_counts_an_inline_hints_extra_wrap_display_line() {
     let Editor { state, view, .. } = &mut ed;
     let mut dlm =
         view.panes[pid].display_lines(state.buffers.get(bid).text().rope(), layout_key.inputs());
-    let geo = layout_key
+    let rows = layout_key
         .geometry(state.buffers.get(bid).syntax_source())
-        .expect("the pane has rows");
+        .expect("the pane has rows")
+        .rows(&mut dlm, &mut vp);
     assert_eq!(
-        crate::editor::cursor::content_pos(geo, &mut vp, &mut dlm, cursor_char).map(|(_, row)| row),
+        crate::editor::cursor::content_pos(&rows, &mut vp, &mut dlm, cursor_char)
+            .map(|(_, row)| row),
         Some(2),
         "content_pos must count the hint's extra display line, as the renderer does"
     );

@@ -186,17 +186,14 @@ pub(super) fn drawn_rows(ed: &mut Editor, pid: PaneId, n: u16) -> Vec<DrawnRow> 
     let rope = state.buffers.get(bid).text().rope();
     let mut rows: Vec<Result<DrawnRow, ContentLine>> = Vec::new();
     {
-        let (mut dlm, viewport) = crate::editor::frame::settled_pane_view(
+        let (mut dlm, _, pane_rows) = crate::editor::frame::settled_pane_rows(
             &state.buffers,
             &mut state.panes.entries,
             &mut view.panes,
             pid,
             &layout_key,
         );
-        let geo = layout_key
-            .geometry(state.buffers.get(bid).syntax_source())
-            .expect("the pane has rows");
-        let pane_rows = geo.rows(&mut dlm, viewport);
+        let pane_rows = pane_rows.expect("the pane has rows");
         for y in 0..n {
             rows.push(match pane_rows.row_at(&mut dlm, y) {
                 PaneRow::Body(pos) => Ok(read_row(pos.line, dlm.render_display_line(pos))),
