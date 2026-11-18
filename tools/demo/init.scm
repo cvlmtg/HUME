@@ -1,7 +1,7 @@
 ;;; HUME demo config, passed with --config by tools/demo/record.sh
 
 (load-plugin! "core:stdlib")
-(load-plugin! "core:markdown-preview")
+(load-plugin! "core:markdown")
 (load-plugin! "core:pickers")
 (load-plugin! "core:lsp" #:config (hash 'inlay-hints #t))
 (load-plugin! "core:undotree")

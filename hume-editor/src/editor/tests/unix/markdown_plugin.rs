@@ -1,4 +1,4 @@
-// core:markdown-preview: end-to-end plugin tests.
+// core:markdown: end-to-end plugin tests.
 //
 // Loads the real plugin from the repo's `runtime/` tree onto a full-chrome
 // editor holding the markdown and markdown.inline grammar fixtures, opens a
@@ -81,9 +81,7 @@ fn preview_with(config: Option<&str>, inline: bool) -> Preview {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        &format!(
-            "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:markdown-preview\"{config})"
-        ),
+        &format!("(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:markdown\"{config})"),
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -1591,7 +1589,7 @@ fn toggle_off_clears_every_source_and_on_renders_again() {
     p.ed.settle();
     assert!(p.is_blank(bid));
 
-    call(&mut p.ed, "markdown-preview/toggle");
+    call(&mut p.ed, "markdown/toggle-preview");
     p.ed.settle();
     assert_eq!(p.conceals(bid), conceals);
     assert_eq!(p.bands(bid), bands);
@@ -1688,7 +1686,7 @@ fn missing_grammar_warns_once_naming_the_install_command() {
 
 #[test]
 fn enabled_false_renders_nothing_until_toggled() {
-    let mut p = preview_with(Some("(hash 'enabled #f)"), true);
+    let mut p = preview_with(Some("(hash 'preview #f)"), true);
     let bid = p.open("a.md", ELEMENTS);
     p.render();
     assert!(p.is_blank(bid));

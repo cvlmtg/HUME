@@ -22,7 +22,7 @@ plugin-authoring API (not core-specific), see
 | [`pickers`](pickers/README.md) | Fuzzy file/buffer/git pickers | eager | `stdlib` |
 | [`git-diff`](git-diff/README.md) | Inline git diff decorations | lazy | `stdlib` |
 | [`undotree`](undotree/README.md) | Undo history graph in the drawer | lazy | none (draws a revision diff when `git-diff` is loaded) |
-| [`markdown-preview`](markdown-preview/README.md) | Markdown drawn without its syntax | lazy | `stdlib` |
+| [`markdown`](markdown/README.md) | Markdown drawn without its syntax | lazy | `stdlib` |
 | [`colorizer`](colorizer/README.md) | Color literals painted with their color | lazy | `stdlib` |
 | [`buffer-words`](buffer-words/README.md) | Buffer-text completion source | eager | `stdlib` |
 | [`vim-keybind`](vim-keybind/README.md) | Vim muscle-memory keys | eager | `stdlib` |

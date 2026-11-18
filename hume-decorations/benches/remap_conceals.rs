@@ -24,7 +24,7 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 const LINES: usize = 5_000;
 const LINE: &str = "**bold** words and *it* here\n";
 
-/// Lines of two conceals each that match the 86 conceals `core:markdown-preview`
+/// Lines of two conceals each that match the 86 conceals `core:markdown`
 /// sets for an 80x25 pane at the top of `hume-editor`'s Markdown bench sample.
 const VIEWPORT_LINES: usize = 43;
 

@@ -1,4 +1,4 @@
-;;; core:markdown-preview — blocks.scm. See README.md.
+;;; core:markdown — blocks.scm. See README.md.
 
 (require "queries.scm")
 (require "state.scm")

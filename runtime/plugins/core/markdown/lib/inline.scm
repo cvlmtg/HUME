@@ -1,4 +1,4 @@
-;;; core:markdown-preview — inline.scm. See README.md.
+;;; core:markdown — inline.scm. See README.md.
 
 (require "queries.scm")
 (require "entities.scm")
@@ -14,7 +14,7 @@
 
 (define (md-preview/innermost stack fits?)
   (cond
-    [(null? stack) (error "markdown-preview: an inline capture outside its construct")]
+    [(null? stack) (error "markdown: an inline capture outside its construct")]
     [(fits? (car stack)) (car stack)]
     [else (md-preview/innermost (cdr stack) fits?)]))
 
@@ -63,4 +63,4 @@
             [(equal? name "autolink") (next stack (md-preview/autolink c))]
             [(equal? name "escape") (next stack (md-preview/escape c))]
             [(equal? name "entity") (next stack (md-preview/entity c line-of line-info))]
-            [else (error (string-append "markdown-preview: unknown inline capture " name))])))))
+            [else (error (string-append "markdown: unknown inline capture " name))])))))

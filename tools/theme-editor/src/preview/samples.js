@@ -90,8 +90,8 @@ export const HTML_SAMPLE = {
   ],
 };
 
-// The Markdown buffer as `core:markdown-preview` draws it
-// (`runtime/plugins/core/markdown-preview/`): lines a selection touches (9, 11)
+// The Markdown buffer as `core:markdown` draws it
+// (`runtime/plugins/core/markdown/`): lines a selection touches (9, 11)
 // show their source.
 export const MARKDOWN_SAMPLE = {
   name: "README.md",
