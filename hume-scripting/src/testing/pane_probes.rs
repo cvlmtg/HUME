@@ -19,7 +19,7 @@ const PANE_PROBES: &[&str] = &[
     "(buffer-char-count p)",
     "(buffer-lines p)",
     "(buffer-generation p)",
-    r#"(buffer-search p "x")"#,
+    r#"(buffer-search p (regex "x"))"#,
     r#"(word-search-pattern p "x")"#,
     "(buffer-undo-tree p)",
     "(buffer-panes p)",

@@ -5,6 +5,7 @@ use crate::testing::test_support::{SteelCtxTestHarness, default_bid, str_val, sy
 use hume_core::{
     BufferId, BufferOptionWrite, ConfigOrigin, OnUnsaved, OptionInput, ScopeStyleInput,
 };
+use regex_cursor::engines::meta::Regex;
 use steel::rvals::IntoSteelVal as _;
 
 /// `set-option!` is registered `open` (`builtins/mod.rs`): no eval-mode
@@ -388,12 +389,8 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         self.inner.buffer_generation(id)
     }
-    fn buffer_search(
-        &self,
-        id: BufferId,
-        pattern: &str,
-    ) -> Option<Result<Option<std::ops::Range<usize>>, String>> {
-        self.inner.buffer_search(id, pattern)
+    fn buffer_search(&self, id: BufferId, regex: &Regex) -> Option<Option<std::ops::Range<usize>>> {
+        self.inner.buffer_search(id, regex)
     }
     fn word_search_pattern(&self, id: BufferId, word: &str) -> Option<String> {
         self.inner.word_search_pattern(id, word)

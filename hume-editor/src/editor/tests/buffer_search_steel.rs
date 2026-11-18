@@ -1,4 +1,4 @@
-//! `(buffer-search pane pattern)` and `(word-search-pattern pane word)`.
+//! `(buffer-search pane re)` and `(word-search-pattern pane word)`.
 
 use super::*;
 use pretty_assertions::assert_eq;
@@ -29,7 +29,7 @@ fn first_match(initial: &str, pattern: &str) -> String {
         &mut ed,
         tmp.path(),
         &format!(
-            r#"(let ((m (buffer-search bid {pattern:?})))
+            r#"(let ((m (buffer-search bid (regex {pattern:?}))))
                  (and m (list (hash-ref m 'start-char) (hash-ref m 'end-char))))"#
         ),
     )
@@ -67,8 +67,8 @@ fn an_invalid_pattern_raises() {
     run(
         &mut ed,
         tmp.path(),
-        r#"(define-typed-command! "bad" "" (lambda (bid) (buffer-search bid "(")))
-           (define-typed-command! "empty" "" (lambda (bid) (buffer-search bid "")))"#,
+        r#"(define-typed-command! "bad" "" (lambda (bid) (buffer-search bid (regex "("))))
+           (define-typed-command! "empty" "" (lambda (bid) (buffer-search bid (regex ""))))"#,
     );
     type_cmd(&mut ed, ":bad");
     type_cmd(&mut ed, ":empty");
@@ -77,7 +77,26 @@ fn an_invalid_pattern_raises() {
     assert!(
         errors
             .iter()
-            .all(|e| e.contains("buffer-search") && e.contains("pattern")),
+            .all(|e| e.contains("regex: ") && e.contains("is not a valid search pattern")),
+        "got {errors:?}"
+    );
+}
+
+#[test]
+fn a_pattern_string_is_refused() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[a]>bc\n");
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define-typed-command! "string" "" (lambda (bid) (buffer-search bid "abc")))"#,
+    );
+    type_cmd(&mut ed, ":string");
+    let errors = error_log(&ed);
+    assert!(
+        errors
+            .iter()
+            .any(|e| e.contains("buffer-search: ") && e.contains("expected a regex")),
         "got {errors:?}"
     );
 }
@@ -94,7 +113,7 @@ fn a_search_changes_nothing() {
     let found = probe(
         &mut ed,
         tmp.path(),
-        r#"(hash-ref (buffer-search bid "abc") 'start-char)"#,
+        r#"(hash-ref (buffer-search bid (regex "abc")) 'start-char)"#,
     );
 
     assert_eq!(found, "0");
@@ -123,7 +142,7 @@ fn a_pane_less_value_searches_its_buffer() {
         &mut ed,
         tmp.path(),
         r#"(let ((hidden (car (filter (lambda (b) (not (equal? (buffer-key b) (buffer-key bid)))) (buffers)))))
-             (hash-ref (buffer-search hidden "needle") 'start-char))"#,
+             (hash-ref (buffer-search hidden (regex "needle")) 'start-char))"#,
     );
     assert_eq!(found, "4");
 }
@@ -143,7 +162,7 @@ fn a_word_pattern_finds_the_word_alone() {
         &mut ed,
         tmp.path(),
         r#"(define-typed-command! "found" "" (lambda (bid)
-             (log! 'info (to-string (hash-ref (buffer-search bid (word-search-pattern bid "foo")) 'start-char)))))"#,
+             (log! 'info (to-string (hash-ref (buffer-search bid (regex (word-search-pattern bid "foo"))) 'start-char)))))"#,
     );
     type_cmd(&mut ed, ":found");
     assert_eq!(ed.state.status_msg.text(), Some("7"));
@@ -162,7 +181,7 @@ fn a_word_pattern_follows_the_buffers_word_chars() {
         r#"(define-typed-command! "found" "" (lambda (bid)
              (set-buffer-option! bid "word-chars" "$")
              (log! 'info (to-string (list (word-search-pattern bid "$x")
-                                          (hash-ref (buffer-search bid (word-search-pattern bid "$x")) 'start-char))))))"#,
+                                          (hash-ref (buffer-search bid (regex (word-search-pattern bid "$x"))) 'start-char))))))"#,
     );
     type_cmd(&mut ed, ":found");
     assert_eq!(ed.state.status_msg.text(), Some(r#"("\\$x\\b" 2)"#));

@@ -23,6 +23,7 @@ pub(crate) mod keymap_bind;
 pub(crate) mod lsp;
 pub(crate) mod plugins;
 pub(crate) mod process;
+pub(crate) mod regex;
 pub(crate) mod registers;
 pub(crate) mod settings;
 pub(crate) mod syntax;
@@ -434,6 +435,8 @@ builtins! {
     plain "json-array?" json::is_json_array(val: SteelVal);
     plain "json-object?" json::is_json_object(val: SteelVal);
     // Context-free text transforms: no host/buffer needed.
+    plain "regex" regex::regex(pattern: SteelVal);
+    plain "string-matches" regex::string_matches(text: String, re: regex::ArgRegex);
     plain "split-words" words::split_words(line: SteelVal, word_chars: SteelVal);
     plain "string-common-prefix" words::string_common_prefix(strings: SteelVal);
     plain "string-fit" words::string_fit(s: SteelVal, cells: SteelVal, side: SteelVal);
@@ -517,7 +520,7 @@ builtins! {
     cmd "viewport-range" buffers::viewport_range(pane: args::ShownPane);
     cmd "buffer-viewport-ranges" buffers::buffer_viewport_ranges(pane: args::LiveBuffer);
     cmd "buffer-generation" buffers::buffer_generation(pane: args::LiveBuffer);
-    cmd "buffer-search" buffers::buffer_search(pane: args::LiveBuffer, pattern: String);
+    cmd "buffer-search" buffers::buffer_search(pane: args::LiveBuffer, re: regex::ArgRegex);
     cmd "word-search-pattern" buffers::word_search_pattern(pane: args::LiveBuffer, word: String);
     cmd "buffer-undo-tree" buffers::buffer_undo_tree(pane: args::LiveBuffer);
     cmd "buffer-live?" buffers::buffer_live(pane: args::ArgPane);

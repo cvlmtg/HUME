@@ -13,9 +13,9 @@ use crate::editor::buffer::offsets::checked_char_range;
 use crate::editor::buffer::{TextRefusal, ViewLabel};
 use crate::editor::commands::{CommandPane, FocusedPane, effective_word_chars, word_search_input};
 use crate::editor::jump_list::{JumpRule, with_jump};
-use crate::editor::search::SearchPattern;
 use hume_ops::search::{SearchDirection, find_next_match};
 use hume_scripting::host::{BufferHost, ShownHandle, StoredLanguage};
+use regex_cursor::engines::meta::Regex;
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -199,25 +199,13 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         Some(self.buffer(id)?.text().generation())
     }
 
-    fn buffer_search(
-        &self,
-        id: BufferId,
-        pattern: &str,
-    ) -> Option<Result<Option<std::ops::Range<usize>>, String>> {
+    fn buffer_search(&self, id: BufferId, regex: &Regex) -> Option<Option<std::ops::Range<usize>>> {
         let text = self.buffer(id)?.text();
-        let Some(search) = SearchPattern::compile(pattern) else {
-            return Some(Err(format!("{pattern:?} is not a valid search pattern")));
-        };
         let start = text.clusters().first().into();
-        Some(Ok(find_next_match(
-            text,
-            &search.regex,
-            start,
-            SearchDirection::Forward,
+        Some(
+            find_next_match(text, regex, start, SearchDirection::Forward)
+                .map(|(span, _)| span.start().offset().index()..span.end().offset().index()),
         )
-        .map(|(span, _)| {
-            span.start().offset().index()..span.end().offset().index()
-        })))
     }
 
     fn word_search_pattern(&self, id: BufferId, word: &str) -> Option<String> {

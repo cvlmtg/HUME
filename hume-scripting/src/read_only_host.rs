@@ -10,6 +10,7 @@ use hume_core::{
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
+use regex_cursor::engines::meta::Regex;
 
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
@@ -309,12 +310,8 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn buffer_generation(&self, id: BufferId) -> Option<u64> {
         self.inner.borrow_mut().buffers().buffer_generation(id)
     }
-    fn buffer_search(
-        &self,
-        id: BufferId,
-        pattern: &str,
-    ) -> Option<Result<Option<std::ops::Range<usize>>, String>> {
-        self.inner.borrow_mut().buffers().buffer_search(id, pattern)
+    fn buffer_search(&self, id: BufferId, regex: &Regex) -> Option<Option<std::ops::Range<usize>>> {
+        self.inner.borrow_mut().buffers().buffer_search(id, regex)
     }
     fn word_search_pattern(&self, id: BufferId, word: &str) -> Option<String> {
         self.inner

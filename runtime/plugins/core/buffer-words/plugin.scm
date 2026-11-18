@@ -96,7 +96,7 @@
   (let* ([head (string-ref w 0)]
          [twin (bw/case-twin w)]
          [form (if (and twin (not (equal? head (char-downcase head)))) twin w)])
-    (and (buffer-search pane (word-search-pattern pane form)) #t)))
+    (and (buffer-search pane (regex (word-search-pattern pane form))) #t)))
 
 ;;; `set` updated for `changes`: `set` itself when no word joins or leaves,
 ;;; `#f` when a restarted walk costs less — see README.md's "Updating after an edit".

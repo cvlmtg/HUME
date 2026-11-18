@@ -52,9 +52,19 @@ already sorted and with overlapping or touching ranges joined. Each range is rea
 `string-length` plus one, starting at `line->char-offset` of the range's first line.
 
 Each line is scanned on its own: a literal, a name and a call all start and end on one line.
-A line is walked once, as the list `string->list` gives, with char classes tested by
-`char->integer` comparisons. `string-ref` is never used: it walks the string from its start
-on each call.
+`string-matches` finds the candidates on a line in one native pass, with a pattern
+`scan.scm` compiles once at load: a `#`, a function name directly followed by `(`, and, for a
+`'named-languages` buffer, one more with every key of the names table. A line with no
+candidate is done. Otherwise the line becomes one `string->list`, and each candidate is read
+from `list-tail` at its offset, the char before it included, by the same rules a walk from the
+line start applies (below). A candidate that starts inside the last painted piece is skipped,
+so the next candidate read is the next char a walk from the line start would reach.
+`string-ref` is never used: it walks the string from its start on each call.
+
+A candidate never hides another literal. A `#` candidate is one char, and every char of the
+other candidates after their first is a letter or their final `(`, and a literal never starts
+at a letter after a letter. So a candidate the rules refuse leaves every later start to the
+next candidates.
 
 ### Render budget
 
@@ -185,17 +195,17 @@ CSS line of 500 to 16,000 chars, a minified line of the default budget on every 
 it has not walked. Its `scroll_render_then_frame` rows page down before each render instead,
 so every render styles colors new to the session and the next frame re-bakes the theme.
 
-The default of `'max-render-chars`, 7,100, is the chars a `screen_120/200x60` render walks,
-59 lines of 120 chars (7,080), rounded up to the hundred so that screen paints whole. 120 is
-the longest of the `screen_<n>` lines whose 200x60 render stays within one 16 ms frame on the
-efficiency cores (`taskpolicy -c background cargo bench -p hume-editor --bench colorizer`,
-the row at 12.7 ms; 160 took 16.2 ms). Longer lines lose the last lines shown. A char of
-minified CSS costs over twice a char of prose, so the `long_lines` rows, which spend the
-whole budget on minified CSS, are over a frame on the efficiency cores.
+The default of `'max-render-chars`, 7,100, bounds what dense text costs. Prose costs little
+per char, since only its candidates are read in Steel: every `screen_<n>` render at 200x60
+takes about 1 ms on the efficiency cores
+(`taskpolicy -c background cargo bench -p hume-editor --bench colorizer`). Minified CSS has
+a candidate every few chars, so it costs the most per char: one minified line takes 10.7 ms
+at 4,000 chars and 21.5 ms at 8,000, and the `long_lines` render, which spends the whole
+budget on it, takes 19 ms, just over one 16 ms frame. At the default, a 200x60 screen of lines
+up to 120 chars (7,080) paints whole, and a screen of longer lines loses its last lines.
 
-The scan walks the chars it claims in Steel, so a render grows with the chars it reads up to
-the budget. A call costs more than a literal, and an out-of-gamut `oklch()` the most, for its
-chroma search.
+A render's cost grows with the candidates it reads in Steel. A call costs more than a literal,
+and an out-of-gamut `oklch()` the most, for its chroma search.
 
 ## Design decisions
 

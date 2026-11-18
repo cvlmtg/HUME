@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Breaking changes
+- `buffer-search` takes a pattern compiled with `regex` instead of a string: write `(buffer-search pane (regex "foo"))`.
+
 ### Installation
 - Install on Arch Linux from the AUR: `paru -S hume`, a community-maintained package.
 
@@ -24,6 +27,7 @@
 - The `on-syntax-changed` hook runs after a buffer's syntax tree is parsed.
 - `buffer-viewport-ranges` returns the lines every pane on a buffer shows, and `lsp-cancel!` cancels a pending request filed under a `#:supersede` key.
 - `stdlib/lsp-batch` sends several language server requests as one batch and calls back once all have answered.
+- `regex` compiles a search pattern once, and `string-matches` returns every place it matches in a string.
 - A grammar's `folds.scm` can use `#trim!` and `#not-has-parent?`, its `textobjects.scm` `#make-range!` and `#offset!`, and its `context.scm` `#make-range!`.
 - `register-grammar!` takes a `#:locals` query file, and `highlights.scm` can use `#is? local` and `#is-not? local`.
 - A query pattern using a predicate or directive HUME doesn't apply is left out with a warning, as is an `injections.scm`, `textobjects.scm` or `indents.scm` that captures nothing.

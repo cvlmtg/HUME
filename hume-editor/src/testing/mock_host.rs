@@ -25,6 +25,7 @@ use hume_scripting::host::{
     BufferHost, Captures, CommandHolder, CommandHost, CursorHost, EditorHost, EventHost,
     LanguageHost, NativeCall, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage,
 };
+use regex_cursor::engines::meta::Regex;
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
 /// [`MockHost::dispatched_native`]'s own doc.
@@ -229,8 +230,8 @@ impl BufferHost for MockHost {
     fn buffer_search(
         &self,
         _id: BufferId,
-        _pattern: &str,
-    ) -> Option<Result<Option<std::ops::Range<usize>>, String>> {
+        _regex: &Regex,
+    ) -> Option<Option<std::ops::Range<usize>>> {
         None
     }
     fn word_search_pattern(&self, _id: BufferId, _word: &str) -> Option<String> {

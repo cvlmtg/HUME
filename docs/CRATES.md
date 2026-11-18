@@ -92,6 +92,7 @@ Rendering pipeline and pane geometry: the layout tree and its focused pane, fram
 - test-fixtures *(dev-only)*
 ### Used by
 - hume-editor
+- hume-scripting
 ## Description
 Named edit and motion commands, as pure functions of buffer and selections.
 
@@ -111,6 +112,7 @@ LSP transport, JSON-RPC codec, client lifecycle state, and protocol-level wire d
 ### Depends on
 - hume-editing
 - hume-lsp
+- hume-ops
 - hume-core
 - hume-platform
 - hume-rope

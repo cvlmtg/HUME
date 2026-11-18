@@ -4,6 +4,7 @@ use std::ffi::OsString;
 
 use hume_core::{BufferId, OnUnsaved, PaneHandle};
 use hume_platform::path::AbsolutePath;
+use regex_cursor::engines::meta::Regex;
 
 use super::ShownHandle;
 use crate::BufferVisibility;
@@ -128,16 +129,10 @@ pub trait BufferHost {
     /// to detect staleness.
     fn buffer_generation(&self, id: BufferId) -> Option<u64>;
 
-    /// `(buffer-search pane pattern)`: the first match in `id`'s text of
-    /// `pattern`, read as input at the `/` prompt (its flags and smart case
-    /// included), as a char range, `None` inside the `Ok` when nothing
-    /// matches. `Err` for an empty or invalid pattern. Outer `None` if `id` is
-    /// unknown.
-    fn buffer_search(
-        &self,
-        id: BufferId,
-        pattern: &str,
-    ) -> Option<Result<Option<std::ops::Range<usize>>, String>>;
+    /// `(buffer-search pane re)`: the first match of `regex` in `id`'s text,
+    /// as a char range, `None` inside when nothing matches. Outer `None` if
+    /// `id` is unknown.
+    fn buffer_search(&self, id: BufferId, regex: &Regex) -> Option<Option<std::ops::Range<usize>>>;
 
     /// `(word-search-pattern pane word)`: the search input `*` sets for
     /// `word` in `id`'s buffer, under that buffer's `word-chars`. `None` if

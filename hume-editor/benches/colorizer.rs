@@ -5,9 +5,9 @@
 //! lengths, on a minified line of the default render budget on every line,
 //! and on prose lines of several lengths, at a small and a full-screen pane.
 //!
-//! The `screen_<n>` rows set the default of `'max-render-chars`: each prints
-//! the chars its render walks, and the default is that count for the longest
-//! lines whose 200x60 row fits a 16 ms frame on the efficiency cores.
+//! The `screen_<n>` rows print the chars their render walks. The minified
+//! and `long_lines` rows show what the default `'max-render-chars` costs on
+//! the densest text.
 //!
 //! The plugin skips a render of a text and view it has painted, so the
 //! `render` rows delete a char and undo it before each render, outside the

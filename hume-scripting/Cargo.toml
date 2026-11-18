@@ -10,6 +10,7 @@ test-util = []
 [dependencies]
 hume-editing = { path = "../hume-editing" }
 hume-lsp = { path = "../hume-lsp" }
+hume-ops = { path = "../hume-ops" }
 hume-core = { path = "../hume-core" }
 hume-platform = { path = "../hume-platform" }
 hume-rope = { path = "../hume-rope" }
@@ -19,6 +20,7 @@ slotmap = "1"
 serde_json.workspace = true
 num-traits.workspace = true
 rustc-hash.workspace = true
+regex-cursor = "0.1.5"
 which = "8.0.6"
 
 [dev-dependencies]

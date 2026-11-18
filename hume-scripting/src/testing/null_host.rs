@@ -20,6 +20,7 @@ use hume_core::{
 };
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
+use regex_cursor::engines::meta::Regex;
 
 use crate::attribution::EntryId;
 use crate::builtins::lsp::LSP_NOTIFICATION_EVENT;
@@ -186,8 +187,8 @@ impl BufferHost for NullHost {
     fn buffer_search(
         &self,
         _id: BufferId,
-        _pattern: &str,
-    ) -> Option<Result<Option<std::ops::Range<usize>>, String>> {
+        _regex: &Regex,
+    ) -> Option<Option<std::ops::Range<usize>>> {
         None
     }
     fn word_search_pattern(&self, _id: BufferId, _word: &str) -> Option<String> {

@@ -805,6 +805,23 @@ fn unpainted_calls() {
     ]);
 }
 
+/// A literal inside a call that fails, one right after another literal, and
+/// a call name inside a word: the line starts are 0, 10 and 19.
+const ADJACENT: &str = "rgb(#fff)\n#fff#000\nxrgb(1 2 3)\n";
+
+#[test]
+fn a_literal_starts_only_where_a_walk_from_the_line_start_would() {
+    let mut c = colorizer();
+    let bid = c.open("a.rs", ADJACENT);
+    c.render();
+    let white = "colorizer.bg.ffffff";
+    assert_eq!(c.spans(bid), [span(4, 8, white), span(10, 14, white)]);
+
+    let css = c.open("b.css", "rgb(255 /* red */ 0 0)\n-red\n");
+    c.render();
+    assert_eq!(c.spans(css), [span(0, 22, "colorizer.bg.ff0000")]);
+}
+
 #[test]
 fn a_one_line_call_spans_name_through_paren() {
     let mut c = colorizer();

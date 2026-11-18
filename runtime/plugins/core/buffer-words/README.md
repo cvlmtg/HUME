@@ -100,7 +100,7 @@ The update itself:
 - **Adding.** Every word of the new lines joins the set, with its case twin.
 - **Removing.** A word of the old lines that the new lines don't contain may be gone, or
   may still occur elsewhere. `bw/present?` searches for it with
-  `(buffer-search pane (word-search-pattern pane w))`, the whole-word pattern `*` uses,
+  `(buffer-search pane (regex (word-search-pattern pane w)))`, the whole-word pattern `*` uses,
   searching the all-lowercase twin when the word is capitalized. An all-lowercase pattern
   ignores case, so one search answers for the word and its twin, and both leave the set
   when nothing matches. Only words already in the set are checked, so a walk that hasn't

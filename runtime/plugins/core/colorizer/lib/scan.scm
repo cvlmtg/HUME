@@ -272,16 +272,20 @@
 
 ;; ── Lines ─────────────────────────────────────────────────────────────────────
 
-(define (colorizer/scan-call function pos after after-pos names? acc)
+(define colorizer/call-candidates "#|(?i:rgba?|hsla?|oklch)\\(")
+
+(define colorizer/candidates (regex colorizer/call-candidates))
+
+(define colorizer/candidates-with-names
+  (regex (string-append colorizer/call-candidates
+                        "|(?i:" (string-join (hash-keys->list colorizer/names) "|") ")")))
+
+(define (colorizer/call-piece function pos after after-pos)
   (let* ([c (colorizer/cursor after after-pos)]
          [hex (colorizer/call function c)])
-    (if hex
-        (let ([end (colorizer/cursor-pos c)])
-          (colorizer/scan-chars (colorizer/cursor-chars c) end 41 names?
-                                (cons (list pos end hex) acc)))
-        (colorizer/scan-chars after after-pos 40 names? acc))))
+    (and hex (list pos (colorizer/cursor-pos c) hex))))
 
-(define (colorizer/scan-word cs pos names? acc)
+(define (colorizer/word-piece cs pos names?)
   (let count ([ws cs] [n 0])
     (if (and (pair? ws) (colorizer/letter-code? (char->integer (car ws))))
         (count (cdr ws) (+ n 1))
@@ -296,27 +300,36 @@
                [word (and (or call? name?) (colorizer/word cs n))]
                [function (and call? (hash-try-get colorizer/functions word))])
           (if function
-              (colorizer/scan-call function pos (cdr ws) (+ end 1) names? acc)
+              (colorizer/call-piece function pos (cdr ws) (+ end 1))
               (let ([hex (and name? (hash-try-get colorizer/names word))])
-                (colorizer/scan-chars ws end 97 names?
-                                      (if hex (cons (list pos end hex) acc) acc))))))))
+                (and hex (list pos end hex))))))))
 
-(define (colorizer/scan-chars cs pos prev names? acc)
-  (if (null? cs)
+(define (colorizer/hex-piece cs pos names?)
+  (let ([hit (colorizer/hex-literal (cdr cs) names?)])
+    (and hit (list pos (+ pos 1 (car hit)) (colorizer/hex-color (cadr hit) (car hit))))))
+
+(define (colorizer/piece cs pos prev names?)
+  (cond
+    [(colorizer/word-code? prev) #f]
+    [(= (char->integer (car cs)) 35)
+     (and (not (= prev 38)) (colorizer/hex-piece cs pos names?))]
+    [else (colorizer/word-piece cs pos names?)]))
+
+(define (colorizer/scan-hits hits chars offset names? resume acc)
+  (if (null? hits)
       acc
-      (let ([k (char->integer (car cs))])
-        (cond
-          [(and (= k 35) (not (= prev 38)) (not (colorizer/word-code? prev)))
-           (let ([hit (colorizer/hex-literal (cdr cs) names?)])
-             (if hit
-                 (let ([end (+ pos 1 (car hit))])
-                   (colorizer/scan-chars (caddr hit) end 48 names?
-                                         (cons (list pos end (colorizer/hex-color (cadr hit) (car hit)))
-                                               acc)))
-                 (colorizer/scan-chars (cdr cs) (+ pos 1) k names? acc)))]
-          [(and (colorizer/letter-code? k) (not (colorizer/word-code? prev)))
-           (colorizer/scan-word cs pos names? acc)]
-          [else (colorizer/scan-chars (cdr cs) (+ pos 1) k names? acc)]))))
+      (let ([k (car (car hits))])
+        (if (< k resume)
+            (colorizer/scan-hits (cdr hits) chars offset names? resume acc)
+            (let* ([before (and (> k 0) (list-tail chars (- k 1)))]
+                   [piece (colorizer/piece (if before (cdr before) chars)
+                                           (+ offset k)
+                                           (if before (char->integer (car before)) 0)
+                                           names?)])
+              (if piece
+                  (colorizer/scan-hits (cdr hits) chars offset names?
+                                       (- (cadr piece) offset) (cons piece acc))
+                  (colorizer/scan-hits (cdr hits) chars offset names? resume acc)))))))
 
 (define (colorizer/line-pieces line offset names? known)
   (let ([mark (colorizer/text-line-mark line)])
@@ -325,8 +338,13 @@
       [(eq? mark 'skip) '()]
       [else
        (set-box! colorizer/*unclosed* #f)
-       (let ([pieces (colorizer/scan-chars (string->list (colorizer/text-line-text line))
-                                           offset 0 names? '())])
+       (let* ([text (colorizer/text-line-text line)]
+              [hits (string-matches text (if names?
+                                             colorizer/candidates-with-names
+                                             colorizer/candidates))]
+              [pieces (if (null? hits)
+                          '()
+                          (colorizer/scan-hits hits (string->list text) offset names? 0 '()))])
          (colorizer/box-insert! known offset (cons (colorizer/text-line-len line) pieces))
          pieces)])))
 
