@@ -159,32 +159,6 @@ pub trait LspHost {
     /// when no selection is linewise.
     fn lsp_linewise_ranges_params(&self, pane: ShownHandle) -> Result<RangesParams, String>;
 
-    /// A wire `[start, end)` range → char offsets, decoded in `encoding`, for
-    /// `lsp-range->char-range`. `encoding` is the tag of the handle the range
-    /// was read from, not `id`'s current server's, which a restart or detach
-    /// can change. `None` when an end is on a line past the document end, or
-    /// `id` is unknown. A `character` past its line's end clamps, and an end
-    /// may sit at the document end `(line count, 0)`; point-anchored callers
-    /// want [`lsp_wire_point_to_char`](Self::lsp_wire_point_to_char).
-    fn lsp_wire_range_to_chars(
-        &self,
-        id: BufferId,
-        range: hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>,
-        encoding: PositionEncoding,
-    ) -> Option<(usize, usize)>;
-
-    /// A wire position → char offset, decoded in `encoding`, for
-    /// `lsp-position->char-offset`. `None` when the position lands on the
-    /// buffer's trailing phantom line or past it, an offset every
-    /// point-anchored decoration setter (`set-inlay-hints!`) rejects, or when
-    /// `id` is unknown.
-    fn lsp_wire_point_to_char(
-        &self,
-        id: BufferId,
-        pos: hume_rope::position_encoding::WirePos,
-        encoding: PositionEncoding,
-    ) -> Option<usize>;
-
     /// `(lsp-locations->places locs)`: the path, wire line and column of each
     /// `Location`/`LocationLink` handle in `locs`, for `lsp/place-display`'s
     /// drawer rows. Decoded through `hume_lsp::location::decode_location`,

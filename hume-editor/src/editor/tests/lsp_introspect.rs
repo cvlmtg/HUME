@@ -1021,6 +1021,42 @@ fn lsp_position_to_char_offset_decodes_via_the_tag_even_after_the_server_detache
     assert_eq!(rig.warnings(), vec!["()".to_string()], "bid was detached");
 }
 
+/// Converting a server's position reads only the buffer's text, so a drawer's
+/// render proc can.
+#[test]
+fn a_render_proc_can_convert_lsp_positions() {
+    let tmp = tempfile::tempdir().unwrap();
+    // "🎉" is 1 char, 2 UTF-16 code units: wire character 2 is char index 1.
+    let mut rig = rig_with_echo(
+        tmp.path(),
+        "-[x]>🎉rest\n",
+        serde_json::json!({"capabilities": {}}),
+        serde_json::json!({"line": 0, "character": 2}),
+    );
+    run(
+        &mut rig.ed,
+        tmp.path(),
+        r#"(define-typed-command! "probe" "" (lambda (bid)
+             (lsp-request! bid "test/echo" (hash) (lambda (err res)
+               (show-drawer-list! bid (list 0) (lambda (key token) (begin))
+                 #:render (lambda (rows budget)
+                            (map (lambda (k)
+                                   (number->string (lsp-position->char-offset bid res)))
+                                 rows)))))))"#,
+    );
+    type_cmd(&mut rig.ed, ":probe");
+    rig.ed.drain_lsp();
+    rig.ed.settle();
+    frame(&mut rig.ed, 40, 12);
+
+    assert!(
+        rig.ed.state.input.drawer().is_some(),
+        "errors: {}",
+        rig.ed.state.message_log.format_for_display()
+    );
+    assert_eq!(drawer_rows(&rig.ed), vec!["1".to_string()]);
+}
+
 #[test]
 fn lsp_position_to_char_offset_is_false_when_it_would_land_on_the_trailing_phantom_line() {
     let tmp = tempfile::tempdir().unwrap();

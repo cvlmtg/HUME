@@ -20,6 +20,7 @@ use termina::event::KeyEvent;
 
 use hume_core::{BufferId, HostToken, TruncateEnd};
 use hume_platform::path::AbsolutePath;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::spanned::SpannedText;
 
 use crate::Rooted;
@@ -767,10 +768,10 @@ pub(crate) const CHAR_RANGE_KEYS: &[&str] = &[START_CHAR, END_CHAR];
 pub(crate) const LINE_RANGE_KEYS: &[&str] = &[START_LINE, END_LINE];
 
 /// A char range as Steel sees it: `(hash 'start-char s 'end-char e)`.
-pub(crate) fn char_range_value(start: usize, end: usize) -> SteelVal {
+pub(crate) fn char_range_value(range: ExclusiveRange<CharOffset>) -> SteelVal {
     symbol_hash([
-        (START_CHAR, SteelVal::IntV(start as isize)),
-        (END_CHAR, SteelVal::IntV(end as isize)),
+        (START_CHAR, SteelVal::IntV(range.start.index() as isize)),
+        (END_CHAR, SteelVal::IntV(range.end.index() as isize)),
     ])
 }
 

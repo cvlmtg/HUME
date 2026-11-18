@@ -126,14 +126,7 @@ fn hunk_to_steel(hunk: ChangeHunk) -> SteelVal {
                         "old",
                         list_of(words.old.into_iter().map(line_span_to_steel)),
                     ),
-                    (
-                        "new",
-                        list_of(
-                            words.new.into_iter().map(|range| {
-                                char_range_value(range.start.index(), range.end.index())
-                            }),
-                        ),
-                    ),
+                    ("new", list_of(words.new.into_iter().map(char_range_value))),
                 ])
             }),
         ),

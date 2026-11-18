@@ -219,7 +219,7 @@ pub(crate) fn buffer_search(ctx: &mut SteelCtx, bid: BufferId, re: ArgRegex) -> 
     let start = text.clusters().first().into();
     let found = find_next_match(&text, re.regex(), start, SearchDirection::Forward);
     Ok(found.map_or(SteelVal::BoolV(false), |(span, _)| {
-        char_range_value(span.start().offset().index(), span.end().offset().index())
+        char_range_value(span.chars())
     }))
 }
 

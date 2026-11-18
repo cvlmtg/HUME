@@ -663,22 +663,6 @@ impl LspHost for EmptyLspHost {
     fn lsp_linewise_ranges_params(&self, _pane: ShownHandle) -> Result<RangesParams, String> {
         Err("EmptyLspHost: lsp_linewise_ranges_params not available".into())
     }
-    fn lsp_wire_range_to_chars(
-        &self,
-        _id: BufferId,
-        _range: hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>,
-        _encoding: hume_rope::position_encoding::PositionEncoding,
-    ) -> Option<(usize, usize)> {
-        None
-    }
-    fn lsp_wire_point_to_char(
-        &self,
-        _id: BufferId,
-        _pos: hume_rope::position_encoding::WirePos,
-        _encoding: hume_rope::position_encoding::PositionEncoding,
-    ) -> Option<usize> {
-        None
-    }
     fn lsp_location_places(
         &self,
         _locs: &[(

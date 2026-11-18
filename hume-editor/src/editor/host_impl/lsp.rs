@@ -108,28 +108,6 @@ impl<'a> LspHost for EditorHostImpl<'a> {
         Ok(params::linewise_ranges_params(self.state, self.view, t))
     }
 
-    fn lsp_wire_range_to_chars(
-        &self,
-        id: BufferId,
-        range: hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>,
-        encoding: hume_rope::position_encoding::PositionEncoding,
-    ) -> Option<(usize, usize)> {
-        crate::editor::lsp::introspect::wire_range_to_chars_for_buffer(
-            self.state, id, range, encoding,
-        )
-        .map(|range| (range.start.index(), range.end.index()))
-    }
-
-    fn lsp_wire_point_to_char(
-        &self,
-        id: BufferId,
-        pos: hume_rope::position_encoding::WirePos,
-        encoding: hume_rope::position_encoding::PositionEncoding,
-    ) -> Option<usize> {
-        crate::editor::lsp::introspect::wire_point_to_char_for_buffer(self.state, id, pos, encoding)
-            .map(|offset| offset.index())
-    }
-
     fn lsp_location_places(
         &self,
         locs: &[(

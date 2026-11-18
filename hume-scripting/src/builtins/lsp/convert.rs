@@ -7,9 +7,11 @@ use steel::rvals::SteelVal;
 use crate::SteelCtx;
 use crate::host::{LocationPlace, Place, PlaceCol};
 use hume_core::{BufferId, PaneHandle};
+use hume_rope::position_encoding::{checked_wire_range_to_char_range, checked_wire_to_char};
 
 use crate::builtins::SteelResult;
 use crate::builtins::args::{char_range_value, list_items, list_of, string_arg, symbol_hash};
+use crate::builtins::buffers::live_text;
 use crate::builtins::errors::{generic_err, require_cap};
 use crate::builtins::ids::pane_or_false;
 use crate::builtins::wire::{tagged_json_arg, wire_position, wire_range};
@@ -23,7 +25,7 @@ use crate::builtins::wire::{tagged_json_arg, wire_position, wire_range};
 /// edit, or a server's past-end convention). Every point-anchored decoration
 /// setter (`set-inlay-hints!`) rejects that offset outright, so refusing here
 /// lets a caller filter one bad entry instead of the whole setter call
-/// failing on it. Raises when the host has no LSP capability.
+/// failing on it.
 pub(crate) fn lsp_position_to_char_offset(
     ctx: &mut SteelCtx,
     bid: BufferId,
@@ -31,9 +33,10 @@ pub(crate) fn lsp_position_to_char_offset(
 ) -> SteelResult {
     let (handle, encoding) = tagged_json_arg(&position, "position")?;
     let pos = wire_position(handle.value())?;
-    let offset = require_cap(ctx.host.lsp())?.lsp_wire_point_to_char(bid, pos, encoding);
+    let text = live_text(ctx, bid)?;
+    let offset = checked_wire_to_char(text.rope(), pos, encoding);
     Ok(offset.map_or(SteelVal::BoolV(false), |offset| {
-        SteelVal::IntV(offset as isize)
+        SteelVal::IntV(offset.index() as isize)
     }))
 }
 
@@ -43,7 +46,6 @@ pub(crate) fn lsp_position_to_char_offset(
 /// `lsp-position->char-offset`, decoded in `range`'s own tagged producing-server
 /// encoding. A `character` past its line's end clamps, and an end may sit at
 /// the document end `(line count, 0)`. `#f` when an end is on a line past it.
-/// Raises when the host has no LSP capability.
 pub(crate) fn lsp_range_to_char_range(
     ctx: &mut SteelCtx,
     bid: BufferId,
@@ -51,10 +53,9 @@ pub(crate) fn lsp_range_to_char_range(
 ) -> SteelResult {
     let (handle, encoding) = tagged_json_arg(&range, "range")?;
     let range = wire_range(handle.value())?;
-    let range = require_cap(ctx.host.lsp())?.lsp_wire_range_to_chars(bid, range, encoding);
-    Ok(range.map_or(SteelVal::BoolV(false), |(start, end)| {
-        char_range_value(start, end)
-    }))
+    let text = live_text(ctx, bid)?;
+    let range = checked_wire_range_to_char_range(text.rope(), range, encoding);
+    Ok(range.map_or(SteelVal::BoolV(false), char_range_value))
 }
 
 /// `(lsp-label-offsets->text label offsets)` → the slice of `label` that a

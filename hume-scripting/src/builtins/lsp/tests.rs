@@ -1327,10 +1327,10 @@ fn lsp_request_with_a_feature_without_lsp_host_errors() {
     assert!(msg.contains("not supported by this host"), "got: {msg}");
 }
 
-/// Given a *tagged* handle, so the encoding check passes, a harness with no
-/// LSP host raises: `#f` is the answer for a stale position only.
+/// Given a *tagged* handle, so the encoding check passes, a host with no text
+/// for the buffer raises: `#f` is the answer for a stale position only.
 #[test]
-fn lsp_position_to_char_offset_without_lsp_host_errors() {
+fn lsp_position_to_char_offset_raises_for_a_buffer_the_host_has_no_text_for() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let position = JsonHandle::server_for_test(
@@ -1341,7 +1341,7 @@ fn lsp_position_to_char_offset_without_lsp_host_errors() {
     let msg = lsp_position_to_char_offset(&mut ctx, default_bid(), position)
         .unwrap_err()
         .to_string();
-    assert!(msg.contains("not supported by this host"), "got: {msg}");
+    assert!(msg.contains("invalid buffer id"), "got: {msg}");
 }
 
 #[test]
@@ -1413,8 +1413,10 @@ fn lsp_range_to_char_range_untagged_handle_errors() {
     assert!(msg.contains("not a value from an LSP server"), "got: {msg}");
 }
 
+/// The range counterpart of
+/// [`lsp_position_to_char_offset_raises_for_a_buffer_the_host_has_no_text_for`].
 #[test]
-fn lsp_range_to_char_range_without_lsp_host_errors() {
+fn lsp_range_to_char_range_raises_for_a_buffer_the_host_has_no_text_for() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let range = JsonHandle::server_for_test(
@@ -1425,7 +1427,7 @@ fn lsp_range_to_char_range_without_lsp_host_errors() {
     let msg = lsp_range_to_char_range(&mut ctx, default_bid(), range)
         .unwrap_err()
         .to_string();
-    assert!(msg.contains("not supported by this host"), "got: {msg}");
+    assert!(msg.contains("invalid buffer id"), "got: {msg}");
 }
 
 #[test]

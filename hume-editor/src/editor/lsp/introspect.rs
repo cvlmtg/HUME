@@ -201,52 +201,6 @@ pub(in crate::editor) fn server_encoding(
     lsp.instances.get(sid).map(|i| i.client.encoding())
 }
 
-/// Wire `[start, end)` range → char range, decoded in `encoding`, for
-/// `lsp-range->char-range`. `None` if `id` is unknown or the range reaches a
-/// line past the document end (see
-/// [`hume_rope::position_encoding::checked_wire_range_to_char_range`]).
-/// `encoding` is the caller's own resolve: the tagged producing-server
-/// encoding of the response the range was read out of
-/// (`JsonHandle::position_encoding`), never `id`'s *currently* attached
-/// server: the two can diverge (a restart renegotiates a different encoding,
-/// a detach leaves none), and the tag is always the encoding the range was
-/// actually written in, so no `LspState` lookup is needed at all.
-///
-/// A range's `end` legitimately lands exactly at the buffer's `len_chars()`
-/// (`set-extra-highlights!`'s `validate_range` accepts that boundary), so
-/// the document end `(line count, 0)` is accepted. Point-anchored callers
-/// want the opposite; see [`wire_point_to_char_for_buffer`].
-pub(in crate::editor) fn wire_range_to_chars_for_buffer(
-    state: &EditorState,
-    id: BufferId,
-    range: hume_rope::offset::ExclusiveRange<hume_rope::position_encoding::WirePos>,
-    encoding: hume_rope::position_encoding::PositionEncoding,
-) -> Option<hume_rope::offset::ExclusiveRange<hume_rope::offset::CharOffset>> {
-    let rope = state.buffers.try_get(id)?.text().rope();
-    hume_rope::position_encoding::checked_wire_range_to_char_range(rope, range, encoding)
-}
-
-/// Wire `(line, character)` → char offset, for `lsp-position->char-offset`.
-/// `None` if `id` is unknown, or when the position is not on a content line
-/// (the buffer's trailing phantom line, every buffer ending with a structural
-/// `\n`, or past it). The offset a clamp would give there is `len_chars()`,
-/// and a point-anchored decoration setter (`set-inlay-hints!`'s
-/// `validate_offset`) rejects it outright: handing it back here would let a single
-/// stale server response (a request that raced an edit) fail the caller's
-/// *entire* hint batch (`collect::<Result<Vec<_>, _>>` in `host_impl.rs`)
-/// instead of just being filtered out, one entry, by the caller's own `#f`
-/// check. `encoding` is the caller's own resolve, as for
-/// [`wire_range_to_chars_for_buffer`].
-pub(in crate::editor) fn wire_point_to_char_for_buffer(
-    state: &EditorState,
-    id: BufferId,
-    pos: hume_rope::position_encoding::WirePos,
-    encoding: hume_rope::position_encoding::PositionEncoding,
-) -> Option<hume_rope::offset::CharOffset> {
-    let rope = state.buffers.try_get(id)?.text().rope();
-    hume_rope::position_encoding::checked_wire_to_char(rope, pos, encoding)
-}
-
 /// `(diagnostic-counts bid #:severity floor)`: with no `floor`,
 /// [`severity_floor`](super::diagnostics::severity_floor)'s default.
 pub(crate) fn diagnostic_counts(
