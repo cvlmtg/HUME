@@ -12,8 +12,8 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use super::SteelResult;
 use super::args::{
     ArgPane, CHAR_RANGE_KEYS, HashEntry, LINE_RANGE_KEYS, bool_arg, char_range_value,
-    line_range_value, list_of, not_live_err, optional_hash_entry, optional_hash_list,
-    relative_base_arg, string_list, symbol_hash,
+    checked_char_offset, checked_char_range, line_range_value, list_of, not_live_err,
+    optional_hash_entry, optional_hash_list, relative_base_arg, string_list, symbol_hash,
 };
 use super::errors::generic_err;
 use super::ids::{BufferGeneration, SteelBufferKey, SteelPane};
@@ -21,7 +21,11 @@ use super::regex::ArgRegex;
 use crate::SteelCtx;
 use crate::host::{SelectionInfo, ShownHandle};
 use hume_core::{BufferId, OnUnsaved, PaneHandle};
+use hume_editing::text::BufferText;
+use hume_ops::search::{SearchDirection, find_next_match};
 use hume_platform::path::AbsolutePath;
+use hume_rope::line::RopeyLine;
+use hume_rope::lines::line_token_content;
 
 // ── Focus builtins ─────────────────────────────────────────────────────────────
 
@@ -200,14 +204,9 @@ pub(crate) fn buffer_read_only(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult
 /// before the next. The staleness token `#:expect-generation` and
 /// `buffer-changes-since` take.
 pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
-    let generation = ctx
-        .host
-        .buffers()
-        .buffer_generation(bid)
-        .ok_or_else(|| not_live_err("pane", bid))?;
     Ok(BufferGeneration {
         buffer: bid,
-        generation,
+        generation: live_text(ctx, bid)?.generation(),
     }
     .into_steel_val())
 }
@@ -216,13 +215,11 @@ pub(crate) fn buffer_generation(ctx: &mut SteelCtx, bid: BufferId) -> SteelResul
 /// first match of the `regex` value `re` in `pane`'s buffer, `#f` when
 /// nothing matches. Moves no selection and leaves the current search alone.
 pub(crate) fn buffer_search(ctx: &mut SteelCtx, bid: BufferId, re: ArgRegex) -> SteelResult {
-    let found = ctx
-        .host
-        .buffers()
-        .buffer_search(bid, re.regex())
-        .ok_or_else(|| not_live_err("pane", bid))?;
-    Ok(found.map_or(SteelVal::BoolV(false), |range| {
-        char_range_value(range.start, range.end)
+    let text = live_text(ctx, bid)?;
+    let start = text.clusters().first().into();
+    let found = find_next_match(&text, re.regex(), start, SearchDirection::Forward);
+    Ok(found.map_or(SteelVal::BoolV(false), |(span, _)| {
+        char_range_value(span.start().offset().index(), span.end().offset().index())
     }))
 }
 
@@ -278,45 +275,48 @@ pub(crate) fn buffer_text(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) ->
     let range = optional_hash_entry(range, "#:range", CHAR_RANGE_KEYS)?
         .map(|range| range.char_range())
         .transpose()?;
-    ctx.host
-        .buffers()
-        .buffer_text(bid, range)
-        .ok_or_else(|| not_live_err("pane", bid))?
-        .map_err(generic_err)?
-        .into_steelval()
-        .map_err(generic_err)
+    let text = live_text(ctx, bid)?;
+    let content = match range {
+        None => text.to_string(),
+        Some((start, end)) => {
+            let range = checked_char_range(&text, start, end)
+                .map_err(|e| generic_err(format!("#:range {e}")))?;
+            text.slice(range).to_string()
+        }
+    };
+    Ok(SteelVal::StringV(content.into()))
 }
 
 /// `(buffer-line-count pane)` → int: `pane`'s buffer's content line count,
 /// excluding the phantom line past its structural trailing `\n` (matches
-/// the statusline and `:w`). O(1): reads `buffer_line_count` directly rather
-/// than counting a materialized `(buffer-lines pane)` list.
+/// the statusline and `:w`). O(1): reads the text's line count rather than
+/// counting a materialized `(buffer-lines pane)` list.
 pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
     Ok(SteelVal::IntV(live_line_count(ctx, bid)?.get() as isize))
 }
 
-/// `bid`'s content line count. `bid` was checked live when the pane argument
+/// `bid`'s live text. `bid` was checked live when the pane argument
 /// resolved, so the not-live error is for a host that answers inconsistently
 /// with `buffer_exists`.
+pub(super) fn live_text(ctx: &mut SteelCtx, bid: BufferId) -> Result<BufferText, SteelErr> {
+    ctx.host
+        .buffers()
+        .live_text(bid)
+        .ok_or_else(|| not_live_err("pane", bid))
+}
+
+/// `bid`'s content line count, as [`live_text`] reads it.
 pub(super) fn live_line_count(
     ctx: &mut SteelCtx,
     bid: BufferId,
 ) -> Result<hume_rope::line::ContentLineCount, SteelErr> {
-    ctx.host
-        .buffers()
-        .buffer_line_count(bid)
-        .ok_or_else(|| not_live_err("pane", bid))
+    Ok(live_text(ctx, bid)?.content_line_count())
 }
 
 /// `(buffer-char-count pane)` → int: `pane`'s buffer's length in chars,
 /// structural trailing `\n` included. O(1), with no `buffer-text` copy.
 pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
-    let count = ctx
-        .host
-        .buffers()
-        .buffer_char_count(bid)
-        .ok_or_else(|| not_live_err("pane", bid))?;
-    Ok(SteelVal::IntV(count as isize))
+    Ok(SteelVal::IntV(live_text(ctx, bid)?.len_chars() as isize))
 }
 
 /// `(%buffer-lines pane range)`: Rust half of the bootstrap-wrapped
@@ -329,18 +329,16 @@ pub(crate) fn buffer_char_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResul
 /// end-line`, or `end-line` past the line count.
 pub(crate) fn buffer_lines(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) -> SteelResult {
     const LABEL: &str = "#:range";
-    let line_count = live_line_count(ctx, bid)?;
+    let text = live_text(ctx, bid)?;
+    let line_count = text.content_line_count();
     let range = match optional_line_range_arg(range, LABEL, line_count)? {
         Some(range) => range,
         None => every_line(line_count),
     };
-    // Unreachable in practice (nothing can close `bid` between two
-    // synchronous host calls), but the trait returns `Option`.
-    let lines = ctx
-        .host
-        .buffers()
-        .buffer_lines(bid, range)
-        .ok_or_else(|| not_live_err("pane", bid))?;
+    let lines = text
+        .line_tokens_at(RopeyLine::from(range.start))
+        .take(range.end.lines_since(range.start))
+        .map(line_token_content);
     Ok(string_list(lines))
 }
 
@@ -618,16 +616,13 @@ pub(crate) fn selection_primary(sel: SteelVal) -> SteelResult {
 /// argument type first regardless, left to right, but the ordering holds
 /// either way).
 pub(crate) fn char_offset_to_line(ctx: &mut SteelCtx, bid: BufferId, idx: usize) -> SteelResult {
-    let line = ctx
-        .host
-        .cursor()
-        .char_offset_to_line(bid, idx)
-        .map_err(generic_err)?;
-    Ok(SteelVal::IntV(line.index() as isize))
+    let text = live_text(ctx, bid)?;
+    let offset = checked_char_offset(&text, idx).map_err(generic_err)?;
+    Ok(SteelVal::IntV(text.char_to_line(offset).index() as isize))
 }
 
 /// `line` as a content line of a buffer with `line_count` content lines
-/// (`buffer_line_count`), or `Err` past the last one. The buffer's trailing
+/// ([`live_line_count`]), or `Err` past the last one. The buffer's trailing
 /// phantom line is past it: it has no `\n` of its own and nothing to address.
 pub(super) fn content_line_arg(
     line: usize,
@@ -664,16 +659,11 @@ pub(super) fn content_line_bound(
 /// `lsp-range->char-range`, `path->display`), not the `buffer-text`/
 /// `buffer-lines` accessor family.
 pub(crate) fn line_to_char_offset(ctx: &mut SteelCtx, bid: BufferId, line: usize) -> SteelResult {
-    let line_count = live_line_count(ctx, bid)?;
-    let line = content_line_arg(line, line_count).map_err(generic_err)?;
-    // Unreachable in practice (nothing can close `bid` between two
-    // synchronous host calls), but the trait returns `Option`.
-    let offset = ctx
-        .host
-        .buffers()
-        .line_to_char_offset(bid, line)
-        .ok_or_else(|| not_live_err("pane", bid))?;
-    Ok(SteelVal::IntV(offset as isize))
+    let text = live_text(ctx, bid)?;
+    let line = content_line_arg(line, text.content_line_count()).map_err(generic_err)?;
+    Ok(SteelVal::IntV(
+        text.line_to_char(line.into()).index() as isize
+    ))
 }
 
 /// `(viewport-range pane)` → `(hash 'start-line first-line 'end-line end-line)` visible in

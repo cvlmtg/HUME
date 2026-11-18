@@ -1,6 +1,5 @@
 use super::*;
 use hume_platform::dirs::Dirs;
-use hume_rope::line::ContentLine;
 use hume_scripting::host::NativeCall;
 
 use crate::editor::host_impl::EditorHostImpl;
@@ -1801,7 +1800,7 @@ fn keymap_dispatch_arity_over_3_reports_error() {
     );
 }
 
-// ── buffer_selections / char_offset_to_line ───────────────────────────────────
+// ── buffer_selections ─────────────────────────────────────────────────────────
 
 fn sel_info(
     anchor: usize,
@@ -1888,53 +1887,6 @@ fn buffer_selections_primary_flag_follows_primary_index() {
         sels,
         vec![sel_info(0, 0, 0, 1, false), sel_info(4, 4, 4, 5, true)],
         "primary flag must follow primary_index, not selection order"
-    );
-}
-
-/// `char_offset_to_line` maps a 0-indexed char offset to its 0-indexed content
-/// line.
-///
-/// Expected lines are hand-counted from the buffer text rather than derived
-/// via `char_to_line` or any shared helper.
-#[test]
-fn char_offset_to_line_maps_offsets() {
-    // "ab\ncd\n": a=0 b=1 \n=2 c=3 d=4 \n=5 (6 chars).
-    let mut ed = editor_from("-[a]>b\ncd\n");
-    let bid = ed.focused_buffer_id();
-    let _pane = focused_pane(&ed);
-    let host = live_host!(ed);
-    assert_eq!(
-        host.char_offset_to_line(bid, 0),
-        Ok(ContentLine::new(0)),
-        "offset 0 ('a') is on line 0"
-    );
-    assert_eq!(
-        host.char_offset_to_line(bid, 3),
-        Ok(ContentLine::new(1)),
-        "offset 3 ('c') is on line 1"
-    );
-}
-
-/// `char_offset_to_line` is an error for an offset past the buffer's length, but
-/// still succeeds at the exact boundary (`idx == len_chars()`), which is on
-/// the last content line.
-#[test]
-fn char_offset_to_line_out_of_range_is_an_error() {
-    // "ab\ncd\n": 6 chars, len_chars() == 6. Every buffer ends with a
-    // structural '\n' (HUME invariant), so idx 6 (== len_chars()) follows the
-    // last line break, on content line 1 ("cd").
-    let mut ed = editor_from("-[a]>b\ncd\n");
-    let bid = ed.focused_buffer_id();
-    let _pane = focused_pane(&ed);
-    let host = live_host!(ed);
-    let err = host
-        .char_offset_to_line(bid, 7)
-        .expect_err("offset past len_chars() must be an error");
-    assert!(err.contains("past the end"), "got: {err}");
-    assert_eq!(
-        host.char_offset_to_line(bid, 6),
-        Ok(ContentLine::new(1)),
-        "offset exactly at len_chars() is on the last content line"
     );
 }
 

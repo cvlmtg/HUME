@@ -627,7 +627,7 @@ pub(in crate::editor) fn diagnostics_for_buffer(
     let range = match range {
         None => ExclusiveRange::new(CharOffset::new(0), text.end()),
         Some(DiagnosticRange::Chars { start, end }) => {
-            crate::editor::buffer::offsets::checked_char_range(text, start, end)
+            hume_scripting::checked_char_range(text, start, end)
                 .map_err(|e| format!("#:range {e}"))?
         }
         Some(DiagnosticRange::Request(range)) => range

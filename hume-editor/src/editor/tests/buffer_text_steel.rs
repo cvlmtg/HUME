@@ -479,8 +479,8 @@ fn buffer_text_on_a_stale_bid_raises_invalid_buffer_id() {
     assert_stale_bid_raises("buffer-text", "buffer-text");
 }
 
-/// The same `buffer_line_count` lookup that backs the range check is itself
-/// the liveness check.
+/// The same `live_text` read that backs the range check is itself the
+/// liveness check.
 #[test]
 fn buffer_lines_on_a_stale_bid_raises_invalid_buffer_id() {
     assert_stale_bid_raises("buffer-lines", "buffer-lines");

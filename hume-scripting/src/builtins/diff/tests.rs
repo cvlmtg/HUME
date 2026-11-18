@@ -194,11 +194,13 @@ fn diff_words_drops_equal_runs() {
     );
 }
 
-/// `diff-buffer-lines` on a host with no `DiffHost` capability raises. The pane's liveness is checked at resolve time
-/// (`LiveBuffer`, in the `builtins!`-registered closure, unreachable from this
-/// direct call), so `require_cap` is the first gate this call reaches.
+/// `diff-buffer-lines` on a host with no text for the buffer raises rather
+/// than reporting no differences. The pane's liveness is checked at resolve
+/// time (`LiveBuffer`, in the `builtins!`-registered closure, unreachable
+/// from this direct call), so the host's `None` is the first gate this call
+/// reaches.
 #[test]
-fn diff_buffer_lines_reports_an_unsupported_host() {
+fn diff_buffer_lines_raises_for_a_buffer_the_host_has_no_text_for() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
     let result = diff_buffer_lines(
@@ -211,6 +213,6 @@ fn diff_buffer_lines_reports_an_unsupported_host() {
         result
             .unwrap_err()
             .to_string()
-            .contains("not supported by this host")
+            .contains("invalid buffer id")
     );
 }

@@ -5,7 +5,6 @@ use crate::testing::test_support::{SteelCtxTestHarness, default_bid, str_val, sy
 use hume_core::{
     BufferId, BufferOptionWrite, ConfigOrigin, OnUnsaved, OptionInput, ScopeStyleInput,
 };
-use regex_cursor::engines::meta::Regex;
 use steel::rvals::IntoSteelVal as _;
 
 /// `set-option!` is registered `open` (`builtins/mod.rs`): no eval-mode
@@ -386,44 +385,14 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     ) -> Result<hume_core::PaneHandle, String> {
         self.inner.show_read_only_buffer(pane, name, text)
     }
-    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
-        self.inner.buffer_generation(id)
-    }
-    fn buffer_search(&self, id: BufferId, regex: &Regex) -> Option<Option<std::ops::Range<usize>>> {
-        self.inner.buffer_search(id, regex)
+    fn live_text(&self, id: BufferId) -> Option<hume_editing::text::BufferText> {
+        self.inner.live_text(id)
     }
     fn word_search_pattern(&self, id: BufferId, word: &str) -> Option<String> {
         self.inner.word_search_pattern(id, word)
     }
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<crate::host::UndoNode>> {
         self.inner.buffer_undo_tree(id)
-    }
-    fn buffer_text(
-        &self,
-        id: BufferId,
-        range: Option<(usize, usize)>,
-    ) -> Option<Result<String, String>> {
-        self.inner.buffer_text(id, range)
-    }
-    fn buffer_line_count(&self, id: BufferId) -> Option<hume_rope::line::ContentLineCount> {
-        self.inner.buffer_line_count(id)
-    }
-    fn buffer_char_count(&self, id: BufferId) -> Option<usize> {
-        self.inner.buffer_char_count(id)
-    }
-    fn buffer_lines(
-        &self,
-        id: BufferId,
-        range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
-    ) -> Option<Vec<String>> {
-        self.inner.buffer_lines(id, range)
-    }
-    fn line_to_char_offset(
-        &self,
-        id: BufferId,
-        line: hume_rope::line::ContentLine,
-    ) -> Option<usize> {
-        self.inner.line_to_char_offset(id, line)
     }
     fn viewport_range(
         &mut self,

@@ -78,24 +78,6 @@ impl<'a> CursorHost for EditorHostImpl<'a> {
             .collect())
     }
 
-    fn char_offset_to_line(
-        &self,
-        bid: hume_core::BufferId,
-        idx: usize,
-    ) -> Result<ContentLine, String> {
-        let text = self
-            .buffer(bid)
-            .ok_or_else(|| "no such buffer".to_string())?
-            .text();
-        // `char_to_line` puts the offset `len_chars()` on the last content
-        // line.
-        Ok(
-            text.char_to_line(crate::editor::buffer::offsets::checked_char_offset(
-                text, idx,
-            )?),
-        )
-    }
-
     fn symbol_under_cursor(&self, pane: ShownHandle) -> Result<String, String> {
         let t = self.shown(pane)?;
         let (buf, sels) = self.buffer_and_selections(t);

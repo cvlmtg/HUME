@@ -7,9 +7,10 @@ use hume_rope::column::CharCol;
 use termina::event::KeyEvent;
 
 use super::EditorHostImpl;
-use crate::editor::buffer::offsets::{checked_char_range, widened_to_clusters};
+use crate::editor::buffer::offsets::widened_to_clusters;
 use crate::editor::commands;
 use crate::editor::input_stack::PastedText;
+use hume_scripting::checked_char_range;
 use hume_scripting::host::{CharTextEdit, EditHost, FocusedHandle, ShownHandle};
 
 impl<'a> EditHost for EditorHostImpl<'a> {

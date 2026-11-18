@@ -1,19 +1,13 @@
-//! BufferText diffing against live editor state.
+//! Diffs against a buffer's undo history.
 
 use hume_core::BufferId;
 use hume_editing::hunk::ChangeHunk;
-use hume_editing::text::BufferText;
 
-/// Diffs that need a buffer's live text or undo history, accessed through
+/// Diffs that need a buffer's undo history, accessed through
 /// [`EditorHost::diff`](super::EditorHost::diff). Backs
-/// `(diff-buffer-lines pane ref-text)`, `(buffer-revision-diff pane id)` and
-/// `(buffer-changes-since pane generation)`.
+/// `(buffer-revision-diff pane id)` and `(buffer-changes-since pane
+/// generation)`.
 pub trait DiffHost {
-    /// `bid`'s live (dirty) text, `None` for a buffer the host has no text
-    /// for. The clone shares the buffer's rope, so it costs O(1) and never
-    /// materializes the buffer as a Steel string.
-    fn live_text(&self, bid: BufferId) -> Option<BufferText>;
-
     /// What separates `bid`'s live text from revision `revision` of its undo
     /// history: the revision's text is the old side, the live text the new.
     /// `Err` for a revision the history has no record of. Hunks carry the

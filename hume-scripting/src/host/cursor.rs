@@ -1,6 +1,5 @@
 //! Live cursor/selection reads.
 
-use hume_core::BufferId;
 use hume_rope::line::ContentLine;
 
 use super::ShownHandle;
@@ -31,19 +30,6 @@ pub trait CursorHost {
     /// [`SelectionInfo`]s sorted by selection start, with exactly one flagged
     /// primary.
     fn buffer_selections(&self, pane: ShownHandle) -> Result<Vec<SelectionInfo>, String>;
-
-    /// `(char-offset->line bid idx)`: 0-indexed content line containing the
-    /// 0-indexed char offset `idx` in `bid`'s live text; `len_chars()`, the
-    /// offset after the final line break, is on the last content line. Pure
-    /// text math, not selection/pane state: `bid` need not be shown in any
-    /// pane.
-    ///
-    /// `Err` when `idx` is past `len_chars()`: Scheme computed it for a live
-    /// buffer, so a value out of range is a caller bug to raise, not a
-    /// question to answer `#f` to. `bid`'s liveness is checked at
-    /// argument-resolve time (`args::LiveBuffer`), so a stale `bid` never
-    /// reaches here.
-    fn char_offset_to_line(&self, bid: BufferId, idx: usize) -> Result<ContentLine, String>;
 
     /// `(symbol-under-cursor pane)`: the word at the primary cursor head in
     /// `pane`'s pane, `""` on whitespace/punctuation.

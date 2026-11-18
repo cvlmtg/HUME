@@ -141,7 +141,7 @@ pub trait DecorationHost {
     /// `(set-signs! pane source signs)`: replaces `source`'s signs for `bid`
     /// wholesale. Each entry is `(lines, text, scope)`, one sign on each of
     /// `lines`; a line two entries share goes to the first. Every line is
-    /// caller-validated against `BufferHost::buffer_line_count`. `Err`,
+    /// caller-validated against the buffer's content line count. `Err`,
     /// naming the builtin, if `source` isn't registered for `bid`.
     fn set_signs(
         &mut self,
@@ -152,7 +152,7 @@ pub trait DecorationHost {
 
     /// `(set-virtual-lines! pane source lines)`: replaces `source`'s virtual
     /// lines for `bid` wholesale, each entry the line it is anchored to,
-    /// caller-validated against `BufferHost::buffer_line_count`, and its
+    /// caller-validated against the buffer's content line count, and its
     /// spec.
     fn set_virtual_lines(
         &mut self,
@@ -177,7 +177,7 @@ pub trait DecorationHost {
     /// first entry that is out of range, crosses a line break, covers a
     /// line's `\n`, is an insert at the text's end, or, under
     /// [`ConcealOverlaps::Refuse`], overlaps an earlier one. A `reveal` is
-    /// caller-validated against `BufferHost::buffer_line_count`.
+    /// caller-validated against the buffer's content line count.
     fn set_conceals(
         &mut self,
         source: String,
@@ -189,7 +189,7 @@ pub trait DecorationHost {
     /// `(set-eol-text! pane source lines)`: replaces `source`'s EOL text for
     /// `bid` wholesale. Each entry is `(line, text, scope)`; `text` is
     /// spliced in at the end of `line`, which is caller-validated against
-    /// `BufferHost::buffer_line_count`. A line two entries share goes to the
+    /// the buffer's content line count. A line two entries share goes to the
     /// first. `hide_on_insert_line` marks every entry
     /// to be hidden on the primary cursor's line while the pane types in
     /// Insert mode. Not diagnostics-specific: the diagnostics plugin is its
@@ -206,7 +206,7 @@ pub trait DecorationHost {
     /// line backgrounds for `bid` wholesale. Each entry is `(lines, scope)`,
     /// a background on each of `lines`; a line two entries share goes to the
     /// first. Every line is caller-validated against
-    /// `BufferHost::buffer_line_count`.
+    /// the buffer's content line count.
     fn set_line_backgrounds(
         &mut self,
         source: String,

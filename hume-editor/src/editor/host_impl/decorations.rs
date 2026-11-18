@@ -17,8 +17,9 @@ use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
 use crate::editor::EditorState;
-use crate::editor::buffer::offsets::{checked_char_offset, checked_cluster_range};
+use crate::editor::buffer::offsets::checked_cluster_range;
 use crate::statusline::StatusElement;
+use hume_scripting::checked_char_offset;
 
 use super::EditorHostImpl;
 use hume_scripting::host::{DecorationHost, DiagnosticCounts, MarkedLines, SetError, each_entry};

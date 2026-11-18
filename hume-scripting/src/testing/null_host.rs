@@ -18,9 +18,9 @@ use hume_core::{
     BufferId, BufferOptionWrite, ConfigOrigin, HostToken, OnUnsaved, OptionInput, OptionValue,
     PaneHandle,
 };
+use hume_editing::text::BufferText;
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
-use regex_cursor::engines::meta::Regex;
 
 use crate::attribution::EntryId;
 use crate::builtins::lsp::LSP_NOTIFICATION_EVENT;
@@ -181,47 +181,13 @@ impl BufferHost for NullHost {
     ) -> Result<PaneHandle, String> {
         Err("NullHost: show_read_only_buffer not available".into())
     }
-    fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
-        None
-    }
-    fn buffer_search(
-        &self,
-        _id: BufferId,
-        _regex: &Regex,
-    ) -> Option<Option<std::ops::Range<usize>>> {
+    fn live_text(&self, _id: BufferId) -> Option<BufferText> {
         None
     }
     fn word_search_pattern(&self, _id: BufferId, _word: &str) -> Option<String> {
         None
     }
     fn buffer_undo_tree(&self, _id: BufferId) -> Option<Vec<crate::host::UndoNode>> {
-        None
-    }
-    fn buffer_text(
-        &self,
-        _id: BufferId,
-        _range: Option<(usize, usize)>,
-    ) -> Option<Result<String, String>> {
-        None
-    }
-    fn buffer_line_count(&self, _id: BufferId) -> Option<hume_rope::line::ContentLineCount> {
-        None
-    }
-    fn buffer_char_count(&self, _id: BufferId) -> Option<usize> {
-        None
-    }
-    fn buffer_lines(
-        &self,
-        _id: BufferId,
-        _range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
-    ) -> Option<Vec<String>> {
-        None
-    }
-    fn line_to_char_offset(
-        &self,
-        _id: BufferId,
-        _line: hume_rope::line::ContentLine,
-    ) -> Option<usize> {
         None
     }
     fn viewport_range(
@@ -351,9 +317,6 @@ impl CursorHost for NullHost {
     }
     fn buffer_selections(&self, _pane: ShownHandle) -> Result<Vec<SelectionInfo>, String> {
         Err("NullHost: buffer_selections not available".into())
-    }
-    fn char_offset_to_line(&self, _bid: BufferId, _idx: usize) -> Result<ContentLine, String> {
-        Err("NullHost: char_offset_to_line not available".into())
     }
     fn symbol_under_cursor(&self, _pane: ShownHandle) -> Result<String, String> {
         Err("NullHost: symbol_under_cursor not available".into())

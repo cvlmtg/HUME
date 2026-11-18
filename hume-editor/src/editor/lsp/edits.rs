@@ -529,7 +529,7 @@ pub(in crate::editor) fn goto_buffer_offset(
         .try_get(bid)
         .ok_or_else(|| "no such buffer".to_string())?
         .text();
-    let offset = crate::editor::buffer::offsets::checked_char_offset(text, char_offset)?;
+    let offset = hume_scripting::checked_char_offset(text, char_offset)?;
     let pos = text.snap(offset);
     Ok(land(state, view, t, bid, pos))
 }

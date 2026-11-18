@@ -2,20 +2,17 @@
 //! viewport geometry.
 
 use hume_core::{BufferId, OnUnsaved, PaneHandle};
+use hume_editing::text::BufferText;
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::{ContentLine, join_line_ranges};
-use hume_rope::lines::line_token_content;
 use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 
 use super::EditorHostImpl;
 use crate::editor::buffer::lifecycle::CloseBufferRefused;
-use crate::editor::buffer::offsets::checked_char_range;
 use crate::editor::buffer::{TextRefusal, ViewLabel};
 use crate::editor::commands::{CommandPane, FocusedPane, effective_word_chars, word_search_input};
 use crate::editor::jump_list::{JumpRule, with_jump};
-use hume_ops::search::{SearchDirection, find_next_match};
 use hume_scripting::host::{BufferHost, ShownHandle, StoredLanguage};
-use regex_cursor::engines::meta::Regex;
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -195,17 +192,8 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         )
     }
 
-    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
-        Some(self.buffer(id)?.text().generation())
-    }
-
-    fn buffer_search(&self, id: BufferId, regex: &Regex) -> Option<Option<std::ops::Range<usize>>> {
-        let text = self.buffer(id)?.text();
-        let start = text.clusters().first().into();
-        Some(
-            find_next_match(text, regex, start, SearchDirection::Forward)
-                .map(|(span, _)| span.start().offset().index()..span.end().offset().index()),
-        )
+    fn live_text(&self, id: BufferId) -> Option<BufferText> {
+        self.buffer(id).map(|buffer| buffer.text().clone())
     }
 
     fn word_search_pattern(&self, id: BufferId, word: &str) -> Option<String> {
@@ -214,51 +202,6 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
             word,
             effective_word_chars(buffer, &self.state.settings),
         ))
-    }
-
-    fn buffer_text(
-        &self,
-        id: BufferId,
-        range: Option<(usize, usize)>,
-    ) -> Option<Result<String, String>> {
-        let text = self.buffer(id)?.text();
-        Some(match range {
-            None => Ok(text.to_string()),
-            Some((start, end)) => checked_char_range(text, start, end)
-                .map(|range| text.slice(range).to_string())
-                .map_err(|e| format!("#:range {e}")),
-        })
-    }
-
-    fn buffer_line_count(&self, id: BufferId) -> Option<hume_rope::line::ContentLineCount> {
-        Some(self.buffer(id)?.text().content_line_count())
-    }
-
-    fn buffer_char_count(&self, id: BufferId) -> Option<usize> {
-        Some(self.buffer(id)?.text().len_chars())
-    }
-
-    fn buffer_lines(
-        &self,
-        id: BufferId,
-        range: ExclusiveRange<hume_rope::line::ContentLine>,
-    ) -> Option<Vec<String>> {
-        let text = self.buffer(id)?.text();
-        let count = range.end.lines_since(range.start);
-        Some(
-            text.line_tokens_at(hume_rope::line::RopeyLine::from(range.start))
-                .take(count)
-                .map(line_token_content)
-                .collect(),
-        )
-    }
-
-    fn line_to_char_offset(
-        &self,
-        id: BufferId,
-        line: hume_rope::line::ContentLine,
-    ) -> Option<usize> {
-        Some(self.buffer(id)?.text().line_to_char(line.into()).index())
     }
 
     fn viewport_range(

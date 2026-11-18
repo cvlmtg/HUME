@@ -130,8 +130,8 @@ pub trait EditorHost {
     fn async_process(&mut self) -> Option<&mut dyn AsyncProcessHost> {
         None
     }
-    /// `(diff-buffer-lines …)` / `(buffer-revision-diff …)`, or `None` for
-    /// hosts with no buffers to diff (test stubs).
+    /// `(buffer-revision-diff …)` / `(buffer-changes-since …)`, or `None`
+    /// for hosts with no undo history to diff (test stubs).
     fn diff(&mut self) -> Option<&mut dyn DiffHost> {
         None
     }

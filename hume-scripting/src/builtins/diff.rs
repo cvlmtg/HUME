@@ -15,9 +15,10 @@ use hume_core::BufferId;
 
 use super::SteelResult;
 use super::args::{
-    END_CHAR_COL, START_CHAR_COL, char_range_value, list_of, not_live_err, string_list,
-    string_ref_arg, symbol_hash,
+    END_CHAR_COL, START_CHAR_COL, char_range_value, list_of, string_list, string_ref_arg,
+    symbol_hash,
 };
+use super::buffers::live_text;
 use super::errors::{generic_err, require_cap};
 use super::ids::BufferGeneration;
 
@@ -43,10 +44,7 @@ pub(crate) fn diff_buffer_lines(
     ref_text: SteelVal,
 ) -> SteelResult {
     let ref_text = BufferContent::from(string_ref_arg(&ref_text, "ref-text")?);
-    // `LiveBuffer` already checked liveness; `None` would be a host disagreeing with itself.
-    let live = require_cap(ctx.host.diff())?
-        .live_text(bid)
-        .ok_or_else(|| not_live_err("pane", bid))?;
+    let live = live_text(ctx, bid)?;
     Ok(hunks_to_steel(text_hunks(&ref_text, &live.content())))
 }
 

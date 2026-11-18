@@ -3,8 +3,8 @@
 use std::ffi::OsString;
 
 use hume_core::{BufferId, OnUnsaved, PaneHandle};
+use hume_editing::text::BufferText;
 use hume_platform::path::AbsolutePath;
-use regex_cursor::engines::meta::Regex;
 
 use super::ShownHandle;
 use crate::BufferVisibility;
@@ -124,15 +124,11 @@ pub trait BufferHost {
         text: &str,
     ) -> Result<PaneHandle, String>;
 
-    /// Buffer `id`'s text generation, bumped by every mutation, or `None` if
-    /// `id` is unknown. A script compares a saved value against a live read
-    /// to detect staleness.
-    fn buffer_generation(&self, id: BufferId) -> Option<u64>;
-
-    /// `(buffer-search pane re)`: the first match of `regex` in `id`'s text,
-    /// as a char range, `None` inside when nothing matches. Outer `None` if
-    /// `id` is unknown.
-    fn buffer_search(&self, id: BufferId, regex: &Regex) -> Option<Option<std::ops::Range<usize>>>;
+    /// `id`'s live (dirty) text, `None` if `id` is unknown. The clone shares
+    /// the buffer's rope, so it costs O(1) and never materializes the buffer
+    /// as a Steel string. Every builtin that reads a buffer's text computes
+    /// from this.
+    fn live_text(&self, id: BufferId) -> Option<BufferText>;
 
     /// `(word-search-pattern pane word)`: the search input `*` sets for
     /// `word` in `id`'s buffer, under that buffer's `word-chars`. `None` if
@@ -143,47 +139,6 @@ pub trait BufferHost {
     /// id order, which is also parents-before-children. `None` if `id` is
     /// unknown.
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<UndoNode>>;
-
-    /// `(buffer-text bid)`: the buffer's full live (dirty) in-memory
-    /// content, always ending with the structural trailing `\n`, or with
-    /// `range` its chars `start..end`. `None` if `id` is unknown; `Err`
-    /// naming the offending end when `range` does not fit the text.
-    fn buffer_text(
-        &self,
-        id: BufferId,
-        range: Option<(usize, usize)>,
-    ) -> Option<Result<String, String>>;
-
-    /// `(buffer-line-count bid)`: the number of content lines in `id`'s live
-    /// text, without the empty line ropey counts after the structural `\n`,
-    /// as the statusline and `:w` report it. `None` if `id` is unknown.
-    fn buffer_line_count(&self, id: BufferId) -> Option<hume_rope::line::ContentLineCount>;
-
-    /// `(buffer-char-count bid)`: length of `id`'s live text in chars, the
-    /// structural trailing `\n` included, so the largest offset
-    /// `char-offset->line` accepts. `None` if `id` is unknown.
-    fn buffer_char_count(&self, id: BufferId) -> Option<usize>;
-
-    /// Content lines `range` of `id`'s live text, each with its trailing line
-    /// break stripped. The caller checks `range` against
-    /// [`buffer_line_count`](Self::buffer_line_count); this does not, and an
-    /// implementation may panic on a `range` built any other way (the
-    /// editor's does). `None` if `id` is unknown.
-    fn buffer_lines(
-        &self,
-        id: BufferId,
-        range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
-    ) -> Option<Vec<String>>;
-
-    /// The char offset where content `line` starts in `id`'s live text, for
-    /// `(line->char-offset bid line)`. `line` is caller-checked as in
-    /// [`buffer_lines`](Self::buffer_lines), with the same panic on one
-    /// built any other way. `None` if `id` is unknown.
-    fn line_to_char_offset(
-        &self,
-        id: BufferId,
-        line: hume_rope::line::ContentLine,
-    ) -> Option<usize>;
 
     /// The content lines visible in `pane`'s pane, for
     /// `(viewport-range pane)` (0-based, end-exclusive). A pane on a

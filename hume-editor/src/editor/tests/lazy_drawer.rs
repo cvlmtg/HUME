@@ -505,6 +505,30 @@ fn a_render_proc_that_changes_the_editor_closes_the_drawer() {
     );
 }
 
+/// Diffing a buffer against a text reads the editor, so a render proc can.
+#[test]
+fn a_render_proc_can_diff_a_buffer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(
+        &mut ed,
+        tmp.path(),
+        "(range 0 2)",
+        r#"(lambda (rows budget)
+             (let ([hunks (hash-ref (diff-buffer-lines (focused-pane) "xbc\n") 'hunks)])
+               (map (lambda (k) (string-append "hunks " (number->string (length hunks))))
+                    rows)))"#,
+    );
+    frame(&mut ed, WIDTH, HEIGHT);
+
+    assert!(
+        ed.state.input.drawer().is_some(),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert_eq!(view_rows(&ed), vec![Some("hunks 1".to_string()); 2]);
+}
+
 /// Opens a drawer with `#:truncate 'head`, replaces its row through
 /// `update-drawer-list!` with no `#:truncate`, and shows the new row on a
 /// terminal 12 cells wide: 10 for the row. With `render`, the rows are keys

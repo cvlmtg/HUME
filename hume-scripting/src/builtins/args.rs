@@ -19,7 +19,9 @@ use steel::rvals::{FromSteelVal, SteelVal};
 use termina::event::KeyEvent;
 
 use hume_core::{BufferId, HostToken, TruncateEnd};
+use hume_editing::text::BufferText;
 use hume_platform::path::AbsolutePath;
+use hume_rope::offset::{CharOffset, ExclusiveRange};
 use hume_rope::spanned::SpannedText;
 
 use crate::Rooted;
@@ -772,6 +774,34 @@ pub(crate) fn char_range_value(start: usize, end: usize) -> SteelVal {
         (START_CHAR, SteelVal::IntV(start as isize)),
         (END_CHAR, SteelVal::IntV(end as isize)),
     ])
+}
+
+/// A char offset a script computed for `text`, which may be `text`'s length
+/// but not past it: past it is a caller bug, so `Err`.
+pub fn checked_char_offset(text: &BufferText, idx: usize) -> Result<CharOffset, String> {
+    CharOffset::checked(text.rope(), idx).ok_or_else(|| {
+        format!(
+            "offset {idx} is past the end of the buffer ({} chars)",
+            text.len_chars()
+        )
+    })
+}
+
+/// The char range `start..end` a script computed for `text`: each end checked
+/// as by [`checked_char_offset`], and `end` not before `start`. The error
+/// names the offending end or the reversed range, for the caller to prefix
+/// with what the range is.
+pub fn checked_char_range(
+    text: &BufferText,
+    start: usize,
+    end: usize,
+) -> Result<ExclusiveRange<CharOffset>, String> {
+    let start_at = checked_char_offset(text, start).map_err(|e| format!("start: {e}"))?;
+    let end_at = checked_char_offset(text, end).map_err(|e| format!("end: {e}"))?;
+    if end_at < start_at {
+        return Err(format!("{start}..{end} ends before it starts"));
+    }
+    Ok(ExclusiveRange::new(start_at, end_at))
 }
 
 /// A content-line range as Steel sees it: `(hash 'start-line s 'end-line e)`.

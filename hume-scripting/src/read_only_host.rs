@@ -7,10 +7,10 @@ use std::cell::{Cell, RefCell};
 use hume_core::{
     BufferId, BufferOptionWrite, HostToken, OnUnsaved, OptionInput, OptionValue, PaneHandle,
 };
+use hume_editing::text::BufferText;
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
-use regex_cursor::engines::meta::Regex;
 
 use crate::attribution::EntryId;
 use crate::command_procs::CommandProc;
@@ -90,12 +90,6 @@ impl CursorHost for ReadOnlyHost<'_> {
     }
     fn buffer_selections(&self, pane: ShownHandle) -> Result<Vec<SelectionInfo>, String> {
         self.inner.borrow_mut().cursor().buffer_selections(pane)
-    }
-    fn char_offset_to_line(&self, bid: BufferId, idx: usize) -> Result<ContentLine, String> {
-        self.inner
-            .borrow_mut()
-            .cursor()
-            .char_offset_to_line(bid, idx)
     }
     fn symbol_under_cursor(&self, pane: ShownHandle) -> Result<String, String> {
         self.inner.borrow_mut().cursor().symbol_under_cursor(pane)
@@ -301,11 +295,8 @@ impl BufferHost for ReadOnlyHost<'_> {
     ) -> Result<PaneHandle, String> {
         Err(self.refuse("show_read_only_buffer"))
     }
-    fn buffer_generation(&self, id: BufferId) -> Option<u64> {
-        self.inner.borrow_mut().buffers().buffer_generation(id)
-    }
-    fn buffer_search(&self, id: BufferId, regex: &Regex) -> Option<Option<std::ops::Range<usize>>> {
-        self.inner.borrow_mut().buffers().buffer_search(id, regex)
+    fn live_text(&self, id: BufferId) -> Option<BufferText> {
+        self.inner.borrow_mut().buffers().live_text(id)
     }
     fn word_search_pattern(&self, id: BufferId, word: &str) -> Option<String> {
         self.inner
@@ -315,32 +306,6 @@ impl BufferHost for ReadOnlyHost<'_> {
     }
     fn buffer_undo_tree(&self, id: BufferId) -> Option<Vec<UndoNode>> {
         self.inner.borrow_mut().buffers().buffer_undo_tree(id)
-    }
-    fn buffer_text(
-        &self,
-        id: BufferId,
-        range: Option<(usize, usize)>,
-    ) -> Option<Result<String, String>> {
-        self.inner.borrow_mut().buffers().buffer_text(id, range)
-    }
-    fn buffer_line_count(&self, id: BufferId) -> Option<hume_rope::line::ContentLineCount> {
-        self.inner.borrow_mut().buffers().buffer_line_count(id)
-    }
-    fn buffer_char_count(&self, id: BufferId) -> Option<usize> {
-        self.inner.borrow_mut().buffers().buffer_char_count(id)
-    }
-    fn buffer_lines(
-        &self,
-        id: BufferId,
-        range: ExclusiveRange<ContentLine>,
-    ) -> Option<Vec<String>> {
-        self.inner.borrow_mut().buffers().buffer_lines(id, range)
-    }
-    fn line_to_char_offset(&self, id: BufferId, line: ContentLine) -> Option<usize> {
-        self.inner
-            .borrow_mut()
-            .buffers()
-            .line_to_char_offset(id, line)
     }
     fn viewport_range(&mut self, pane: ShownHandle) -> Result<ExclusiveRange<ContentLine>, String> {
         self.inner.get_mut().buffers().viewport_range(pane)

@@ -19,13 +19,13 @@
 use hume_core::{
     BufferId, BufferOptionWrite, HostToken, OnUnsaved, OptionInput, OptionValue, PaneHandle,
 };
+use hume_editing::text::BufferText;
 use hume_rope::line::ContentLine;
 use hume_scripting::command_name::fold;
 use hume_scripting::host::{
     BufferHost, Captures, CommandHolder, CommandHost, CursorHost, EditorHost, EventHost,
     LanguageHost, NativeCall, SelectionInfo, SettingsHost, ShownHandle, StoredLanguage,
 };
-use regex_cursor::engines::meta::Regex;
 
 /// One recorded `run_command_sync` call: `(name, pane, call)`; see
 /// [`MockHost::dispatched_native`]'s own doc.
@@ -224,44 +224,10 @@ impl BufferHost for MockHost {
     fn buffer_undo_tree(&self, _id: BufferId) -> Option<Vec<hume_scripting::host::UndoNode>> {
         None
     }
-    fn buffer_generation(&self, _id: BufferId) -> Option<u64> {
-        None
-    }
-    fn buffer_search(
-        &self,
-        _id: BufferId,
-        _regex: &Regex,
-    ) -> Option<Option<std::ops::Range<usize>>> {
+    fn live_text(&self, _id: BufferId) -> Option<BufferText> {
         None
     }
     fn word_search_pattern(&self, _id: BufferId, _word: &str) -> Option<String> {
-        None
-    }
-    fn buffer_text(
-        &self,
-        _id: BufferId,
-        _range: Option<(usize, usize)>,
-    ) -> Option<Result<String, String>> {
-        None
-    }
-    fn buffer_line_count(&self, _id: BufferId) -> Option<hume_rope::line::ContentLineCount> {
-        None
-    }
-    fn buffer_char_count(&self, _id: BufferId) -> Option<usize> {
-        None
-    }
-    fn buffer_lines(
-        &self,
-        _id: BufferId,
-        _range: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
-    ) -> Option<Vec<String>> {
-        None
-    }
-    fn line_to_char_offset(
-        &self,
-        _id: BufferId,
-        _line: hume_rope::line::ContentLine,
-    ) -> Option<usize> {
         None
     }
     fn viewport_range(
@@ -493,9 +459,6 @@ impl CursorHost for MockHost {
     }
     fn buffer_selections(&self, _pane: ShownHandle) -> Result<Vec<SelectionInfo>, String> {
         Err("MockHost: buffer_selections not available".into())
-    }
-    fn char_offset_to_line(&self, _bid: BufferId, _idx: usize) -> Result<ContentLine, String> {
-        Err("MockHost: char_offset_to_line not available".into())
     }
     fn symbol_under_cursor(&self, _pane: ShownHandle) -> Result<String, String> {
         Err("MockHost: symbol_under_cursor not available".into())
