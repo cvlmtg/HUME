@@ -299,18 +299,21 @@ pub(in crate::editor) struct ShownLines {
 }
 
 impl ShownLines {
-    /// The lines `viewport` shows on `dlm`'s layout in a pane of `height`
-    /// rows laid out as `rows`, `None` for a pane with no rows.
+    /// The lines `viewport` shows on `dlm`'s layout in a pane laid out as
+    /// `rows`, `None` for a pane with no rows.
     pub(in crate::editor) fn read(
         dlm: &mut DisplayLineMap<'_>,
         viewport: &mut Viewport,
-        height: usize,
         content_lines: hume_rope::line::ContentLineCount,
         rows: Option<&PaneRows>,
     ) -> Self {
-        let top = viewport.top_at(dlm);
-        let body_top = rows.map_or(top, |rows| rows.body_top(dlm));
-        let bottom = super::frame::visible_bottom(dlm, top, height);
+        let (body_top, bottom) = match rows {
+            Some(rows) => (rows.body_top(dlm), rows.bottom(dlm)),
+            None => {
+                let top = viewport.top_at(dlm);
+                (top, top)
+            }
+        };
         let end_line = dlm
             .hidden()
             .line_after_shown(bottom.line, 1)
@@ -355,7 +358,6 @@ pub(in crate::editor) fn shown_lines(
     ShownLines::read(
         &mut dlm,
         viewport,
-        usize::from(size.height()),
         doc.text().content_line_count(),
         rows.as_ref(),
     )

@@ -16,7 +16,7 @@ use hume_platform::terminal::SharedTerm;
 use hume_grid::{Grid, Rect};
 
 use hume_core::PaneId;
-use hume_engine::display_lines::{DisplayLineMap, DisplayLinePos, Revealed};
+use hume_engine::display_lines::{DisplayLineMap, Revealed};
 use hume_engine::pane::{Pane, ViewLayouts, Viewport};
 use hume_engine::pipeline::{
     EngineView, PanePool, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout, SettledRows,
@@ -583,6 +583,7 @@ impl Editor {
                     self.state.buffers.get(buf_id),
                     &mut self.view.panes[pid],
                     &layout_key,
+                    rows.as_ref(),
                 )
             {
                 self.state.message_log.mark_all_seen();
@@ -600,7 +601,6 @@ impl Editor {
             let shown = super::geometry::ShownLines::read(
                 &mut dlm,
                 viewport,
-                usize::from(size.height()),
                 text.content_line_count(),
                 rows.as_ref(),
             );
@@ -1081,29 +1081,21 @@ struct ScrollOutcome {
     parked: bool,
 }
 
-/// Whether `pane`'s viewport reaches `doc`'s last display line.
+/// Whether `pane`'s viewport, laid out as `rows`, reaches `doc`'s last
+/// display line. `rows` is `None` for a pane with no rows.
 #[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
-fn shows_document_end(doc: &Buffer, pane: &mut Pane, layout_key: &LayoutKey) -> bool {
-    let Some(geo) = layout_key.geometry(doc.syntax_source()) else {
+fn shows_document_end(
+    doc: &Buffer,
+    pane: &mut Pane,
+    layout_key: &LayoutKey,
+    rows: Option<&PaneRows>,
+) -> bool {
+    let Some(rows) = rows else {
         return false;
     };
-    let (mut dlm, viewport) =
-        pane.display_lines_and_viewport(doc.text().rope(), layout_key.inputs());
-    let top = viewport.top_at(&mut dlm);
-    let bottom = visible_bottom(&mut dlm, top, geo.height());
+    let (mut dlm, _) = pane.display_lines_and_viewport(doc.text().rope(), layout_key.inputs());
+    let bottom = rows.bottom(&mut dlm);
     dlm.next(bottom).is_none()
-}
-
-/// The display line on the bottom row of a pane `height` rows tall whose top
-/// row shows `top`, or the last one when the document ends above that row. A
-/// `height == 0` pane counts as one row.
-pub(super) fn visible_bottom(
-    dlm: &mut DisplayLineMap<'_>,
-    top: DisplayLinePos,
-    height: usize,
-) -> DisplayLinePos {
-    let rows_below_top = isize::try_from(height.max(1) - 1).expect("a pane height fits an isize");
-    dlm.advance_saturating(top, rows_below_top)
 }
 
 /// Scroll the pane viewport so `cursor` stays within the visible area.

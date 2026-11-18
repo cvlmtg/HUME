@@ -222,6 +222,19 @@ fn rows_map_header_rows_to_their_lines_and_the_rest_to_display_lines() {
     assert_eq!(rows.row_of(&mut dlm, at(4, 2)), Some(2));
     assert_eq!(rows.row_of(&mut dlm, at(6, 0)), Some(4));
     assert_eq!(rows.row_of(&mut dlm, at(7, 0)), None, "past the last row");
+    assert_eq!(rows.bottom(&mut dlm), at(6, 0));
+}
+
+/// A 24-row pane over a five-line document from line 2: the document ends
+/// above the bottom row, so the bottom is its last line.
+#[test]
+fn the_bottom_of_a_pane_past_the_document_end_is_its_last_line() {
+    let rope = doc(5);
+    let providers = ProviderSet::new();
+    let mut store = PaneLineStore::new();
+    let mut dlm = map(&rope, WrapMode::None, &providers, 80, &mut store);
+    let rows = rows_of(&mut dlm, top(2), 24, ScopeHeaderInputs::NONE);
+    assert_eq!(rows.bottom(&mut dlm), top(4));
 }
 
 #[test]

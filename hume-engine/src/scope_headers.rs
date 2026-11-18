@@ -189,6 +189,12 @@ impl PaneRows {
         dlm.advance_saturating(self.top, self.headers.len() as isize)
     }
 
+    /// The display line on the pane's bottom row, or the last one when the
+    /// document ends above that row.
+    pub fn bottom(&self, dlm: &mut DisplayLineMap<'_>) -> DisplayLinePos {
+        dlm.advance_saturating(self.top, (self.height - 1) as isize)
+    }
+
     /// What pane row `row` shows.
     pub fn row_at(&self, dlm: &mut DisplayLineMap<'_>, row: u16) -> PaneRow {
         match self.headers().get(usize::from(row)) {
