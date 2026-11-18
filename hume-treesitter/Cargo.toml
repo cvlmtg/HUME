@@ -19,6 +19,7 @@ rustc-hash.workspace = true
 
 [dev-dependencies]
 hume-core = { path = "../hume-core", features = ["test-util"] }
+hume-engine = { path = "../hume-engine", features = ["test-util"] }
 hume-treesitter = { path = ".", features = ["test-util"] }
 hume-platform = { path = "../hume-platform", features = ["test-util"] }
 tempfile = "3"

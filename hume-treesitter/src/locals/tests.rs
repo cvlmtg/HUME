@@ -24,15 +24,20 @@ fn locals(source: &str, text: &str) -> (LayerLocals, ScopeRegistry) {
     test_fixtures::require_grammars(&["rust"]);
     let grammar = open_grammar("rust", "tree_sitter_rust");
     let mut registry = ScopeRegistry::new();
-    let mut skipped = Vec::new();
+    let mut skips = crate::registry::QuerySkips::default();
     let query = LocalsQuery::new(
         Query::new(grammar.language(), source).expect("the query compiles"),
         source,
         &mut registry,
-        &mut skipped,
+        &mut skips,
     )
     .expect("the query names locals");
-    assert!(skipped.is_empty(), "{skipped:?}");
+    assert!(
+        skips.patterns.is_empty() && skips.captures.is_empty(),
+        "{:?} {:?}",
+        skips.patterns,
+        skips.captures
+    );
     let (_parser, tree) = parse(grammar.language(), text);
     let rope = ropey::Rope::from_str(text);
     let locals = LayerLocals::built(&query, &mut QueryCursor::new(), &tree, &rope);

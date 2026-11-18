@@ -63,26 +63,41 @@ pub(crate) fn make_bundle_in(
     optional: &[(OptionalQuery, &str)],
     registry: &mut ScopeRegistry,
 ) -> Arc<GrammarBundle> {
+    let (bundle, skipped) = compile_bundle(name, symbol, highlights_src, optional, registry);
+    assert!(skipped.is_empty(), "the test queries left out {skipped:?}");
+    bundle
+}
+
+/// [`make_bundle_in`] returning what the queries left out instead of
+/// asserting there is nothing.
+pub(crate) fn compile_bundle(
+    name: &str,
+    symbol: &str,
+    highlights_src: &str,
+    optional: &[(OptionalQuery, &str)],
+    registry: &mut ScopeRegistry,
+) -> (Arc<GrammarBundle>, Vec<Skipped>) {
     let grammar = open_grammar(name, symbol);
     let (compiled, skipped) =
         compile_queries(grammar.language(), highlights_src, optional, registry)
             .expect("compile queries");
-    assert!(skipped.is_empty(), "the test queries left out {skipped:?}");
-    new_bundle(test_language_id(name), grammar, compiled)
+    (
+        new_bundle(test_language_id(name), grammar, compiled),
+        skipped,
+    )
 }
 
 /// What compiling rust's queries from `highlights` and `optional` left out.
 /// Panics if the grammar would not load.
 pub(crate) fn rust_skips(highlights: &str, optional: &[(OptionalQuery, &str)]) -> Vec<Skipped> {
     test_fixtures::require_grammars(&["rust"]);
-    let grammar = open_grammar("rust", "tree_sitter_rust");
-    compile_queries(
-        grammar.language(),
+    compile_bundle(
+        "rust",
+        "tree_sitter_rust",
         highlights,
         optional,
         &mut ScopeRegistry::new(),
     )
-    .unwrap_or_else(|e| panic!("the grammar must still load, got {e}"))
     .1
 }
 

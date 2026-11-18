@@ -291,3 +291,64 @@ fn each_injected_layer_resolves_its_references_in_itself() {
     assert!(parameter_on(1), "the use in the first block resolves");
     assert!(!parameter_on(5), "the second block sees no definition of a");
 }
+
+#[test]
+fn a_refused_capture_is_unstyled_and_reported() {
+    use hume_core::OptionalQuery;
+
+    test_fixtures::require_grammars(&["rust"]);
+    let highlights = "(function_item name: (identifier) @function.new)
+(primitive_type) @type
+((identifier) @variable.local (#is? local))
+";
+    let locals = "(function_item) @local.scope
+(parameter pattern: (identifier) @local.definition.brand.new)
+(identifier) @local.reference
+";
+    let mut registry = ScopeRegistry::new();
+    let type_scope = registry.intern("type");
+    let local_scope = registry.intern("variable.local");
+    registry.fill_to_limit();
+    let (bundle, skipped) = crate::test_support::compile_bundle(
+        "rust",
+        "tree_sitter_rust",
+        highlights,
+        &[(OptionalQuery::Locals, locals)],
+        &mut registry,
+    );
+    let limit = "too many distinct scope names in this session (limit 65280)";
+    let skips: Vec<String> = skipped.iter().map(ToString::to_string).collect();
+    assert_eq!(
+        skips,
+        [
+            format!("highlights.scm: @function.new: {limit}; the capture is left unstyled"),
+            format!(
+                "locals.scm: @local.definition.brand.new: {limit}; the capture is left unstyled"
+            ),
+        ]
+    );
+
+    use hume_engine::providers::SyntaxSource;
+    let text = "fn main(x: u8) { x }\n";
+    let (syntax, buffer) = crate::test_support::syntax_with(bundle, text);
+    let mut out = Vec::new();
+    syntax.spans_for_line(
+        hume_rope::line::ContentLine::new(0),
+        buffer.rope(),
+        &mut out,
+    );
+    let spans: Vec<(String, ScopeId)> = out
+        .into_iter()
+        .map(|(range, scope)| (text[range.as_byte_range()].to_owned(), scope))
+        .collect();
+    // Both `x`s are local because the refused definition kept its role; a
+    // discarded definition would make neither one local.
+    assert_eq!(
+        spans,
+        [
+            piece("x", local_scope),
+            piece("u8", type_scope),
+            piece("x", local_scope)
+        ]
+    );
+}

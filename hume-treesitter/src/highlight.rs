@@ -5,10 +5,11 @@ use hume_engine::types::ScopeId;
 use hume_rope::column::ByteCol;
 use hume_rope::offset::ExclusiveRange;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Query, QueryCursor, QueryError};
+use tree_sitter::{Query, QueryCursor};
 
 use crate::directives::{PatternDirectives, parse_patterns};
 use crate::layers::{SyntaxLayer, SyntaxLayers};
+use crate::registry::QuerySkips;
 
 // RopeProvider
 
@@ -109,14 +110,15 @@ impl TreeSitterHighlighter {
     /// shared by every buffer's highlighting, so `highlights.scm` is not
     /// re-parsed per buffer open. A pattern using an engine predicate or
     /// directive other than `#is?`/`#is-not? local` is skipped, its error in
-    /// `source` pushed to `skipped`.
+    /// `source` pushed to `skips.patterns`. A capture the registry refuses
+    /// emits no span and is pushed to `skips.captures`.
     pub(crate) fn new(
         mut query: Query,
         source: &str,
         registry: &mut ScopeRegistry,
-        skipped: &mut Vec<QueryError>,
+        skips: &mut QuerySkips,
     ) -> Self {
-        let localities = parse_patterns(&mut query, source, skipped).parsed;
+        let localities = parse_patterns(&mut query, source, &mut skips.patterns).parsed;
         // Leading-underscore captures (e.g. `@_f`, `@_lib`) are the queries'
         // convention for pattern-internal predicate helpers, never meant to
         // be styled, so map them to `None` so they never emit a span.
@@ -125,10 +127,9 @@ impl TreeSitterHighlighter {
             .iter()
             .map(|name| {
                 if name.starts_with('_') {
-                    None
-                } else {
-                    Some(registry.intern(name))
+                    return None;
                 }
+                skips.intern(registry, name, name)
             })
             .collect();
         Self {

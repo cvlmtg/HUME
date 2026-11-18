@@ -26,7 +26,7 @@ use std::sync::Arc;
 
 use rustc_hash::FxHashMap;
 use streaming_iterator::StreamingIterator;
-use tree_sitter::{Query, QueryCursor, QueryError, QueryProperty};
+use tree_sitter::{Query, QueryCursor, QueryProperty};
 
 use hume_engine::theme::ScopeRegistry;
 use hume_engine::types::ScopeId;
@@ -38,6 +38,7 @@ use crate::highlight::RopeProvider;
 use crate::injections::node_text;
 use crate::layers::LayerChange;
 use crate::registry::GrammarBundle;
+use crate::registry::QuerySkips;
 
 /// A compiled `locals.scm`.
 pub struct LocalsQuery {
@@ -85,14 +86,16 @@ impl LocalsQuery {
     /// A compiled `locals.scm`, its definition highlights interned in
     /// `registry`. `None` when no pattern it keeps captures a scope,
     /// definition or reference. A pattern using an engine predicate or
-    /// directive is skipped, its error in `source` pushed to `skipped`.
+    /// directive is skipped, its error in `source` pushed to `skips.patterns`.
+    /// A definition highlight the registry refuses leaves the definition
+    /// without one and is pushed to `skips.captures`.
     pub(crate) fn new(
         mut query: Query,
         source: &str,
         registry: &mut ScopeRegistry,
-        skipped: &mut Vec<QueryError>,
+        skips: &mut QuerySkips,
     ) -> Option<Self> {
-        let patterns = parse_patterns::<LocalsPattern>(&mut query, source, skipped);
+        let patterns = parse_patterns::<LocalsPattern>(&mut query, source, &mut skips.patterns);
         let roles: Vec<CaptureRole> = query
             .capture_names()
             .iter()
@@ -103,7 +106,7 @@ impl LocalsQuery {
                 name => name
                     .strip_prefix("local.definition.")
                     .map_or(CaptureRole::Discard, |highlight| {
-                        CaptureRole::Definition(Some(registry.intern(highlight)))
+                        CaptureRole::Definition(skips.intern(registry, name, highlight))
                     }),
             })
             .collect();

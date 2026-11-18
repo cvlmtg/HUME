@@ -21,7 +21,8 @@ use hume_core::{
 };
 #[cfg(any(test, feature = "test-util"))]
 use hume_core::{FileExtension, FileGlob};
-use hume_engine::theme::ScopeRegistry;
+use hume_engine::theme::{ScopeLimitReached, ScopeRegistry};
+use hume_engine::types::ScopeId;
 use tree_sitter::QueryError;
 
 use crate::indent::IndentQuery;
@@ -266,12 +267,42 @@ fn store<T>(
     slot.is_none().then_some(needs)
 }
 
-/// Each of `errors`, a pattern of `file` left out, as a skip in `skipped`.
-fn skip_patterns(skipped: &mut Vec<Skipped>, file: QueryFile, errors: &mut Vec<QueryError>) {
+/// What compiling one query file left out, until `take_skips` reports it.
+#[derive(Default)]
+pub(crate) struct QuerySkips {
+    pub(crate) patterns: Vec<QueryError>,
+    pub(crate) captures: Vec<(Box<str>, ScopeLimitReached)>,
+}
+
+impl QuerySkips {
+    /// `scope`'s id in `registry`, or `None` with the refusal kept against
+    /// `capture`, the capture name that styles it.
+    pub(crate) fn intern(
+        &mut self,
+        registry: &mut ScopeRegistry,
+        capture: &str,
+        scope: &str,
+    ) -> Option<ScopeId> {
+        registry
+            .intern_name(scope)
+            .map_err(|error| self.captures.push((capture.into(), error)))
+            .ok()
+    }
+}
+
+/// Everything `skips` holds, left out of `file`, as skips in `skipped`.
+fn take_skips(skipped: &mut Vec<Skipped>, file: QueryFile, skips: &mut QuerySkips) {
     skipped.extend(
-        errors
+        skips
+            .patterns
             .drain(..)
             .map(|error| Skipped::Pattern { file, error }),
+    );
+    skipped.extend(
+        skips
+            .captures
+            .drain(..)
+            .map(|(name, error)| Skipped::Capture { file, name, error }),
     );
 }
 
@@ -338,14 +369,14 @@ pub(crate) fn compile_queries(
     let highlights =
         tree_sitter::Query::new(language, highlights_src).map_err(RegisterError::QueryBuild)?;
     let mut skipped = Vec::new();
-    let mut errors = Vec::new();
+    let mut skips = QuerySkips::default();
     let highlighter = Arc::new(TreeSitterHighlighter::new(
         highlights,
         highlights_src,
         scope_reg,
-        &mut errors,
+        &mut skips,
     ));
-    skip_patterns(&mut skipped, QueryFile::Highlights, &mut errors);
+    take_skips(&mut skipped, QueryFile::Highlights, &mut skips);
     let mut injections = None;
     let mut textobjects = None;
     let mut indents = None;
@@ -366,36 +397,36 @@ pub(crate) fn compile_queries(
         let names_nothing = match kind {
             OptionalQuery::Injections => store(
                 &mut injections,
-                InjectionsQuery::new(query, src, &mut errors),
+                InjectionsQuery::new(query, src, &mut skips.patterns),
                 InjectionsQuery::NEEDS,
             ),
             OptionalQuery::TextObjects => store(
                 &mut textobjects,
-                TextObjectsQuery::new(query, src, &mut errors).map(Arc::new),
+                TextObjectsQuery::new(query, src, &mut skips.patterns).map(Arc::new),
                 TextObjectsQuery::NEEDS,
             ),
             OptionalQuery::Indents => store(
                 &mut indents,
-                IndentQuery::new(query, src, language, &mut errors),
+                IndentQuery::new(query, src, language, &mut skips.patterns),
                 IndentQuery::NEEDS,
             ),
             OptionalQuery::Context => store(
                 &mut context,
-                ContextQuery::new(query, src, &mut errors),
+                ContextQuery::new(query, src, &mut skips.patterns),
                 ContextQuery::NEEDS,
             ),
             OptionalQuery::Folds => store(
                 &mut folds,
-                FoldQuery::new(query, src, &mut errors),
+                FoldQuery::new(query, src, &mut skips.patterns),
                 FoldQuery::NEEDS,
             ),
             OptionalQuery::Locals => store(
                 &mut locals,
-                LocalsQuery::new(query, src, scope_reg, &mut errors),
+                LocalsQuery::new(query, src, scope_reg, &mut skips),
                 LocalsQuery::NEEDS,
             ),
         };
-        skip_patterns(&mut skipped, QueryFile::Optional(kind), &mut errors);
+        take_skips(&mut skipped, QueryFile::Optional(kind), &mut skips);
         if let Some(needs) = names_nothing {
             skipped.push(Skipped::File {
                 kind,
@@ -569,6 +600,13 @@ pub enum Skipped {
         file: QueryFile,
         error: tree_sitter::QueryError,
     },
+    /// A capture of `file` whose name the scope registry refused. The
+    /// pattern still matches; the capture emits no span.
+    Capture {
+        file: QueryFile,
+        name: Box<str>,
+        error: ScopeLimitReached,
+    },
     /// An optional query file left out whole.
     File {
         kind: OptionalQuery,
@@ -592,6 +630,11 @@ impl std::fmt::Display for Skipped {
             Self::Pattern { file, error } => {
                 write!(f, "{}: {error}; the pattern is left out", file.file_name())
             }
+            Self::Capture { file, name, error } => write!(
+                f,
+                "{}: @{name}: {error}; the capture is left unstyled",
+                file.file_name()
+            ),
             Self::File { kind, reason } => {
                 write!(f, "{} is left out: ", kind.file_name())?;
                 match reason {
