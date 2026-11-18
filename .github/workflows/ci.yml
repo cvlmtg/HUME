@@ -128,7 +128,7 @@ jobs:
             ${{ runner.os }}-cargo-
 
       - name: Build
-        run: cargo build --all-targets
+        run: cargo test --no-run
 
       # ── Grammar test fixtures ──────────────────────────────────────────────
       # Fixtures are members of the treesitter.hume release that core:plum's
@@ -147,12 +147,10 @@ jobs:
         shell: bash
         run: bash scripts/fetch-test-grammars.sh
 
+      # Benches are not run: `cargo bench` runs them on demand, and the clippy
+      # job still compiles them.
       - name: Test
-        run: cargo test --all-targets
-
-      # --all-targets above excludes doctests; run them separately.
-      - name: Doctests
-        run: cargo test --doc
+        run: cargo test
 
       # tools/theme-editor is a separate npm package with its own test
       # runner. No dependency install: the tests import the tool's own pure

@@ -37,10 +37,9 @@ cargo clippy --workspace --all-targets -- -D clippy::disallowed_methods -D clipp
 # crate-private items.
 cargo doc --workspace --no-deps --document-private-items
 
-cargo test --all-targets
-# --all-targets excludes doctests — run them separately so a broken example
-# doesn't rot unnoticed.
-cargo test --doc
+# Plain `cargo test` runs unit, integration and doc tests but not benches:
+# those run on demand with `cargo bench`. Clippy above still compiles them.
+cargo test
 
 # Every golf solution must still produce its expected output. Unix only, as
 # in CI: a solution is not guaranteed to replay the same way on Windows.
