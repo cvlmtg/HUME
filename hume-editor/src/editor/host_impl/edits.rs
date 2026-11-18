@@ -10,7 +10,6 @@ use super::EditorHostImpl;
 use crate::editor::buffer::offsets::widened_to_clusters;
 use crate::editor::commands;
 use crate::editor::input_stack::PastedText;
-use hume_scripting::checked_char_range;
 use hume_scripting::host::{CharTextEdit, EditHost, FocusedHandle, ShownHandle};
 
 impl<'a> EditHost for EditorHostImpl<'a> {
@@ -162,7 +161,8 @@ impl<'a> EditHost for EditorHostImpl<'a> {
         let char_edits = edits
             .iter()
             .map(|e| {
-                let range = checked_char_range(text, e.start, e.end)
+                let range = text
+                    .checked_range(e.start, e.end)
                     .map_err(|err| format!("range {err}"))?;
                 Ok((widened_to_clusters(text, range), e.text.as_str()))
             })

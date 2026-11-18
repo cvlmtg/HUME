@@ -1,20 +1,18 @@
-//! Checking char offsets and ranges a script computed against the text
-//! they claim to address.
+//! Char ranges a script computed, fitted to whole grapheme clusters.
 
 use hume_editing::text::BufferText;
 use hume_rope::cluster::ClusterRange;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
-use hume_scripting::checked_char_range;
 
 /// The non-empty char range `start..end` a script computed for `text`,
-/// checked as by [`checked_char_range`] and widened to the clusters it
-/// touches. The error is worded as [`checked_char_range`]'s.
+/// checked as by [`BufferText::checked_range`] and widened to the clusters
+/// it touches. The error is worded as [`BufferText::checked_range`]'s.
 pub(in crate::editor) fn checked_cluster_range(
     text: &BufferText,
     start: usize,
     end: usize,
 ) -> Result<ClusterRange, String> {
-    let range = checked_char_range(text, start, end)?;
+    let range = text.checked_range(start, end)?;
     text.covering(range)
         .ok_or_else(|| format!("{start}..{end} is empty"))
 }

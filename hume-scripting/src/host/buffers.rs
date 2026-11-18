@@ -126,8 +126,7 @@ pub trait BufferHost {
 
     /// `id`'s live (dirty) text, `None` if `id` is unknown. The clone shares
     /// the buffer's rope, so it costs O(1) and never materializes the buffer
-    /// as a Steel string. Every builtin that reads a buffer's text computes
-    /// from this.
+    /// as a Steel string.
     fn live_text(&self, id: BufferId) -> Option<BufferText>;
 
     /// `(word-search-pattern pane word)`: the search input `*` sets for

@@ -18,7 +18,7 @@ use super::args::{
     optional_list_to_string_pairs, optional_list_to_strings, optional_path_arg,
     optional_string_arg, path_arg, string_arg, under_cwd,
 };
-use super::buffers::{line_ranges_arg, live_line_count};
+use super::buffers::{line_ranges_arg, live_text};
 use super::errors::{generic_err, require_cap};
 use super::ids::{ParsedText, downcast};
 
@@ -298,7 +298,7 @@ pub(crate) fn syntax_captures(
     ranges: SteelVal,
 ) -> SteelResult {
     require_cap(ctx.host.syntax())?;
-    let line_count = live_line_count(ctx, bid)?;
+    let line_count = live_text(ctx, bid)?.content_line_count();
     let ranges = line_ranges_arg(ranges, line_count)?;
     let captures = require_cap(ctx.host.syntax())?
         .syntax_captures(bid, &language, &query, &ranges)

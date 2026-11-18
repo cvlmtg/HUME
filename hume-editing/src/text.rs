@@ -493,6 +493,36 @@ impl BufferText {
         ClusterRange::within(self.full_slice(), chars)
     }
 
+    /// A raw char offset from outside the text, which may be the text's
+    /// length but not past it: past it is the caller's bug, so `Err`.
+    pub fn checked_offset(&self, idx: usize) -> Result<CharOffset, String> {
+        CharOffset::checked(&self.rope, idx).ok_or_else(|| {
+            format!(
+                "offset {idx} is past the end of the buffer ({} chars)",
+                self.len_chars()
+            )
+        })
+    }
+
+    /// The raw char range `start..end` from outside the text: each end
+    /// checked as by [`checked_offset`](Self::checked_offset), and `end` not
+    /// before `start`. The error names the offending end or the reversed
+    /// range, for the caller to prefix with what the range is.
+    pub fn checked_range(
+        &self,
+        start: usize,
+        end: usize,
+    ) -> Result<ExclusiveRange<CharOffset>, String> {
+        let start_at = self
+            .checked_offset(start)
+            .map_err(|e| format!("start: {e}"))?;
+        let end_at = self.checked_offset(end).map_err(|e| format!("end: {e}"))?;
+        if end_at < start_at {
+            return Err(format!("{start}..{end} ends before it starts"));
+        }
+        Ok(ExclusiveRange::new(start_at, end_at))
+    }
+
     /// Grapheme-cluster queries over this text.
     pub fn clusters(&self) -> ClusterView<'_> {
         ClusterView(self)

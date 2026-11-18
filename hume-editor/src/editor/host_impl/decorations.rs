@@ -19,7 +19,6 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 use crate::editor::EditorState;
 use crate::editor::buffer::offsets::checked_cluster_range;
 use crate::statusline::StatusElement;
-use hume_scripting::checked_char_offset;
 
 use super::EditorHostImpl;
 use hume_scripting::host::{DecorationHost, DiagnosticCounts, MarkedLines, SetError, each_entry};
@@ -308,7 +307,7 @@ pub(in crate::editor) fn conceal_entries(
                 text: replacement.map(&mut shown).transpose()?,
             },
             ConcealSpecSpan::Inserted { at, text: drawn } => {
-                let at = checked_char_offset(text, at).map_err(fail)?;
+                let at = text.checked_offset(at).map_err(fail)?;
                 if at == text.end() {
                     return Err(format!("offset {} is past the last line break", at.index()));
                 }

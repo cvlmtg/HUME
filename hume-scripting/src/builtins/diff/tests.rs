@@ -49,8 +49,6 @@ fn diff_words_rejects_a_non_string_new_argument() {
     );
 }
 
-// ── NullHost: no DiffHost, buffer_exists=false ──────────────────────────────
-
 /// A line diff's result: its `hunks`.
 fn lines_result(hunks: SteelVal) -> SteelVal {
     symbol_hash([("hunks", hunks)])

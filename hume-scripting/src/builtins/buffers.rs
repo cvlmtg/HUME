@@ -12,8 +12,8 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use super::SteelResult;
 use super::args::{
     ArgPane, CHAR_RANGE_KEYS, HashEntry, LINE_RANGE_KEYS, bool_arg, char_range_value,
-    checked_char_offset, checked_char_range, line_range_value, list_of, not_live_err,
-    optional_hash_entry, optional_hash_list, relative_base_arg, string_list, symbol_hash,
+    line_range_value, list_of, not_live_err, optional_hash_entry, optional_hash_list,
+    relative_base_arg, string_list, symbol_hash,
 };
 use super::errors::generic_err;
 use super::ids::{BufferGeneration, SteelBufferKey, SteelPane};
@@ -279,7 +279,8 @@ pub(crate) fn buffer_text(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) ->
     let content = match range {
         None => text.to_string(),
         Some((start, end)) => {
-            let range = checked_char_range(&text, start, end)
+            let range = text
+                .checked_range(start, end)
                 .map_err(|e| generic_err(format!("#:range {e}")))?;
             text.slice(range).to_string()
         }
@@ -292,7 +293,9 @@ pub(crate) fn buffer_text(ctx: &mut SteelCtx, bid: BufferId, range: SteelVal) ->
 /// the statusline and `:w`). O(1): reads the text's line count rather than
 /// counting a materialized `(buffer-lines pane)` list.
 pub(crate) fn buffer_line_count(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
-    Ok(SteelVal::IntV(live_line_count(ctx, bid)?.get() as isize))
+    Ok(SteelVal::IntV(
+        live_text(ctx, bid)?.content_line_count().get() as isize,
+    ))
 }
 
 /// `bid`'s live text. `bid` was checked live when the pane argument
@@ -303,14 +306,6 @@ pub(super) fn live_text(ctx: &mut SteelCtx, bid: BufferId) -> Result<BufferText,
         .buffers()
         .live_text(bid)
         .ok_or_else(|| not_live_err("pane", bid))
-}
-
-/// `bid`'s content line count, as [`live_text`] reads it.
-pub(super) fn live_line_count(
-    ctx: &mut SteelCtx,
-    bid: BufferId,
-) -> Result<hume_rope::line::ContentLineCount, SteelErr> {
-    Ok(live_text(ctx, bid)?.content_line_count())
 }
 
 /// `(buffer-char-count pane)` → int: `pane`'s buffer's length in chars,
@@ -617,12 +612,12 @@ pub(crate) fn selection_primary(sel: SteelVal) -> SteelResult {
 /// either way).
 pub(crate) fn char_offset_to_line(ctx: &mut SteelCtx, bid: BufferId, idx: usize) -> SteelResult {
     let text = live_text(ctx, bid)?;
-    let offset = checked_char_offset(&text, idx).map_err(generic_err)?;
+    let offset = text.checked_offset(idx).map_err(generic_err)?;
     Ok(SteelVal::IntV(text.char_to_line(offset).index() as isize))
 }
 
 /// `line` as a content line of a buffer with `line_count` content lines
-/// ([`live_line_count`]), or `Err` past the last one. The buffer's trailing
+/// ([`BufferText::content_line_count`]), or `Err` past the last one. The buffer's trailing
 /// phantom line is past it: it has no `\n` of its own and nothing to address.
 pub(super) fn content_line_arg(
     line: usize,

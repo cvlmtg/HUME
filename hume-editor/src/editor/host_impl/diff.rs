@@ -1,4 +1,4 @@
-//! `EditorHostImpl`'s `BufferText` diffing.
+//! `EditorHostImpl`'s diffs against a buffer's undo history.
 
 use hume_core::BufferId;
 use hume_editing::hunk::ChangeHunk;

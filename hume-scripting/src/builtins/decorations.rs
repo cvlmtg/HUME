@@ -23,9 +23,7 @@ use super::args::{
     optional_hash_entry, optional_symbol_arg, set_err, spanned_text, string_arg, symbol_arg,
     symbol_enum_arg, symbol_hash,
 };
-use super::buffers::{
-    content_line_arg, content_line_bound, live_line_count, optional_line_range_arg,
-};
+use super::buffers::{content_line_arg, content_line_bound, live_text, optional_line_range_arg};
 use super::errors::{generic_err, require_cap};
 use super::ids::DocRange;
 
@@ -275,7 +273,7 @@ fn decorated_line_count(
     bid: BufferId,
 ) -> Result<hume_rope::line::ContentLineCount, SteelErr> {
     require_cap(ctx.host.decorations())?;
-    live_line_count(ctx, bid)
+    Ok(live_text(ctx, bid)?.content_line_count())
 }
 
 /// The lines an entry's `'line` and optional `'end-line` mark in a buffer
