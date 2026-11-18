@@ -22,7 +22,7 @@ use hume_platform::path::AbsolutePath;
 use hume_rope::spanned::SpannedText;
 
 use crate::Rooted;
-use crate::host::{JobHandle, SupersedeKey, TimerHandle, token_to_steel};
+use crate::host::{JobHandle, SetError, SupersedeKey, TimerHandle, token_to_steel};
 use crate::keys::parse_key_sequence;
 use crate::types::Params;
 
@@ -812,6 +812,12 @@ pub(crate) fn write_item_label(label: &mut String, ctx_name: &str, index: usize)
 
     label.clear();
     write!(label, "{ctx_name} {index}").expect("writing to a String cannot fail");
+}
+
+/// A [`SetError`] as the error a builtin raises, an entry named by its place
+/// in the list `list` labels.
+pub(crate) fn set_err(list: &str) -> impl Fn(SetError) -> SteelErr + '_ {
+    move |err| generic_err(err.labeled(list))
 }
 
 /// `text` with the payload `spans` decoded from the list `ctx_name` labels,

@@ -50,7 +50,8 @@ pub enum DiagnosticRange {
     Request(crate::builtins::ids::DocRange),
 }
 
-/// Why a decoration setter refused its entries.
+/// Why a call refused the list it was given: a decoration setter's
+/// entries, or the rows of a menu or drawer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SetError {
     /// The call as a whole: an unknown buffer, an unregistered sign source.
@@ -66,6 +67,22 @@ impl std::fmt::Display for SetError {
         match self {
             Self::Call(message) => f.write_str(message),
             Self::Entry { index, message } => write!(f, "entry {index}: {message}"),
+        }
+    }
+}
+
+impl SetError {
+    /// The message with an entry named by its place in the list `list`
+    /// labels, as an error about that list's decoded items names it.
+    pub fn labeled(&self, list: &str) -> String {
+        match self {
+            Self::Call(message) => message.clone(),
+            Self::Entry { index, message } => {
+                format!(
+                    "{}: {message}",
+                    crate::builtins::args::item_label(list, *index)
+                )
+            }
         }
     }
 }

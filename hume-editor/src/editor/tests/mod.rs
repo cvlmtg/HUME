@@ -704,7 +704,8 @@ pub(in crate::editor) fn plain_drawer(
         drawer_items(items),
         hume_scripting::Callback::for_test(on_select),
         &mut hume_engine::theme::ScopeRegistry::new(),
-    );
+    )
+    .expect("an empty registry has room for every row's scopes");
     DrawerLayer::new(rows, hume_core::TruncateEnd::Tail, 0)
 }
 
@@ -2034,6 +2035,7 @@ mod reload_config;
 mod reload_scroll;
 mod render_snapshot;
 mod scope_headers;
+mod scope_limit;
 mod scripting_effects;
 mod scripting_grammar;
 mod scripting_host_globals;

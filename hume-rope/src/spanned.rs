@@ -97,6 +97,22 @@ impl<T> SpannedText<T> {
         }
     }
 
+    /// [`Self::map_payload`] with a fallible `f`: its first error, or the
+    /// same text and ranges with every payload replaced.
+    pub fn try_map_payload<U, E>(
+        self,
+        mut f: impl FnMut(T) -> Result<U, E>,
+    ) -> Result<SpannedText<U>, E> {
+        Ok(SpannedText {
+            text: self.text,
+            spans: self
+                .spans
+                .into_iter()
+                .map(|(range, payload)| Ok((range, f(payload)?)))
+                .collect::<Result<_, E>>()?,
+        })
+    }
+
     /// The part of the text in `kept`, a byte range starting and ending on
     /// cluster boundaries. Each span is clipped to `kept` and moves with the
     /// text, and a span left empty is dropped.

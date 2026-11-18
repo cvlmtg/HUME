@@ -6,16 +6,15 @@ use termina::event::KeyCode;
 
 use hume_core::{HostToken, NonEmpty};
 use hume_engine::pipeline::{EngineView, ScreenLayout};
-use hume_engine::theme::ScopeRegistry;
 use hume_engine::types::EditorMode;
 use hume_scripting::SteelCall;
-use hume_scripting::host::RowDisplay;
+use hume_scripting::host::{RowDisplay, SetError};
 
 use super::super::mouse::is_fresh_gesture;
 use super::super::replay::{Answer, Choice, InputOpener, PendingAnswer, WaitingInput};
 use super::super::{Editor, EditorState};
 use super::base::BaseLayer;
-use super::list_row::list_row;
+use super::list_row::script_rows;
 use super::paste::ignore_paste;
 use super::placement::{focused_cursor, popup_placement};
 use super::stack::{
@@ -64,7 +63,7 @@ pub(in crate::editor) fn open_menu(
     view: &mut EngineView,
     items: NonEmpty<(RowDisplay, hume_scripting::Rooted)>,
     callback: hume_scripting::Callback,
-) -> Result<Option<HostToken>, String> {
+) -> Result<Option<HostToken>, SetError> {
     if let Some(replay) = state.dot_replay.as_mut() {
         replay
             .answer_call(
@@ -86,7 +85,7 @@ pub(in crate::editor) fn open_menu(
                     )]))
                 },
             )
-            .map_err(|refusal| refusal.to_string())?;
+            .map_err(|refusal| SetError::Call(refusal.to_string()))?;
         return Ok(None);
     }
     // A `Menu` on top is the self-replace exception: a second
@@ -95,9 +94,13 @@ pub(in crate::editor) fn open_menu(
     if state.async_opener_stale::<BaseLayer, MenuLayer>("show-menu!") {
         return Ok(None);
     }
+    // Built before anything changes, so a refused row leaves the open menu
+    // and the recording as they were.
+    let rows = script_rows(items, &mut view.registry)?
+        .map(|(row, payload)| (hume_ui::popup::MenuRow::plain(row), payload));
     let input = state
         .waiting_input(InputOpener::Code)
-        .map_err(|refusal| refusal.to_string())?;
+        .map_err(|refusal| SetError::Call(refusal.to_string()))?;
     // Retires a prior `Menu` on the self-replace path, firing its callback
     // with `#f` explicitly (`take_firing_false`, shared with the drawer):
     // only this path, a genuine refresh, should fire one. Any open popup is
@@ -105,22 +108,10 @@ pub(in crate::editor) fn open_menu(
     if let Some(r) = state.input.ref_of::<MenuLayer>() {
         state.take_firing_false::<MenuLayer>(view, r);
     }
-    let menu = MenuLayer::new(input, menu_rows(items, &mut view.registry), callback);
+    let menu = MenuLayer::new(input, rows, callback);
     let token = menu.token();
     state.push_layer(view, menu);
     Ok(Some(token))
-}
-
-/// A menu's rows from a script's `(display . payload)` items, their scopes
-/// interned in `registry`.
-fn menu_rows(
-    items: NonEmpty<(RowDisplay, hume_scripting::Rooted)>,
-    registry: &mut ScopeRegistry,
-) -> NonEmpty<(hume_ui::popup::MenuRow, hume_scripting::Rooted)> {
-    items.map(|(display, payload)| {
-        let row = hume_ui::popup::MenuRow::plain(list_row(display, registry));
-        (row, payload)
-    })
 }
 
 /// The call of a menu's callback with the chosen row's payload, or `#f`.

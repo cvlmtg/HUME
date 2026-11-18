@@ -13,6 +13,7 @@ use hume_core::{HostToken, NonEmpty, PopupLayout, TruncateEnd};
 use hume_rope::spanned::SpannedText;
 
 use super::FocusedHandle;
+use super::decorations::SetError;
 
 /// A list row's display as a script gave it (a drawer row, a menu row, a
 /// row a picker's `#:render` returns): a string, or `(hash 'text t)` with
@@ -220,13 +221,14 @@ pub trait UiHost {
     /// a second response to one request is a refresh.
     ///
     /// Returns a token scoping [`Self::close_menu`] to this menu, or `None`
-    /// when the call was dropped.
+    /// when the call was dropped. A row that cannot be built is a
+    /// [`SetError::Entry`] naming its place in `items`.
     fn show_menu(
         &mut self,
         pane: FocusedHandle,
         items: NonEmpty<(RowDisplay, crate::Rooted)>,
         callback: crate::Callback,
-    ) -> Result<Option<HostToken>, String>;
+    ) -> Result<Option<HostToken>, SetError>;
 
     /// `(close-menu! token)` dismisses the menu `token` names without
     /// invoking its callback, even when another layer covers it. A no-op if
@@ -245,7 +247,8 @@ pub trait UiHost {
     ///
     /// Returns the token [`Self::close_drawer`], [`Self::update_drawer_list`]
     /// and [`Self::drawer_selection`] take, or `None` when this async
-    /// opener's request was dropped as stale.
+    /// opener's request was dropped as stale. A row that cannot be built is
+    /// a [`SetError::Entry`] naming its place in `items`.
     fn show_drawer_list(
         &mut self,
         pane: FocusedHandle,
@@ -253,7 +256,7 @@ pub trait UiHost {
         callback: crate::Callback,
         selected: usize,
         truncate: TruncateEnd,
-    ) -> Result<Option<HostToken>, String>;
+    ) -> Result<Option<HostToken>, SetError>;
 
     /// `(close-drawer! token)` dismisses the drawer without invoking its
     /// callback (`Esc` calls it with `#f`). A no-op if none is open or
@@ -266,14 +269,16 @@ pub trait UiHost {
     /// keeping its selection, scroll and `#:truncate` end. `selected` is
     /// clamped into the new list. Returns `false` when no drawer is open or
     /// `token` is not its own: the caller's drawer was closed or replaced,
-    /// which its callback's `#f` already reported.
+    /// which its callback's `#f` already reported. A row that cannot be built
+    /// is a [`SetError::Entry`] naming its place in `items`, and leaves the
+    /// drawer's rows as they were.
     fn update_drawer_list(
         &mut self,
         token: HostToken,
         items: DrawerItems,
         callback: crate::Callback,
         selected: usize,
-    ) -> bool;
+    ) -> Result<bool, SetError>;
 
     /// `(drawer-selection token)`: the open drawer's selected row as its
     /// payload and index, or `None` when no drawer is open or `token` is not

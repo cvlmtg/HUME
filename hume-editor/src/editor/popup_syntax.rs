@@ -26,7 +26,7 @@ use crate::editor::decoration_providers::{
     conceals_by_line, extra_highlight_spans, first_per_line,
 };
 use crate::editor::host_impl::{
-    EditorHostImpl, conceal_entries, extra_highlight_entries, line_background_entries,
+    EditorHostImpl, conceal_entries, extra_highlight_entries, line_background_entries, script_scope,
 };
 use crate::editor::input_stack::{BufferCompletionLayer, InputStack, PopupLayer};
 use crate::editor::syntax::GrammarLoads;
@@ -240,9 +240,11 @@ impl TextFormat {
         let text = &syntax.text;
         let conceals = conceal_entries(text, registry, spec.conceals, spec.overlaps)
             .map_err(|e| format!("'conceals {e}"))?;
-        let highlights = extra_highlight_entries(text, registry, spec.highlights)
-            .map_err(|e| format!("'highlights {e}"))?;
-        let line_backgrounds = line_background_entries(registry, spec.line_backgrounds);
+        let highlights =
+            extra_highlight_entries(text, spec.highlights, |name| script_scope(registry, &name))
+                .map_err(|e| format!("'highlights {e}"))?;
+        let line_backgrounds = line_background_entries(registry, spec.line_backgrounds)
+            .map_err(|e| format!("'line-backgrounds {e}"))?;
         let mut providers = ProviderSet::new();
         let handles = build_text_providers(&mut providers);
         handles.set_conceals(conceals_by_line(text, &conceals));

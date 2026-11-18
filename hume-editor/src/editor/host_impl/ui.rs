@@ -10,7 +10,7 @@ use crate::editor::syntax::GrammarLoads;
 use hume_core::{HostToken, NonEmpty, Severity, TruncateEnd};
 use hume_scripting::host::{
     DrawerItems, FocusedHandle, LivePickerOpts, PickerBinding, PickerFeedMode, PickerOpts,
-    PickerSourceOpts, PickerStep, PopupKind, RowDisplay, UiHost,
+    PickerSourceOpts, PickerStep, PopupKind, RowDisplay, SetError, UiHost,
 };
 use steel::rvals::SteelVal;
 
@@ -122,8 +122,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         pane: FocusedHandle,
         items: NonEmpty<(RowDisplay, hume_scripting::Rooted)>,
         callback: hume_scripting::Callback,
-    ) -> Result<Option<HostToken>, String> {
-        self.focused(pane)?;
+    ) -> Result<Option<HostToken>, SetError> {
+        self.focused(pane).map_err(SetError::Call)?;
         menu::open_menu(self.state, self.view, items, callback)
     }
 
@@ -148,8 +148,8 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         callback: hume_scripting::Callback,
         selected: usize,
         truncate: TruncateEnd,
-    ) -> Result<Option<HostToken>, String> {
-        self.focused(pane)?;
+    ) -> Result<Option<HostToken>, SetError> {
+        self.focused(pane).map_err(SetError::Call)?;
         // Async staleness; see `EditorState::async_opener_stale`'s own doc.
         // `top` `Drawer` is the self-replace exception below: a second
         // `show-drawer-list!` call while the first is still open (a
@@ -162,7 +162,7 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         {
             return Ok(None);
         }
-        let rows = DrawerRows::script(items, callback, &mut self.view.registry);
+        let rows = DrawerRows::script(items, callback, &mut self.view.registry)?;
         let drawer = DrawerLayer::new(rows, truncate, selected);
         Ok(Some(self.state.open_drawer(self.view, drawer)))
     }
@@ -200,9 +200,9 @@ impl<'a> UiHost for EditorHostImpl<'a> {
         items: DrawerItems,
         callback: hume_scripting::Callback,
         selected: usize,
-    ) -> bool {
-        let rows = DrawerRows::script(items, callback, &mut self.view.registry);
-        self.state.set_drawer_items(token, rows, selected)
+    ) -> Result<bool, SetError> {
+        let rows = DrawerRows::script(items, callback, &mut self.view.registry)?;
+        Ok(self.state.set_drawer_items(token, rows, selected))
     }
 
     fn drawer_selection(&self, token: HostToken) -> Option<(SteelVal, usize)> {

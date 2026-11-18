@@ -22,8 +22,8 @@ use super::SteelResult;
 use super::args::{
     END_CHAR, START_CHAR, bool_arg, callback_arg, cons_pair, cwd_arg, hash_entry, hash_list,
     int_arg, list_items, list_to_i32s, list_to_strings, optional_callback_arg, optional_string_arg,
-    pair_fields, single_key, spanned_text, string_arg, symbol_enum_arg, token_arg, token_or_false,
-    truncate_end_arg, usize_arg, write_item_label,
+    pair_fields, set_err, single_key, spanned_text, string_arg, symbol_enum_arg, token_arg,
+    token_or_false, truncate_end_arg, usize_arg, write_item_label,
 };
 use super::errors::{generic_err, require_cap};
 
@@ -77,7 +77,7 @@ pub(crate) fn show_menu(
     let items = non_empty(display_items(items, "items", row_display)?, "items")?;
     let token = require_cap(ctx.host.ui())?
         .show_menu(pane, items, on_select)
-        .map_err(generic_err)?;
+        .map_err(set_err("items"))?;
     Ok(token_or_false(token))
 }
 
@@ -94,7 +94,8 @@ pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 /// behind `show-drawer-list!`'s `#:selected`/`#:truncate`/`#:render` keyword
 /// wrapper (see [`drawer_items`] for the rows and `render`). `selected` is
 /// clamped into `items`; `truncate` is the end of an over-long row the
-/// drawer cuts. A row whose spans don't fit its text raises.
+/// drawer cuts. A row whose spans don't fit its text, or that names a new
+/// scope once the session holds the most it lets in, raises.
 /// Returns a token scoping
 /// `close-drawer!`/`update-drawer-list!`/`drawer-selection` to this
 /// drawer, same shape as `picker!`'s own return, or `#f` when the request
@@ -115,7 +116,7 @@ pub(crate) fn show_drawer_list(
     let truncate = truncate_end_arg(truncate, "#:truncate")?;
     let token = require_cap(ctx.host.ui())?
         .show_drawer_list(pane, items, on_select, selected, truncate)
-        .map_err(generic_err)?;
+        .map_err(set_err("items"))?;
     Ok(token_or_false(token))
 }
 
@@ -135,7 +136,8 @@ pub(crate) fn close_drawer(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
 /// clamped into the new list. Returns whether the update applied: `#f` when no drawer is open
 /// or `token` doesn't match the open drawer's own (an expected-normal race,
 /// never an error, same contract as `picker-replace!`'s stale token). A row
-/// whose spans don't fit its text raises, as in `show-drawer-list!`.
+/// whose spans don't fit its text, or that names a new scope once the
+/// session holds the most it lets in, raises, as in `show-drawer-list!`.
 pub(crate) fn update_drawer_list(
     ctx: &mut SteelCtx,
     token: SteelVal,
@@ -147,7 +149,9 @@ pub(crate) fn update_drawer_list(
     let token = token_arg(token, "token")?;
     let items = drawer_items(ctx, items, render)?;
     let selected = usize_arg(selected, "selected")?;
-    let applied = require_cap(ctx.host.ui())?.update_drawer_list(token, items, on_select, selected);
+    let applied = require_cap(ctx.host.ui())?
+        .update_drawer_list(token, items, on_select, selected)
+        .map_err(set_err("items"))?;
     Ok(SteelVal::BoolV(applied))
 }
 

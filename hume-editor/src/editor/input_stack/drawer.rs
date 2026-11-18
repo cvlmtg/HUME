@@ -14,10 +14,10 @@ use hume_engine::theme::{ScopeRegistry, diagnostic_scopes};
 use hume_engine::types::EditorMode;
 use hume_rope::spanned::SpannedText;
 use hume_scripting::SteelCall;
-use hume_scripting::host::{DrawerItems, token_to_steel};
+use hume_scripting::host::{DrawerItems, SetError, token_to_steel};
 use hume_ui::list_row::{ListRow, SpanScopes};
 
-use super::list_row::{RenderCall, RenderedRows, list_row};
+use super::list_row::{RenderCall, RenderedRows, script_rows};
 
 use super::super::Editor;
 use super::super::EditorState;
@@ -189,17 +189,18 @@ pub(in crate::editor) enum ScriptRows {
 
 impl DrawerRows {
     /// The rows a script sent, and the callback `Enter` and a close call.
+    /// The error names the first given row that cannot be built.
     pub(in crate::editor) fn script(
         items: DrawerItems,
         on_select: hume_scripting::Callback,
         registry: &mut ScopeRegistry,
-    ) -> Self {
+    ) -> Result<Self, SetError> {
         let (rows, payloads) = match items {
             DrawerItems::Rows(items) => {
-                let (rows, payloads) = items
+                let (rows, payloads) = script_rows(items, registry)?
                     .into_vec()
                     .into_iter()
-                    .map(|(display, payload)| (Arc::new(list_row(display, registry)), payload))
+                    .map(|(row, payload)| (Arc::new(row), payload))
                     .unzip();
                 (ScriptRows::Given(rows), payloads)
             }
@@ -211,11 +212,11 @@ impl DrawerRows {
                 )
             }
         };
-        Self::Script(ScriptDrawer {
+        Ok(Self::Script(ScriptDrawer {
             rows,
             payloads,
             on_select,
-        })
+        }))
     }
 
     fn buffers(list: BufferList) -> Self {

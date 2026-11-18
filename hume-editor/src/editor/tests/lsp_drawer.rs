@@ -489,12 +489,14 @@ fn update_drawer_list_with_a_mismatched_token_is_a_noop_false() {
 
     let _pane = focused_pane(&ed);
     let mut host = EditorHostImpl::new(&mut ed.state, &mut ed.view);
-    let applied = host.update_drawer_list(
-        hume_core::HostToken::mint(),
-        drawer_items(&["x"]),
-        hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
-        0,
-    );
+    let applied = host
+        .update_drawer_list(
+            hume_core::HostToken::mint(),
+            drawer_items(&["x"]),
+            hume_scripting::Callback::for_test(steel::rvals::SteelVal::Void),
+            0,
+        )
+        .expect("plain rows name no scope");
 
     assert!(!applied, "a foreign token must not apply");
     let drawer = ed.state.input.drawer().unwrap();

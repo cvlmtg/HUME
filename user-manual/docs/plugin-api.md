@@ -364,6 +364,8 @@ Each `diagnostics-for-buffer` entry is a hash with:
 
 [Hooks](writing-plugins.md#hooks) shows `diagnostics-for-buffer` and the hook that feeds it.
 
+A decoration whose `'scope` names a scope new to the session raises, naming its entry, once the session holds the most distinct scope names it can (65 280).
+
 A sign source's gutter slot is reserved the first time it registers for a buffer, before it places any sign, so the gutter's width stays stable as signs come and go. The slot stays reserved across `:e!` until the buffer closes or `unregister-sign-source!` gives it back, and re-registering the same `source` for the same buffer only replaces its priority.
 
 Line backgrounds have no priority: same-line entries from different sources break ties by source name. Conceals from different sources are taken in source-name order, and a conceal overlapping one already taken on its line is left out.
@@ -419,11 +421,11 @@ Any plugin can drive a picker with these editor functions, opening one and pushi
 | `prompt!` | focused | `(prompt! pane label callback [#:prefill text])`{.sig} Open a text prompt; `callback` fires once, later, with the confirmed text, or `#f` on cancel. Raises when another `prompt!` prompt is already open. When a `#:repeatable` command opened it, `.` repeats the answer without opening it; see [Dot-repeat](writing-plugins.md#dot-repeat) |
 | `show-popup!` | focused | `(show-popup! pane text [#:anchor anchor] [#:kind kind] [#:lang language])`{.sig} Show a text popup, replacing any popup already showing. `#:anchor` is `'cursor` (default, floats near the cursor), `'bottom` (docks above the statusline) or `'fit` (floats near the cursor while all of the text fits there, docks otherwise, decided again whenever the screen changes); `#:lang` sets syntax highlighting, and the language's text formatter, when one is defined, draws the text; see [Formatting popup text](#formatting-popup-text).<br><br>`#:kind` sets how long it lives: `'sticky` (default) closes as soon as you leave the mode you opened it in; `'scrollable` stays open (`Ctrl-u`/`Ctrl-d` scroll it) until any other key, paste, or mouse input.<br><br>Returns a token for `close-popup!`, or `#f` if the popup didn't open |
 | `close-popup!` |  | `(close-popup! token)`{.sig} Close the popup `token` names |
-| `show-menu!` | focused | `(show-menu! pane items callback)`{.sig} Show a selection menu over `items`, a non-empty list of `(display . payload)` pairs, each display a [row display](#row-display) (raises on an empty list, and on a row whose spans don't fit its text). `callback` gets the chosen row's payload, or `#f` when the menu is dismissed.<br><br>Returns a token for `close-menu!`, or `#f` if the menu didn't open: the editor is not in Normal or Extend mode, or moved on before the call landed.<br><br>When a `#:repeatable` command opened it, `.` repeats the choice without opening it; see [Dot-repeat](writing-plugins.md#dot-repeat) |
+| `show-menu!` | focused | `(show-menu! pane items callback)`{.sig} Show a selection menu over `items`, a non-empty list of `(display . payload)` pairs, each display a [row display](#row-display) (raises on an empty list, on a row whose spans don't fit its text, and on a row naming a scope new to the session at the limit). `callback` gets the chosen row's payload, or `#f` when the menu is dismissed.<br><br>Returns a token for `close-menu!`, or `#f` if the menu didn't open: the editor is not in Normal or Extend mode, or moved on before the call landed.<br><br>When a `#:repeatable` command opened it, `.` repeats the choice without opening it; see [Dot-repeat](writing-plugins.md#dot-repeat) |
 | `close-menu!` |  | `(close-menu! token)`{.sig} Close the menu `token` names without calling its `callback` |
 | `show-drawer-list!` | focused | `(show-drawer-list! pane items callback [#:selected row] [#:truncate side] [#:render proc])`{.sig} Show a list in the bottom drawer, replacing any drawer already open. Returns a token, or `#f`. See [The drawer](#the-drawer) |
 | `close-drawer!` |  | `(close-drawer! token)`{.sig} Close the drawer `token` names |
-| `update-drawer-list!` |  | `(update-drawer-list! token items callback selected [#:render proc])`{.sig} Replace the open drawer's rows in place (`#:render` as for `show-drawer-list!`; the drawer keeps the `#:truncate` it opened with), selecting row `selected` (clamped into `items`; pass `(cdr (drawer-selection token))` to keep the current row). Returns `#t` when applied, `#f` for a stale token. Raises on empty `items` (close the drawer instead of clearing it), and on a row whose spans don't fit its text, as `show-drawer-list!` does |
+| `update-drawer-list!` |  | `(update-drawer-list! token items callback selected [#:render proc])`{.sig} Replace the open drawer's rows in place (`#:render` as for `show-drawer-list!`; the drawer keeps the `#:truncate` it opened with), selecting row `selected` (clamped into `items`; pass `(cdr (drawer-selection token))` to keep the current row). Returns `#t` when applied, `#f` for a stale token. Raises on empty `items` (close the drawer instead of clearing it), on a row whose spans don't fit its text, and on a row naming a scope new to the session at the limit, as `show-drawer-list!` does |
 | `drawer-selection` |  | `(drawer-selection token)`{.sig} The open drawer's selected row as `(item . index)`, or `#f` for a stale token |
 
 ### Row display
@@ -440,6 +442,8 @@ Each span is `(hash 'start-char s 'end-char e 'scope name)`: char offsets into `
 - A span that is empty, runs past the text, or shares a character with another raises.
 
 The row's own `'selected-scope name` styles the whole row with `name` in place of the list's selected-row style (`ui.menu.selected` in a menu or the drawer, `ui.text.focus` in a picker) while it is selected. A theme that leaves `name` unstyled shows that row in its default style when selected. Its spans still style their text on top.
+
+A row naming a scope new to the session raises, naming the row, once the session holds the most distinct scope names it can (65 280); a row a `#:render` proc returns closes its list instead.
 
 ### The drawer
 

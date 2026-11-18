@@ -3,27 +3,48 @@
 
 use std::sync::Arc;
 
-use hume_core::TruncateEnd;
+use hume_core::{NonEmpty, TruncateEnd};
 use hume_engine::theme::ScopeRegistry;
-use hume_scripting::host::RowDisplay;
+use hume_scripting::host::{RowDisplay, SetError, each_entry};
 use hume_ui::list_row::{ListRow, SpanScopes};
 use steel::rvals::SteelVal;
 
 use crate::editor::Editor;
-use crate::editor::host_impl::EditorHostImpl;
+use crate::editor::host_impl::{EditorHostImpl, script_scope};
 
 use super::stack::Layer;
 
-/// A script's row display as a list row, its scopes interned in `registry`.
-/// Every row a script gives a drawer, menu or picker, eager or rendered, is
-/// built here.
-pub(in crate::editor) fn list_row(display: RowDisplay, registry: &mut ScopeRegistry) -> ListRow {
-    let content = display.content.map_payload(|scopes| SpanScopes {
-        scope: registry.intern(&scopes.scope),
-        selected: scopes.selected.map(|selected| registry.intern(&selected)),
-    });
-    ListRow::styled(content)
-        .with_selected_scope(display.selected_scope.map(|scope| registry.intern(&scope)))
+/// A script's row display as a list row, its scopes interned in `registry`
+/// through [`script_scope`]. Every row a script gives a drawer, menu or
+/// picker, eager or rendered, is built here.
+fn list_row(display: RowDisplay, registry: &mut ScopeRegistry) -> Result<ListRow, String> {
+    let content = display.content.try_map_payload(|scopes| {
+        Ok::<_, String>(SpanScopes {
+            scope: script_scope(registry, &scopes.scope)?,
+            selected: scopes
+                .selected
+                .map(|selected| script_scope(registry, &selected))
+                .transpose()?,
+        })
+    })?;
+    let selected_scope = display
+        .selected_scope
+        .map(|scope| script_scope(registry, &scope))
+        .transpose()?;
+    Ok(ListRow::styled(content).with_selected_scope(selected_scope))
+}
+
+/// The rows of a script's `(display . payload)` items, each display built by
+/// [`list_row`]. The error names the first row that cannot be built by its
+/// place in `items`.
+pub(in crate::editor) fn script_rows<P>(
+    items: NonEmpty<(RowDisplay, P)>,
+    registry: &mut ScopeRegistry,
+) -> Result<NonEmpty<(ListRow, P)>, SetError> {
+    let rows = each_entry(items.into_vec(), |(display, payload)| {
+        Ok((list_row(display, registry)?, payload))
+    })?;
+    Ok(NonEmpty::new(rows).expect("each item maps to one row"))
 }
 
 /// One call to a list's `#:render` proc: each row's item and its place in
@@ -150,12 +171,16 @@ impl Editor {
         let rows = result?
             .into_iter()
             .map(|(place, display)| {
-                (
-                    place,
-                    list_row(display, &mut self.view.registry).fit(budget, cut),
-                )
+                let row = list_row(display, &mut self.view.registry).map_err(|message| {
+                    SetError::Entry {
+                        index: place,
+                        message,
+                    }
+                    .labeled("row")
+                })?;
+                Ok((place, row.fit(budget, cut)))
             })
-            .collect();
+            .collect::<Result<_, String>>()?;
         let list = self
             .state
             .input

@@ -8,7 +8,7 @@ use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
 use crate::SteelCtx;
-use crate::host::{DiagnosticEntry, DiagnosticRange, MarkedLines, SetError, each_entry};
+use crate::host::{DiagnosticEntry, DiagnosticRange, MarkedLines, each_entry};
 use crate::json::{WireOrigin, to_steel_handle};
 use crate::types::{
     ConcealOverlaps, ConcealSpec, ConcealSpecSpan, ConcealSpecText, TextFormatSpec, VirtualLineSpec,
@@ -17,8 +17,8 @@ use crate::types::{
 use super::SteelResult;
 use super::args::{
     ArgPane, CHAR_OFFSET, CHAR_RANGE_KEYS, END_CHAR, END_CHAR_COL, END_LINE, HashEntry, START_CHAR,
-    START_CHAR_COL, START_LINE, bool_arg, hash_entry, hash_list, int_arg, item_label, list_of,
-    optional_hash_entry, optional_symbol_arg, spanned_text, string_arg, symbol_arg,
+    START_CHAR_COL, START_LINE, bool_arg, hash_entry, hash_list, int_arg, list_of,
+    optional_hash_entry, optional_symbol_arg, set_err, spanned_text, string_arg, symbol_arg,
     symbol_enum_arg, symbol_hash,
 };
 use super::buffers::{
@@ -255,17 +255,6 @@ const CONCEAL_KEYS: &[&str] = &[START_CHAR, END_CHAR, "text", "scope", "reveal"]
 
 const START_END_CHAR_SCOPE: &[&str] = &[START_CHAR, END_CHAR, "scope"];
 const START_END_CHAR_COL_SCOPE: &[&str] = &[START_CHAR_COL, END_CHAR_COL, "scope"];
-
-/// A setter's [`SetError`] as the error it raises, an entry named by its
-/// place in the list `list` labels.
-fn set_err(list: &str) -> impl Fn(SetError) -> SteelErr + '_ {
-    move |err| match err {
-        SetError::Call(message) => generic_err(message),
-        SetError::Entry { index, message } => {
-            generic_err(format!("{}: {message}", item_label(list, index)))
-        }
-    }
-}
 
 /// `bid`'s content line count, read once the host is known to take
 /// decorations, so a host without them raises that before anything about

@@ -12,6 +12,7 @@ use hume_decorations::{ConcealEntry, ConcealEntrySpan};
 use hume_editing::text::BufferText;
 use hume_engine::providers::{ConcealText, conceal_ranges_overlap};
 use hume_engine::theme::ScopeRegistry;
+use hume_engine::types::ScopeId;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::{CharOffset, ExclusiveRange};
 
@@ -84,10 +85,11 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
                  (register-sign-source! …) first"
             )));
         }
-        let signs = signs.into_iter().map(|(lines, sign_text, scope)| {
-            let scope = self.view.registry.intern(&scope);
-            (lines, (std::sync::Arc::<str>::from(sign_text), scope))
-        });
+        let registry = &mut self.view.registry;
+        let signs = each_entry(signs, |(lines, sign_text, scope)| {
+            let scope = script_scope(registry, &scope)?;
+            Ok((lines, (std::sync::Arc::<str>::from(sign_text), scope)))
+        })?;
         let entries = each_line(signs)
             .map(|(line, (text, scope))| hume_decorations::SignEntry { line, text, scope })
             .collect();
@@ -104,26 +106,21 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         lines: Vec<(ContentLine, hume_scripting::VirtualLineSpec)>,
     ) -> Result<(), SetError> {
-        let entries = lines
-            .into_iter()
-            .map(|(line, spec)| {
-                let scope = match spec.scope.as_deref() {
-                    Some(name) => self.view.registry.intern(name),
-                    None => self
-                        .view
-                        .registry
-                        .intern(hume_engine::theme::ui_scopes::VIRTUAL_TEXT),
-                };
-                hume_decorations::VirtualLineEntry {
-                    line,
-                    content: spec
-                        .content
-                        .map_payload(|name| self.view.registry.intern(&name)),
-                    side: spec.side,
-                    scope,
-                }
+        let registry = &mut self.view.registry;
+        let entries = each_entry(lines, |(line, spec)| {
+            let scope = match spec.scope.as_deref() {
+                Some(name) => script_scope(registry, name)?,
+                None => registry.intern(hume_engine::theme::ui_scopes::VIRTUAL_TEXT),
+            };
+            Ok(hume_decorations::VirtualLineEntry {
+                line,
+                content: spec
+                    .content
+                    .try_map_payload(|name| script_scope(registry, &name))?,
+                side: spec.side,
+                scope,
             })
-            .collect();
+        })?;
         self.state
             .config
             .decorations
@@ -138,7 +135,8 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         spans: Vec<(usize, usize, String)>,
     ) -> Result<(), SetError> {
         let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        let entries = extra_highlight_entries(text, &mut self.view.registry, spans)?;
+        let registry = &mut self.view.registry;
+        let entries = extra_highlight_entries(text, spans, |name| script_scope(registry, &name))?;
         self.state
             .config
             .decorations
@@ -169,15 +167,15 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         lines: Vec<(ContentLine, String, String)>,
         hide_on_insert_line: bool,
     ) -> Result<(), SetError> {
-        let entries = lines
-            .into_iter()
-            .map(|(line, eol_text, scope)| hume_decorations::EolTextEntry {
+        let registry = &mut self.view.registry;
+        let entries = each_entry(lines, |(line, eol_text, scope)| {
+            Ok(hume_decorations::EolTextEntry {
                 line,
                 text: eol_text.into(),
-                scope: self.view.registry.intern(&scope),
+                scope: script_scope(registry, &scope)?,
                 hide_on_insert_line,
             })
-            .collect();
+        })?;
         self.state
             .config
             .decorations
@@ -191,7 +189,7 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
         bid: BufferId,
         entries: Vec<(MarkedLines, String)>,
     ) -> Result<(), SetError> {
-        let entries = line_background_entries(&mut self.view.registry, entries);
+        let entries = line_background_entries(&mut self.view.registry, entries)?;
         self.state
             .config
             .decorations
@@ -245,16 +243,18 @@ impl<'a> DecorationHost for EditorHostImpl<'a> {
 }
 
 impl EditorHostImpl<'_> {
-    /// Adds `spans` to `source`'s extra highlights for `bid`, checked as
-    /// [`DecorationHost::set_extra_highlights`] checks them.
-    pub(in crate::editor) fn add_extra_highlights<S: AsRef<str>>(
+    /// Adds `spans` to `source`'s extra highlights for `bid`, their ranges
+    /// checked as [`DecorationHost::set_extra_highlights`] checks them. Their
+    /// scopes are HUME's own names, which the registry never refuses.
+    pub(in crate::editor) fn add_extra_highlights(
         &mut self,
         source: String,
         bid: BufferId,
-        spans: Vec<(usize, usize, S)>,
+        spans: Vec<(usize, usize, &'static str)>,
     ) -> Result<(), SetError> {
         let text = buffer_text(self.state, bid).map_err(SetError::Call)?;
-        let entries = extra_highlight_entries(text, &mut self.view.registry, spans)?;
+        let registry = &mut self.view.registry;
+        let entries = extra_highlight_entries(text, spans, |name| Ok(registry.intern(name)))?;
         self.state
             .config
             .decorations
@@ -263,12 +263,22 @@ impl EditorHostImpl<'_> {
     }
 }
 
+/// The id of a scope a script or a text format names, interned in
+/// `registry`: a new name is refused once the session holds
+/// [`ScopeRegistry::NAME_LIMIT`] names.
+pub(in crate::editor) fn script_scope(
+    registry: &mut ScopeRegistry,
+    name: &str,
+) -> Result<ScopeId, String> {
+    registry.intern_name(name).map_err(|e| e.to_string())
+}
+
 /// `specs` as conceals of `text`, in position order, their scopes interned
-/// in `registry`. Each entry's range is checked and widened to whole
-/// clusters and must stay on one line without covering its `\n`; an
-/// `Inserted` may sit before a line's `\n` but not at the text's end. An
-/// entry overlapping another ([`conceal_ranges_overlap`]) is refused or left
-/// out, as `overlaps` says.
+/// in `registry` through [`script_scope`]. Each entry's range is checked
+/// and widened to whole clusters and must stay on one line without covering
+/// its `\n`; an `Inserted` may sit before a line's `\n` but not at the
+/// text's end. An entry overlapping another ([`conceal_ranges_overlap`]) is
+/// refused or left out, as `overlaps` says.
 pub(in crate::editor) fn conceal_entries(
     text: &BufferText,
     registry: &mut ScopeRegistry,
@@ -276,9 +286,14 @@ pub(in crate::editor) fn conceal_entries(
     overlaps: ConcealOverlaps,
 ) -> Result<Vec<ConcealEntry>, SetError> {
     let placed = each_entry(specs.into_iter().enumerate().collect(), |(index, spec)| {
-        let mut shown = |t: ConcealSpecText| ConcealText {
-            text: t.text.into(),
-            scope: t.scope.map(|name| registry.intern(&name)),
+        let mut shown = |t: ConcealSpecText| -> Result<ConcealText, String> {
+            Ok(ConcealText {
+                text: t.text.into(),
+                scope: t
+                    .scope
+                    .map(|name| script_scope(registry, &name))
+                    .transpose()?,
+            })
         };
         let fail = |e: String| format!("range {e}");
         let span = match spec.span {
@@ -290,7 +305,7 @@ pub(in crate::editor) fn conceal_entries(
                 chars: checked_cluster_range(text, start, end)
                     .map_err(fail)?
                     .chars(),
-                text: replacement.map(&mut shown),
+                text: replacement.map(&mut shown).transpose()?,
             },
             ConcealSpecSpan::Inserted { at, text: drawn } => {
                 let at = checked_char_offset(text, at).map_err(fail)?;
@@ -299,7 +314,7 @@ pub(in crate::editor) fn conceal_entries(
                 }
                 ConcealEntrySpan::Inserted {
                     at: text.snap(at).offset(),
-                    text: shown(drawn),
+                    text: shown(drawn)?,
                 }
             }
         };
@@ -350,12 +365,12 @@ pub(in crate::editor) fn conceal_entries(
 }
 
 /// Each `(start, end, scope)` char range of `text` as an extra highlight,
-/// its scope interned in `registry`. Errors on a range outside the text or
-/// an empty one.
-pub(in crate::editor) fn extra_highlight_entries<S: AsRef<str>>(
+/// its scope's id given by `scope_id`. Errors on a range outside the text,
+/// an empty one, or a scope `scope_id` refuses.
+pub(in crate::editor) fn extra_highlight_entries<S>(
     text: &BufferText,
-    registry: &mut ScopeRegistry,
     spans: Vec<(usize, usize, S)>,
+    mut scope_id: impl FnMut(S) -> Result<ScopeId, String>,
 ) -> Result<Vec<hume_decorations::ExtraHighlightEntry>, SetError> {
     each_entry(spans, |(start, end, scope)| {
         let fail = |e: String| format!("range {e}");
@@ -366,23 +381,23 @@ pub(in crate::editor) fn extra_highlight_entries<S: AsRef<str>>(
         Ok(hume_decorations::ExtraHighlightEntry {
             start: range.start,
             end: range.end,
-            scope: registry.intern(scope.as_ref()),
+            scope: scope_id(scope)?,
         })
     })
 }
 
 /// One line background per line each entry marks, its scope interned in
-/// `registry`.
+/// `registry` through [`script_scope`].
 pub(in crate::editor) fn line_background_entries(
     registry: &mut ScopeRegistry,
     entries: Vec<(MarkedLines, String)>,
-) -> Vec<hume_decorations::LineBgEntry> {
-    let entries = entries
-        .into_iter()
-        .map(|(lines, scope)| (lines, registry.intern(&scope)));
-    each_line(entries)
+) -> Result<Vec<hume_decorations::LineBgEntry>, SetError> {
+    let entries = each_entry(entries, |(lines, scope)| {
+        Ok((lines, script_scope(registry, &scope)?))
+    })?;
+    Ok(each_line(entries)
         .map(|(line, scope)| hume_decorations::LineBgEntry { line, scope })
-        .collect()
+        .collect())
 }
 
 /// The live text for `bid`, or `Err` if `bid` doesn't name

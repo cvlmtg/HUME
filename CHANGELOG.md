@@ -39,6 +39,7 @@
 - A popup whose text ends in a line break shows no blank row after it.
 - Formatting several selections waits for every range and reports the first failing one in selection order.
 - Elm no longer folds parenthesized calls, and MoonBit's function and parameter text objects select the right text.
+- A plugin naming more distinct scopes than a session can hold gets an error instead of drawing text in the wrong colors.
 
 ## [0.21.0] - 2026-11-12
 
