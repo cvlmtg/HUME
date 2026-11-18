@@ -16,7 +16,7 @@ use hume_platform::terminal::SharedTerm;
 use hume_grid::{Grid, Rect};
 
 use hume_core::PaneId;
-use hume_engine::display_lines::{DisplayLineMap, Revealed};
+use hume_engine::display_lines::{DisplayLineMap, DisplayLinePos, Revealed};
 use hume_engine::pane::{Pane, ViewLayouts, Viewport};
 use hume_engine::pipeline::{
     EngineView, PanePool, PaneRenderSettings, PaneSize, RenderContext, ScreenLayout, SettledRows,
@@ -593,11 +593,16 @@ impl Editor {
 
             // A visible-range change arms the `OnViewportChange` debounce
             // timer; the hook fires later from the timer drain.
-            let content_lines = self.state.buffers.get(buf_id).text().content_line_count();
+            let text = self.state.buffers.get(buf_id).text();
             #[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
-            let viewport = self.view.panes[pid].viewport();
-            let hidden = self.state.hidden_lines(&self.view, pid);
-            let range = super::geometry::pane_visible_range(viewport, size, hidden, content_lines);
+            let (mut dlm, viewport) =
+                self.view.panes[pid].display_lines_and_viewport(text.rope(), layout_key.inputs());
+            let range = super::geometry::pane_visible_range(
+                &mut dlm,
+                viewport,
+                usize::from(size.height()),
+                text.content_line_count(),
+            );
             if self.last_visible_range.insert(pid, (buf_id, range)) != Some((buf_id, range)) {
                 self.debounce_viewport_change(pid);
             }
@@ -1084,9 +1089,20 @@ fn shows_document_end(doc: &Buffer, pane: &mut Pane, layout_key: &LayoutKey) -> 
     let (mut dlm, viewport) =
         pane.display_lines_and_viewport(doc.text().rope(), layout_key.inputs());
     let top = viewport.top_at(&mut dlm);
-    let lines_below_top = isize::try_from(geo.height() - 1).expect("a pane height fits an isize");
-    let bottom = dlm.advance_saturating(top, lines_below_top);
+    let bottom = visible_bottom(&mut dlm, top, geo.height());
     dlm.next(bottom).is_none()
+}
+
+/// The display line on the bottom row of a pane `height` rows tall whose top
+/// row shows `top`, or the last one when the document ends above that row. A
+/// `height == 0` pane counts as one row.
+pub(super) fn visible_bottom(
+    dlm: &mut DisplayLineMap<'_>,
+    top: DisplayLinePos,
+    height: usize,
+) -> DisplayLinePos {
+    let rows_below_top = isize::try_from(height.max(1) - 1).expect("a pane height fits an isize");
+    dlm.advance_saturating(top, rows_below_top)
 }
 
 /// Scroll the pane viewport so `cursor` stays within the visible area.

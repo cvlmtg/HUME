@@ -1783,6 +1783,26 @@ fn wide_table_under_soft_wrap() {
     insta::assert_snapshot!(p.snapshot());
 }
 
+/// The visible range follows the wrapped layout the preview's own conceals
+/// shape, so a render that changes them must reach a range and conceals
+/// that one more frame leaves as they are.
+#[test]
+fn a_wrapped_view_settles() {
+    let mut p = preview().sized(40, 12);
+    let paragraph = "some **bold** words and `code` ".repeat(4);
+    let text = format!("# Title\n\n{paragraph}\n\n").repeat(20);
+    let bid = p.open("a.md", &text);
+    pin_wrap(&mut p.ed, WrapMode::Soft { width: 0 });
+    let pid = p.ed.view.focused_pane();
+    p.render();
+    let settled = (p.visible(pid), p.conceals(bid));
+
+    p.frame();
+    p.wait();
+
+    assert_eq!((p.visible(pid), p.conceals(bid)), settled);
+}
+
 /// A code block between two lines of text.
 const CODE: &str = "Text\n\n```rust\nfn main() {\n}\n```\n\nend\n";
 

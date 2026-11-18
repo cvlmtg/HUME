@@ -74,12 +74,11 @@ impl Editor {
     /// property of *where* each is taken, not something each of the six
     /// bridges has to individually get right.
     ///
-    /// `lines` is a one-row *superset* of the viewport (its end plus one more
-    /// row, counting only the lines no closed fold hides), and `chars` spans
-    /// the same lines: cheap over-fetch beats a wrap-aware exact bound for a
-    /// bulk store slice. Both are end-exclusive, like
-    /// `geometry::pane_visible_range`, which differs in that one-row slack
-    /// and in leaving the top line unclamped.
+    /// `lines` counts one buffer line per row from the top plus one more row,
+    /// skipping the lines a closed fold hides, and `chars` spans the same
+    /// lines. The stores these fill are what lays the pane out, so the exact
+    /// range `geometry::pane_visible_range` reads from that layout is not
+    /// known yet. Both are end-exclusive.
     ///
     /// `rows` are the rows the reveal that just ran settled, from which the
     /// snapshot reads each pane's header lines. A snapshot taken before a

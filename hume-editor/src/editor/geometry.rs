@@ -4,11 +4,11 @@
 
 use hume_core::{BufferId, PaneId};
 use hume_engine::builtins::sign_column::SignColumn;
-use hume_engine::display_lines::DisplayLineInputs;
+use hume_engine::display_lines::{DisplayLineInputs, DisplayLineMap};
 use hume_engine::folds::HiddenLines;
 use hume_engine::layout::PaneGeometry;
 use hume_engine::line_set::LineSet;
-use hume_engine::pane::ViewGeometry;
+use hume_engine::pane::{ViewGeometry, Viewport};
 use hume_engine::pipeline::{ChromeRows, EngineView, PaneSize, ScreenLayout};
 use hume_engine::providers::{GutterInputs, SyntaxSource};
 use hume_engine::reveal::RevealedLines;
@@ -276,34 +276,29 @@ impl EditorState {
     }
 }
 
-/// The line range `viewport` shows with `hidden` folded away, end-exclusive,
-/// clamped to a buffer of `content_lines`, so the hook payload and
-/// `(viewport-range bid)` agree.
-/// Never points past the buffer's last *content* line (not ropey's phantom
-/// line past the structural trailing `\n`), even when the pane's viewport
-/// height exceeds the buffer.
+/// The lines `viewport` shows on `dlm`'s layout in a pane of `height` rows,
+/// end-exclusive, so the hook payload and `(viewport-range bid)` agree: every
+/// line with a row on screen, one cut off at the bottom edge or shown only by
+/// its virtual lines included, and the lines a fold hides under a shown fold
+/// head. A plugin provides a line's virtual lines while the line is in range,
+/// so a line still showing one must stay in it.
 ///
-/// `height.max(1)` (not `height` directly): a `height == 0` pane (no visible
-/// rows, e.g. one not yet laid out) still reports a one-line range rather
-/// than an empty one, so callers always get at least the pane's top line
-/// instead of a degenerate empty range.
+/// Never points past the buffer's last *content* line (not ropey's phantom
+/// line past the structural trailing `\n`). A `height == 0` pane still
+/// reports its top line rather than an empty range.
 pub(in crate::editor) fn pane_visible_range(
-    viewport: &hume_engine::pane::Viewport,
-    size: hume_engine::pipeline::PaneSize,
-    hidden: &HiddenLines,
+    dlm: &mut DisplayLineMap<'_>,
+    viewport: &mut Viewport,
+    height: usize,
     content_lines: hume_rope::line::ContentLineCount,
 ) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
-    let first_line = viewport.top().line;
-    // Terminal-row count of shown lines past the top: under wrap one buffer
-    // line can span multiple display lines (and therefore fewer terminal
-    // rows than buffer lines), so this over-estimates how many buffer lines
-    // are visible. Safe here: the range only needs to cover every buffer
-    // line that *could* be visible, not name the true last one exactly.
-    let height_rows = usize::from(size.height().max(1));
-    let end_line = hidden
-        .line_after_shown(first_line, height_rows)
+    let top = viewport.top_at(dlm);
+    let bottom = super::frame::visible_bottom(dlm, top, height);
+    let end_line = dlm
+        .hidden()
+        .line_after_shown(bottom.line, 1)
         .min(content_lines.end_exclusive());
-    hume_rope::offset::ExclusiveRange::new(first_line, end_line)
+    hume_rope::offset::ExclusiveRange::new(top.line, end_line)
 }
 
 /// Pane `pid`'s visible line range (end-exclusive) between frames, for
@@ -321,12 +316,17 @@ pub(in crate::editor) fn viewport_range(
         .get(view.panes[pid].buffer_id())
         .text()
         .content_line_count();
-    let (_, viewport) = super::frame::settled_pane_view(
+    let (mut dlm, viewport) = super::frame::settled_pane_view(
         &state.buffers,
         &mut state.panes.entries,
         &mut view.panes,
         pid,
         &key,
     );
-    pane_visible_range(viewport, size, &key.inputs().hidden, content_lines)
+    pane_visible_range(
+        &mut dlm,
+        viewport,
+        usize::from(size.height()),
+        content_lines,
+    )
 }

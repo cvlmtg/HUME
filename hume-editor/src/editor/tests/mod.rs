@@ -2067,6 +2067,7 @@ mod unsaved;
 mod view_scroll;
 mod vim_keybind;
 mod virtual_line_scroll;
+mod visible_range;
 mod visual_move;
 mod word_chars;
 mod word_motion_settings;
