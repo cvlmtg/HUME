@@ -295,9 +295,6 @@ impl LanguageHost for NullHost {
 }
 
 impl CommandHost for NullHost {
-    fn is_valid_register_name(&self, _ch: char) -> bool {
-        false
-    }
     fn command_is_native(&self, _name: &str) -> Result<bool, String> {
         // No registry: treat every command as Steel/forward-raw.
         Ok(false)
@@ -523,9 +520,6 @@ impl CommandStoreHost {
 }
 
 impl CommandHost for CommandStoreHost {
-    fn is_valid_register_name(&self, ch: char) -> bool {
-        self.inner.is_valid_register_name(ch)
-    }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         self.inner.command_is_native(name)
     }

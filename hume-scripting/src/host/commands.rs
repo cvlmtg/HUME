@@ -171,9 +171,6 @@ pub trait CommandHost {
     /// commands and `Lazy` stubs are never removed.
     fn unregister_commands_registered_in(&mut self, activation: &EntryId);
 
-    /// Whether `ch` names a valid register (`0`–`9`, `k`, `c`, `b`).
-    fn is_valid_register_name(&self, ch: char) -> bool;
-
     /// Registers `plugin`'s `Lazy` activation stubs for `declare-plugin!`,
     /// one per name in `commands` and in `typed_commands`, all distinct. All
     /// or nothing: `Err` for the first name [`check_lazy_claim`] refuses,

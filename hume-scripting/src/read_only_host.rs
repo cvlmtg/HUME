@@ -134,12 +134,6 @@ impl CommandHost for ReadOnlyHost<'_> {
     fn unregister_commands_registered_in(&mut self, _activation: &EntryId) {
         self.refuse("unregister_commands_registered_in");
     }
-    fn is_valid_register_name(&self, ch: char) -> bool {
-        self.inner
-            .borrow_mut()
-            .commands()
-            .is_valid_register_name(ch)
-    }
     fn command_holder(&self, name: &str) -> Option<CommandHolder> {
         self.inner.borrow_mut().commands().command_holder(name)
     }

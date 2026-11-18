@@ -1,13 +1,10 @@
 use super::*;
-use crate::host::NativeCall;
 use crate::testing::test_support::SteelCtxTestHarness;
 use hume_platform::dirs::Dirs;
 
 #[test]
 fn register_arg_rejects_multi_char_name() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let err = register_arg(&mut ctx, "12").unwrap_err();
+    let err = register_arg("12").unwrap_err();
     assert!(
         err.to_string()
             .contains("expected a single-character register name"),
@@ -17,9 +14,7 @@ fn register_arg_rejects_multi_char_name() {
 
 #[test]
 fn register_arg_rejects_empty_name() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    let err = register_arg(&mut ctx, "").unwrap_err();
+    let err = register_arg("").unwrap_err();
     assert!(
         err.to_string()
             .contains("expected a single-character register name"),
@@ -27,44 +22,17 @@ fn register_arg_rejects_empty_name() {
     );
 }
 
-/// `NullHost::is_valid_register_name` always answers `false` (no registry to
-/// validate against), so every single-char name (including a real one like
-/// `'3'`) surfaces as "invalid" through it. That's sufficient to prove the
-/// rejection path fires and is worded correctly; the accept path needs a host
-/// with real validation logic, below.
-#[test]
-fn register_arg_rejects_whatever_the_host_calls_invalid() {
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx();
-    for name in ["3", "k", "c", "b", "q", "s", "a"] {
-        let err = register_arg(&mut ctx, name).unwrap_err();
-        assert!(
-            err.to_string().contains("invalid register"),
-            "name {name:?} got: {err}"
-        );
-    }
-}
-
 #[test]
 fn register_arg_accepts_digit_and_special_names() {
-    let mut host = RegisterCapableHost::default();
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_with_host(&mut host);
     for name in ["0", "9", "k", "c", "b"] {
-        assert_eq!(
-            register_arg(&mut ctx, name).unwrap(),
-            name.chars().next().unwrap()
-        );
+        assert_eq!(register_arg(name).unwrap(), name.chars().next().unwrap());
     }
 }
 
 #[test]
-fn register_arg_rejects_macro_and_search_even_with_real_validation() {
-    let mut host = RegisterCapableHost::default();
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_with_host(&mut host);
+fn register_arg_rejects_macro_and_search() {
     for name in ["q", "s"] {
-        let err = register_arg(&mut ctx, name).unwrap_err().to_string();
+        let err = register_arg(name).unwrap_err().to_string();
         assert!(
             err.contains(&format!("invalid register '{name}'")),
             "got: {err}"
@@ -74,10 +42,7 @@ fn register_arg_rejects_macro_and_search_even_with_real_validation() {
 
 #[test]
 fn register_arg_message_lists_the_valid_registers() {
-    let mut host = RegisterCapableHost::default();
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_with_host(&mut host);
-    let err = register_arg(&mut ctx, "x").unwrap_err().to_string();
+    let err = register_arg("x").unwrap_err().to_string();
     assert!(
         err.contains("invalid register 'x'; valid: 0-9, k, c, b"),
         "got: {err}"
@@ -86,32 +51,26 @@ fn register_arg_message_lists_the_valid_registers() {
 
 #[test]
 fn register_name_answers_true_only_for_names_read_register_takes() {
-    let mut host = RegisterCapableHost::default();
-    let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_with_host(&mut host);
     for name in ["0", "9", "k", "c", "b"] {
-        let answer = register_name(&mut ctx, name.to_string()).unwrap();
+        let answer = register_name(name.to_string()).unwrap();
         assert!(matches!(answer, SteelVal::BoolV(true)), "{name:?}");
-        assert!(register_arg(&mut ctx, name).is_ok());
+        assert!(register_arg(name).is_ok());
     }
     for name in ["q", "s", "f", "p", "ab", ""] {
-        let answer = register_name(&mut ctx, name.to_string()).unwrap();
+        let answer = register_name(name.to_string()).unwrap();
         assert!(matches!(answer, SteelVal::BoolV(false)), "{name:?}");
-        assert!(register_arg(&mut ctx, name).is_err());
+        assert!(register_arg(name).is_err());
     }
 }
 
 /// `NullHost` has no `RegisterHost` capability: both builtins must surface
 /// the standard "not supported by this host" error, same as any other
-/// optional-capability builtin (`goto-location!`, `show-popup!`, …). Uses
-/// `ValidNameHost` (real name validation, no registers) rather than
-/// `NullHost` directly, so the failure is provably the capability check and
-/// not `register_arg` rejecting the name first.
+/// optional-capability builtin (`goto-location!`, `show-popup!`, …). `"3"` is
+/// a valid name, so the failure is the capability check.
 #[test]
 fn read_register_without_capability_errors() {
-    let mut host = ValidNameHost::default();
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_with_host(&mut host);
+    let mut ctx = h.ctx();
     let err = read_register(&mut ctx, "3".to_string()).unwrap_err();
     assert!(
         err.to_string().contains("not supported by this host"),
@@ -121,9 +80,8 @@ fn read_register_without_capability_errors() {
 
 #[test]
 fn write_register_without_capability_errors() {
-    let mut host = ValidNameHost::default();
     let mut h = SteelCtxTestHarness::new();
-    let mut ctx = h.ctx_with_host(&mut host);
+    let mut ctx = h.ctx();
     let err = write_register(
         &mut ctx,
         "3".to_string(),
@@ -173,116 +131,12 @@ fn write_then_read_round_trips_through_real_registration() {
 
 // ── Test hosts ────────────────────────────────────────────────────────────────
 
-/// Register names this crate's builtins must accept, mirroring
-/// `hume_ops::register::is_valid_register_name`, which lives in a crate this
-/// one does not depend on. The real constant is exercised end-to-end by
-/// `hume-editor`'s integration test.
-fn valid_test_register_name(ch: char) -> bool {
-    ch.is_ascii_digit() || matches!(ch, 'k' | 'c' | 'b')
-}
-
-/// [`crate::testing::null_host::NullHost`] wrapper with real register-name validation
-/// but no [`crate::host::RegisterHost`] capability. Isolates "capability
-/// missing" from "name rejected" in the tests above.
-#[derive(Default)]
-struct ValidNameHost {
-    inner: crate::testing::null_host::NullHost,
-}
-
-impl crate::host::EditorHost for ValidNameHost {
-    fn cursor(&mut self) -> &mut dyn crate::host::CursorHost {
-        &mut self.inner
-    }
-    fn commands(&mut self) -> &mut dyn crate::host::CommandHost {
-        self
-    }
-    fn language(&mut self) -> &mut dyn crate::host::LanguageHost {
-        &mut self.inner
-    }
-    fn settings(&mut self) -> &mut dyn crate::host::SettingsHost {
-        &mut self.inner
-    }
-    fn buffers(&mut self) -> &mut dyn crate::host::BufferHost {
-        &mut self.inner
-    }
-    fn events(&mut self) -> &mut dyn crate::host::EventHost {
-        &mut self.inner
-    }
-    fn permit_plugin_activation(
-        &mut self,
-        plugin: &crate::attribution::EntryId,
-    ) -> Result<(), String> {
-        self.inner.permit_plugin_activation(plugin)
-    }
-}
-
-impl crate::host::CommandHost for ValidNameHost {
-    fn is_valid_register_name(&self, ch: char) -> bool {
-        valid_test_register_name(ch)
-    }
-    fn command_is_native(&self, name: &str) -> Result<bool, String> {
-        self.inner.command_is_native(name)
-    }
-    fn run_command_sync(
-        &mut self,
-        name: &str,
-        pane: hume_core::PaneHandle,
-        call: NativeCall,
-    ) -> Result<bool, String> {
-        self.inner.run_command_sync(name, pane, call)
-    }
-    fn open_dispatch_group(&mut self) {
-        self.inner.open_dispatch_group();
-    }
-    fn close_dispatch_group(&mut self) {
-        self.inner.close_dispatch_group();
-    }
-    fn register_command(&mut self, def: crate::types::SteelCmdDef) -> Result<(), String> {
-        self.inner.register_command(def)
-    }
-    fn register_typed_command(
-        &mut self,
-        def: crate::types::SteelTypedCmdDef,
-    ) -> Result<(), String> {
-        self.inner.register_typed_command(def)
-    }
-    fn defined_command(&self, name: &str) -> Option<crate::command_procs::CommandProc> {
-        self.inner.defined_command(name)
-    }
-    fn unregister_commands_registered_in(&mut self, activation: &crate::attribution::EntryId) {
-        self.inner.unregister_commands_registered_in(activation)
-    }
-    fn command_holder(&self, name: &str) -> Option<crate::host::CommandHolder> {
-        self.inner.command_holder(name)
-    }
-    fn register_lazy_commands(
-        &mut self,
-        plugin: &crate::attribution::EntryId,
-        commands: &[String],
-        typed_commands: &[String],
-    ) -> Result<(), String> {
-        self.inner
-            .register_lazy_commands(plugin, commands, typed_commands)
-    }
-    fn lazy_command_owner(&self, name: &str) -> Option<crate::attribution::EntryId> {
-        self.inner.lazy_command_owner(name)
-    }
-    fn lazy_mappable_command_owner(&self, name: &str) -> Option<crate::attribution::EntryId> {
-        self.inner.lazy_mappable_command_owner(name)
-    }
-    fn unregister_lazy_stubs_of(&mut self, plugin: &crate::attribution::EntryId) {
-        self.inner.unregister_lazy_stubs_of(plugin)
-    }
-}
-
-/// Like [`ValidNameHost`] but backed by a real in-memory register store,
-/// enough to prove `write-register!`/`read-register` round-trip correctly
-/// without pulling in a real `Editor`. Wraps `ValidNameHost` rather than
-/// `NullHost` directly so the `CommandHost` delegation (identical to
-/// `ValidNameHost`'s own) isn't duplicated a second time.
+/// [`crate::testing::null_host::NullHost`] backed by a real in-memory
+/// register store, enough to prove `write-register!`/`read-register`
+/// round-trip correctly without pulling in a real `Editor`.
 #[derive(Default)]
 struct RegisterCapableHost {
-    inner: ValidNameHost,
+    inner: crate::testing::null_host::NullHost,
     store: std::collections::HashMap<char, Vec<String>>,
 }
 
@@ -291,7 +145,7 @@ impl crate::host::EditorHost for RegisterCapableHost {
         self.inner.cursor()
     }
     fn commands(&mut self) -> &mut dyn crate::host::CommandHost {
-        self
+        self.inner.commands()
     }
     fn language(&mut self) -> &mut dyn crate::host::LanguageHost {
         self.inner.language()
@@ -313,65 +167,6 @@ impl crate::host::EditorHost for RegisterCapableHost {
     }
     fn registers(&mut self) -> Option<&mut dyn crate::host::RegisterHost> {
         Some(self)
-    }
-}
-
-impl crate::host::CommandHost for RegisterCapableHost {
-    fn is_valid_register_name(&self, ch: char) -> bool {
-        self.inner.is_valid_register_name(ch)
-    }
-    fn command_is_native(&self, name: &str) -> Result<bool, String> {
-        self.inner.command_is_native(name)
-    }
-    fn run_command_sync(
-        &mut self,
-        name: &str,
-        pane: hume_core::PaneHandle,
-        call: NativeCall,
-    ) -> Result<bool, String> {
-        self.inner.run_command_sync(name, pane, call)
-    }
-    fn open_dispatch_group(&mut self) {
-        self.inner.open_dispatch_group();
-    }
-    fn close_dispatch_group(&mut self) {
-        self.inner.close_dispatch_group();
-    }
-    fn register_command(&mut self, def: crate::types::SteelCmdDef) -> Result<(), String> {
-        self.inner.register_command(def)
-    }
-    fn register_typed_command(
-        &mut self,
-        def: crate::types::SteelTypedCmdDef,
-    ) -> Result<(), String> {
-        self.inner.register_typed_command(def)
-    }
-    fn defined_command(&self, name: &str) -> Option<crate::command_procs::CommandProc> {
-        self.inner.defined_command(name)
-    }
-    fn unregister_commands_registered_in(&mut self, activation: &crate::attribution::EntryId) {
-        self.inner.unregister_commands_registered_in(activation)
-    }
-    fn command_holder(&self, name: &str) -> Option<crate::host::CommandHolder> {
-        self.inner.command_holder(name)
-    }
-    fn register_lazy_commands(
-        &mut self,
-        plugin: &crate::attribution::EntryId,
-        commands: &[String],
-        typed_commands: &[String],
-    ) -> Result<(), String> {
-        self.inner
-            .register_lazy_commands(plugin, commands, typed_commands)
-    }
-    fn lazy_command_owner(&self, name: &str) -> Option<crate::attribution::EntryId> {
-        self.inner.lazy_command_owner(name)
-    }
-    fn lazy_mappable_command_owner(&self, name: &str) -> Option<crate::attribution::EntryId> {
-        self.inner.lazy_mappable_command_owner(name)
-    }
-    fn unregister_lazy_stubs_of(&mut self, plugin: &crate::attribution::EntryId) {
-        self.inner.unregister_lazy_stubs_of(plugin)
     }
 }
 

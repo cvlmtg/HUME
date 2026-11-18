@@ -16,6 +16,8 @@
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
 
+use hume_ops::register::is_valid_register_name;
+
 use super::SteelResult;
 use super::args::{list_to_strings, single_char, string_list};
 use super::errors::require_cap;
@@ -26,12 +28,12 @@ use crate::SteelCtx;
 /// `read-register`/`write-register!` here and `set-register-prefix!` in
 /// `commands.rs`, so all three builtins reject `q`/`s`/multi-char names with
 /// one wording.
-pub(crate) fn register_arg(ctx: &mut SteelCtx, name: &str) -> Result<char, SteelErr> {
+pub(crate) fn register_arg(name: &str) -> Result<char, SteelErr> {
     let Some(reg) = single_char(name) else {
         steel::stop!(Generic =>
             "expected a single-character register name, got {:?}", name);
     };
-    if !ctx.host.commands().is_valid_register_name(reg) {
+    if !is_valid_register_name(reg) {
         steel::stop!(Generic =>
             "invalid register '{}'; valid: 0-9, k, c, b", reg);
     }
@@ -40,15 +42,15 @@ pub(crate) fn register_arg(ctx: &mut SteelCtx, name: &str) -> Result<char, Steel
 
 /// `(register-name? name)` → `#t` when `name` is a register that
 /// `read-register` and `write-register!` accept.
-pub(crate) fn register_name(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let valid = single_char(&name).is_some_and(|c| ctx.host.commands().is_valid_register_name(c));
+pub(crate) fn register_name(name: String) -> SteelResult {
+    let valid = single_char(&name).is_some_and(is_valid_register_name);
     Ok(SteelVal::BoolV(valid))
 }
 
 /// `(read-register name)` → contents of `name` as a list of strings, or `#f`
 /// if it's empty, is the black hole, or holds a recorded macro.
 pub(crate) fn read_register(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let reg = register_arg(ctx, &name)?;
+    let reg = register_arg(&name)?;
     let registers = require_cap(ctx.host.registers())?;
     match registers.read_register(reg) {
         Some(values) => Ok(string_list(values)),
@@ -59,7 +61,7 @@ pub(crate) fn read_register(ctx: &mut SteelCtx, name: String) -> SteelResult {
 /// `(write-register! name values)` → store `values` (a list of strings, one
 /// per selection) in register `name`.
 pub(crate) fn write_register(ctx: &mut SteelCtx, name: String, values: SteelVal) -> SteelResult {
-    let reg = register_arg(ctx, &name)?;
+    let reg = register_arg(&name)?;
     let values = list_to_strings(values, "values")?;
     let registers = require_cap(ctx.host.registers())?;
     registers.write_register(reg, values);

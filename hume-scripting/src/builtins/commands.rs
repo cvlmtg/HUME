@@ -367,7 +367,7 @@ pub(crate) fn command_callable(ctx: &mut SteelCtx, name: String) -> SteelResult 
 ///
 /// Only valid inside a `SteelBacked` command or hook invocation.
 pub(crate) fn set_register_prefix(ctx: &mut SteelCtx, name: String) -> SteelResult {
-    let reg = super::registers::register_arg(ctx, &name)?;
+    let reg = super::registers::register_arg(&name)?;
     ctx.current_register_prefix = Some(reg);
     Ok(SteelVal::Void)
 }

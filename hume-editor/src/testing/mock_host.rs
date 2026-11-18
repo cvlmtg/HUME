@@ -373,9 +373,6 @@ impl LanguageHost for MockHost {
 }
 
 impl CommandHost for MockHost {
-    fn is_valid_register_name(&self, ch: char) -> bool {
-        hume_ops::register::is_valid_register_name(ch)
-    }
     fn command_is_native(&self, name: &str) -> Result<bool, String> {
         Ok(self.native_names.contains(name))
     }
