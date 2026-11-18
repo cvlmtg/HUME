@@ -35,13 +35,6 @@
 (define colorizer/functions
   (hash "rgb" 'rgb "rgba" 'rgb "hsl" 'hsl "hsla" 'hsl "oklch" 'oklch))
 
-(define colorizer/function-initials
-  (let ([initials (map (lambda (name) (string-ref name 0)) (hash-keys->list colorizer/functions))])
-    (apply hash
-           (apply append
-                  (map (lambda (ch) (list (char->integer ch) #t (char->integer (char-upcase ch)) #t))
-                       initials)))))
-
 (define colorizer/degrees-per-unit
   (hash "deg" 1.0 "grad" 0.9 "rad" (/ 45.0 (atan 1.0)) "turn" 360.0))
 
@@ -272,7 +265,8 @@
 
 ;; ── Lines ─────────────────────────────────────────────────────────────────────
 
-(define colorizer/call-candidates "#|(?i:rgba?|hsla?|oklch)\\(")
+(define colorizer/call-candidates
+  (string-append "#|(?i:" (string-join (hash-keys->list colorizer/functions) "|") ")\\("))
 
 (define colorizer/candidates (regex colorizer/call-candidates))
 
@@ -291,8 +285,7 @@
         (count (cdr ws) (+ n 1))
         (let* ([end (+ pos n)]
                [k (if (pair? ws) (char->integer (car ws)) -1)]
-               [call? (and (= k 40) (<= 3 n) (<= n 5)
-                           (hash-contains? colorizer/function-initials (char->integer (car cs))))]
+               [call? (= k 40)]
                [name? (and names?
                            (<= colorizer/shortest-name n)
                            (<= n colorizer/longest-name)
@@ -315,21 +308,20 @@
      (and (not (= prev 38)) (colorizer/hex-piece cs pos names?))]
     [else (colorizer/word-piece cs pos names?)]))
 
-(define (colorizer/scan-hits hits chars offset names? resume acc)
-  (if (null? hits)
-      acc
-      (let ([k (car (car hits))])
-        (if (< k resume)
-            (colorizer/scan-hits (cdr hits) chars offset names? resume acc)
-            (let* ([before (and (> k 0) (list-tail chars (- k 1)))]
-                   [piece (colorizer/piece (if before (cdr before) chars)
-                                           (+ offset k)
-                                           (if before (char->integer (car before)) 0)
-                                           names?)])
-              (if piece
-                  (colorizer/scan-hits (cdr hits) chars offset names?
-                                       (- (cadr piece) offset) (cons piece acc))
-                  (colorizer/scan-hits (cdr hits) chars offset names? resume acc)))))))
+(define (colorizer/scan-hits hits cs pos prev offset names? resume acc)
+  (cond
+    [(null? hits) acc]
+    [(< (car (car hits)) resume)
+     (colorizer/scan-hits (cdr hits) cs pos prev offset names? resume acc)]
+    [(< pos (car (car hits)))
+     (colorizer/scan-hits hits (cdr cs) (+ pos 1) (char->integer (car cs))
+                          offset names? resume acc)]
+    [else
+     (let ([piece (colorizer/piece cs (+ offset pos) prev names?)])
+       (if piece
+           (colorizer/scan-hits (cdr hits) cs pos prev offset names?
+                                (- (cadr piece) offset) (cons piece acc))
+           (colorizer/scan-hits (cdr hits) cs pos prev offset names? resume acc)))]))
 
 (define (colorizer/line-pieces line offset names? known)
   (let ([mark (colorizer/text-line-mark line)])
@@ -344,7 +336,7 @@
                                              colorizer/candidates))]
               [pieces (if (null? hits)
                           '()
-                          (colorizer/scan-hits hits (string->list text) offset names? 0 '()))])
+                          (colorizer/scan-hits hits (string->list text) 0 0 offset names? 0 '()))])
          (colorizer/box-insert! known offset (cons (colorizer/text-line-len line) pieces))
          pieces)])))
 

@@ -7,8 +7,8 @@ fn compiled(pattern: &str) -> ArgRegex {
 
 /// The `(start . end)` pairs `string-matches` returns for `pattern` on `text`.
 fn matches(text: &str, pattern: &str) -> Vec<(isize, isize)> {
-    let SteelVal::ListV(list) =
-        string_matches(text.to_string(), compiled(pattern)).expect("string-matches must succeed")
+    let SteelVal::ListV(list) = string_matches(text.into_steelval().unwrap(), compiled(pattern))
+        .expect("string-matches must succeed")
     else {
         panic!("expected a list");
     };
@@ -54,6 +54,19 @@ fn a_match_widens_to_whole_clusters() {
 }
 
 #[test]
+fn a_match_ends_at_the_end_of_the_string() {
+    assert_eq!(matches("a ", "\\s+"), [(1, 2)]);
+    assert_eq!(matches("foo bar", "bar$"), [(4, 7)]);
+    assert_eq!(matches("ab", "\\n"), []);
+}
+
+#[test]
+fn offsets_count_the_line_breaks_the_string_holds() {
+    assert_eq!(matches("a\r\nb", "b"), [(3, 4)]);
+    assert_eq!(matches("a\rb", "\\r"), [(1, 2)]);
+}
+
+#[test]
 fn zero_width_matches_are_skipped() {
     assert_eq!(matches("ab", "x*"), []);
 }
@@ -85,6 +98,12 @@ fn an_invalid_or_empty_pattern_raises() {
             "got: {err}"
         );
     }
+}
+
+#[test]
+fn the_multi_flag_changes_nothing() {
+    assert_eq!(matches("foo m/foo", "m/foo"), [(0, 3), (6, 9)]);
+    assert_eq!(matches("a.b axb", "mv/a.b"), [(0, 3)]);
 }
 
 #[test]

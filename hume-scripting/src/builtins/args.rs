@@ -1029,7 +1029,7 @@ macro_rules! identity_builtin_arg {
     };
 }
 
-identity_builtin_arg!(SteelVal, String, bool, ArgPane);
+identity_builtin_arg!(SteelVal, String, bool, ArgPane, super::regex::ArgRegex);
 
 /// [`usize_arg`]'s `FromSteelVal` counterpart, for a pane-sibling argument
 /// that must decode (the `builtins!` table decodes every argument, left to

@@ -9,14 +9,13 @@
 
 use std::sync::Arc;
 
-use hume_editing::text::BufferText;
-use hume_ops::search::{compile_search_input, find_all_matches};
+use hume_ops::search::{compile_search_input, find_all_str_matches};
 use regex_cursor::engines::meta::Regex;
 use steel::rerrs::SteelErr;
 use steel::rvals::{Custom, FromSteelVal, IntoSteelVal as _, SteelVal};
 
 use super::SteelResult;
-use super::args::{BuiltinArg, string_arg};
+use super::args::{string_arg, string_ref_arg};
 use super::errors::generic_err;
 
 /// The Steel value `(regex pattern)` returns.
@@ -53,15 +52,9 @@ impl FromSteelVal for ArgRegex {
     }
 }
 
-impl BuiltinArg for ArgRegex {
-    type Out = ArgRegex;
-    fn resolve(self, _ctx: &mut crate::SteelCtx, _arg: &'static str) -> Result<Self, SteelErr> {
-        Ok(self)
-    }
-}
-
 /// `(regex pattern)` -> `pattern` compiled as the `/` prompt reads it.
-/// Raises for an empty or invalid pattern.
+/// Raises for an empty or invalid pattern. The `m/` flag is accepted and
+/// changes nothing, so one pattern serves both this and `search-forward`.
 pub(crate) fn regex(pattern: SteelVal) -> SteelResult {
     let input = string_arg(pattern, "pattern")?;
     let (_flags, regex) = compile_search_input(&input)
@@ -72,12 +65,11 @@ pub(crate) fn regex(pattern: SteelVal) -> SteelResult {
 }
 
 /// `(string-matches text re)` -> every match of `re` in `text`, in order,
-/// as `(start . end)` char offsets into `text`, end-exclusive. The matches
-/// are the ones `/` selects in a buffer holding `text`: none overlaps,
-/// none is empty, and each covers whole clusters.
-pub(crate) fn string_matches(text: String, re: ArgRegex) -> SteelResult {
-    let text = BufferText::from(text.as_str());
-    let pairs = find_all_matches(&text, re.regex())
+/// as `(start . end)` char offsets into `text`, end-exclusive. As at `/`,
+/// none overlaps, none is empty, and each covers whole clusters.
+pub(crate) fn string_matches(text: SteelVal, re: ArgRegex) -> SteelResult {
+    let text = string_ref_arg(&text, "text")?;
+    let pairs = find_all_str_matches(text, re.regex())
         .into_iter()
         .map(|range| {
             let chars = range.chars();

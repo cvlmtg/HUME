@@ -12,6 +12,7 @@
 //! in.
 
 use regex_cursor::{Input, RopeyCursor, engines::meta::Regex};
+use ropey::RopeSlice;
 
 use hume_editing::selection::{Facing, Selection, SelectionView};
 use hume_editing::state::EditState;
@@ -230,10 +231,20 @@ pub fn find_matches_in_range(
     matches_in(text, regex, range.chars())
 }
 
+/// Return all non-overlapping regex matches in the string `text`, in order,
+/// as cluster ranges of `text` as given, with no final line break added and
+/// its `\r`s kept. Zero-width matches are skipped.
+pub fn find_all_str_matches(text: &str, regex: &Regex) -> Vec<ClusterRange> {
+    let slice = RopeSlice::from(text);
+    disjoint(
+        regex
+            .find_iter(Input::new(text))
+            .filter_map(|m| ClusterRange::covering_bytes(slice, m.range())),
+    )
+}
+
 /// The matches in `chars`, searched as a text of its own, as cluster ranges
-/// of `text`. Two matches that widen to the same cluster (a base char and its
-/// combining mark matched apart) keep only the first, so the list stays
-/// sorted and non-overlapping.
+/// of `text`.
 fn matches_in(
     text: &BufferText,
     regex: &Regex,
@@ -241,12 +252,20 @@ fn matches_in(
 ) -> Vec<ClusterRange> {
     let start_byte = text.char_to_byte(chars.start);
     let input = Input::new(RopeyCursor::new(text.slice(chars)));
+    disjoint(
+        regex
+            .find_iter(input)
+            .filter_map(|m| text.covering_bytes(start_byte + m.start()..start_byte + m.end())),
+    )
+}
 
+/// `ranges`, matches widened to clusters in match order, without any that
+/// overlaps the one kept before it. Two matches that widen to the same
+/// cluster (a base char and its combining mark matched apart) keep only the
+/// first, so the list stays sorted and non-overlapping.
+fn disjoint(ranges: impl Iterator<Item = ClusterRange>) -> Vec<ClusterRange> {
     let mut matches: Vec<ClusterRange> = Vec::new();
-    for m in regex.find_iter(input) {
-        let Some(range) = text.covering_bytes(start_byte + m.start()..start_byte + m.end()) else {
-            continue;
-        };
+    for range in ranges {
         if matches
             .last()
             .is_none_or(|prev| prev.end() <= ClusterBound::from(range.start()))

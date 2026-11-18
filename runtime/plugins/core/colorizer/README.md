@@ -53,11 +53,11 @@ already sorted and with overlapping or touching ranges joined. Each range is rea
 
 Each line is scanned on its own: a literal, a name and a call all start and end on one line.
 `string-matches` finds the candidates on a line in one native pass, with a pattern
-`scan.scm` compiles once at load: a `#`, a function name directly followed by `(`, and, for a
+`scan.scm` compiles once at load: a `#`, a key of the functions table directly followed by `(`, and, for a
 `'named-languages` buffer, one more with every key of the names table. A line with no
-candidate is done. Otherwise the line becomes one `string->list`, and each candidate is read
-from `list-tail` at its offset, the char before it included, by the same rules a walk from the
-line start applies (below). A candidate that starts inside the last painted piece is skipped,
+candidate is done. Otherwise the line becomes one `string->list`, walked once from its start,
+and each candidate is read where the walk reaches its offset, the char before it included, by
+the same rules a walk from the line start applies (below). A candidate that starts inside the last painted piece is skipped,
 so the next candidate read is the next char a walk from the line start would reach.
 `string-ref` is never used: it walks the string from its start on each call.
 

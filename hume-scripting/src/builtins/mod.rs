@@ -436,7 +436,7 @@ builtins! {
     plain "json-object?" json::is_json_object(val: SteelVal);
     // Context-free text transforms: no host/buffer needed.
     plain "regex" regex::regex(pattern: SteelVal);
-    plain "string-matches" regex::string_matches(text: String, re: regex::ArgRegex);
+    plain "string-matches" regex::string_matches(text: SteelVal, re: regex::ArgRegex);
     plain "split-words" words::split_words(line: SteelVal, word_chars: SteelVal);
     plain "string-common-prefix" words::string_common_prefix(strings: SteelVal);
     plain "string-fit" words::string_fit(s: SteelVal, cells: SteelVal, side: SteelVal);
