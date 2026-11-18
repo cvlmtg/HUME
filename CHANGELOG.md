@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.22.1] - 2026-11-18
+
 ### Breaking changes
 - `core:markdown-preview` is now `core:markdown`: write `(load-plugin! "core:markdown")`. Its `'enabled` option is now `'preview`, and the `markdown-preview/toggle` command is now `markdown/toggle-preview`.
 
