@@ -72,8 +72,8 @@
 (define (md-preview/atx-patterns n)
   (let ([marker (string-append "(atx_h" (number->string n) "_marker)")])
     (string-append
-      "(section (atx_heading " marker " @" (md-preview/heading n) "))\n"
-      "(section (atx_heading " marker " (inline) @" (md-preview/heading-text n) "))\n")))
+      "(atx_heading " marker " @" (md-preview/heading n) ")\n"
+      "(atx_heading " marker " (inline) @" (md-preview/heading-text n) ")\n")))
 
 (define (md-preview/setext-patterns n)
   (let ([underline (string-append "(setext_h" (number->string n) "_underline)")])

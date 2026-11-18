@@ -784,6 +784,13 @@ pub fn line_range_value(
     ])
 }
 
+/// Content-line ranges as Steel sees them: a list of [`line_range_value`]s.
+pub fn line_range_list_value(
+    ranges: impl IntoIterator<Item = hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>,
+) -> SteelVal {
+    list_of(ranges.into_iter().map(line_range_value))
+}
+
 /// Decodes one symbol-keyed hashmap: the shared decode for a record a
 /// builtin takes (a decoration entry, a goto target). The hashmap's keys must
 /// all be symbols drawn from `keys`; an unknown or non-symbol key errors, so

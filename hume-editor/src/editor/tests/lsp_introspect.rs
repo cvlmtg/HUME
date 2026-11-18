@@ -530,7 +530,7 @@ fn viewport_range_matches_the_on_viewport_change_hooks_own_computation() {
         &mut host,
         r#"(define *captured* #f)
            (register-hook! 'on-viewport-change
-             (lambda (bid range) (set! *captured* range)))"#,
+             (lambda (bid range headers) (set! *captured* range)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -575,7 +575,7 @@ fn viewport_range_end_is_one_past_the_last_content_line_at_eof() {
 }
 
 /// A buffer taller than the pane: `end` is one past the last visible *row*
-/// (`top_line + height`), not `top_line + height + 1`. `viewport_range` is
+/// (`top_line + height`), not `top_line + height + 1`. `shown_lines` is
 /// called directly (not through the `on-viewport-change` hook or a Steel
 /// probe) so the pane's height is what the terminal leaves it, not
 /// whatever a dispatched command might have touched.
@@ -585,7 +585,7 @@ fn viewport_range_end_is_one_past_the_last_visible_row() {
     ed.resize_terminal(80, 4);
     let t = crate::editor::commands::FocusedPane::current(&ed.view).pane();
 
-    let got = crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, t.pid());
+    let got = crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, t.pid()).visible;
     assert_eq!(
         got,
         hume_rope::offset::ExclusiveRange::new(
@@ -677,7 +677,7 @@ fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
         hume_core::PaneHandle::with_pane(hidden_bid, hidden_pid),
     )
     .expect("a background-tab pane must still resolve");
-    let got = crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, t.pid());
+    let got = crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, t.pid()).visible;
     assert_eq!(
         got.start,
         hume_rope::line::ContentLine::new(0),
@@ -686,9 +686,8 @@ fn viewport_range_succeeds_for_a_buffer_shown_only_in_a_background_tab() {
 }
 
 /// The Steel-facing `(viewport-range pane)` builtin itself, not just the
-/// Rust `geometry::viewport_range` function the sibling test above calls
-/// directly, one layer under `host_impl`'s own (now-removed) active-tab
-/// guard, must resolve a background-tab pane too.
+/// Rust `geometry::shown_lines` function the sibling test above calls
+/// directly, must resolve a background-tab pane too.
 #[test]
 fn viewport_range_builtin_succeeds_for_a_background_tab_pane() {
     let tmp = tempfile::tempdir().unwrap();

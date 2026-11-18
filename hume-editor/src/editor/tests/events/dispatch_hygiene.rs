@@ -145,7 +145,7 @@ fn pane_scoped_event_is_skipped_once_its_pane_has_closed() {
     let mut mock = MockHost::new();
     host.eval_source(
         r#"(register-hook! 'on-viewport-change
-             (lambda (pane range) (viewport-range pane) (log! 'trace "viewport-fired")))"#,
+             (lambda (pane range headers) (viewport-range pane) (log! 'trace "viewport-fired")))"#,
         &mut mock,
     )
     .unwrap();

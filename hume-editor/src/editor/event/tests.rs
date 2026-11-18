@@ -43,10 +43,13 @@ fn all_variants() -> Vec<EditorEvent> {
         },
         EditorEvent::OnViewportChange {
             target,
-            lines: hume_rope::offset::ExclusiveRange::new(
-                hume_rope::line::ContentLine::new(3),
-                hume_rope::line::ContentLine::new(42),
-            ),
+            lines: crate::editor::geometry::ShownLines {
+                visible: hume_rope::offset::ExclusiveRange::new(
+                    hume_rope::line::ContentLine::new(3),
+                    hume_rope::line::ContentLine::new(42),
+                ),
+                headers: Default::default(),
+            },
         },
         EditorEvent::OnTriggerChar {
             target,
@@ -338,20 +341,24 @@ fn on_lsp_attach_and_detach_carry_buffer_and_server() {
     }
 }
 
+/// A pane with no header rows hands its handler `'()` for them.
 #[test]
-fn on_viewport_change_carries_pane_and_line_range() {
+fn on_viewport_change_carries_pane_line_range_and_header_lines() {
     let buffer = BufferId::default();
     let [pane] = hume_core::fresh_ids();
     let target = PaneHandle::with_pane(buffer, pane);
     let event = EditorEvent::OnViewportChange {
         target,
-        lines: hume_rope::offset::ExclusiveRange::new(
-            hume_rope::line::ContentLine::new(3),
-            hume_rope::line::ContentLine::new(42),
-        ),
+        lines: crate::editor::geometry::ShownLines {
+            visible: hume_rope::offset::ExclusiveRange::new(
+                hume_rope::line::ContentLine::new(3),
+                hume_rope::line::ContentLine::new(42),
+            ),
+            headers: Default::default(),
+        },
     };
     let args = event.into_steel_args();
-    assert_eq!(args.len(), 2);
+    assert_eq!(args.len(), 3);
     assert_steel_pane(&args, 0, target);
     assert_eq!(
         args[1],
@@ -360,6 +367,7 @@ fn on_viewport_change_carries_pane_and_line_range() {
             ("end-line", SteelVal::IntV(42)),
         ])
     );
+    assert_eq!(args[2], SteelVal::ListV(Default::default()));
 }
 
 /// `char` is a Steel char, the type `on-next-char!` and `call!` char

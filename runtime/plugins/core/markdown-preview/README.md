@@ -107,9 +107,9 @@ The choices the plugin and the Rust surface under it are built on:
 `render-buffer!` is the one path that draws a buffer. Three callers reach it:
 
 - `on-viewport-change`, with the pane in hand. Rust debounces it by
-  `hook-viewport-debounce-ms` (80 ms by default), and it fires when a pane's visible lines
-  change, including a pane's first frame on a buffer, a buffer switch, and a tab coming
-  back.
+  `hook-viewport-debounce-ms` (80 ms by default), and it fires when the lines a pane shows
+  change, its scope header rows included, as on a pane's first frame on a buffer, a buffer
+  switch, and a tab coming back.
 - `on-syntax-changed`, after `debounce-by 50` keyed by `buffer-key`. It fires after every
   parse of the buffer, the first one included.
 - The toggle command, when it turns the preview on.
@@ -137,14 +137,17 @@ pane shows is not drawn.
 
 Each render replaces the plugin's three sources (`"markdown-preview"` for conceals, line
 backgrounds and extra highlights) as a whole, for every pane on the buffer. So it covers
-the lines `(buffer-viewport-ranges pane)` names at once, each range starting one line
-above the first line it names. Both queries take the list as `#:ranges`, and
-`syntax-captures` returns a match once even when several ranges reach it, such as a
-section or a code block two panes both show part of. The lines between two panes far
-apart are not fetched, and lines outside every range are drawn raw until a render covers
-them. The line above a range is in it so that a table ending just above a pane's first
-shown line comes back: the empty line after it, at the top of the pane, carries that
-table's bottom border (see [Tables](#tables)).
+the lines `(buffer-viewport-ranges pane)` gives at once: each of its `'ranges`, starting
+one line above the first line it names, and each of its `'headers`, the lines of the
+panes' scope header rows, as given. Both queries take the list as
+`#:ranges`, and `syntax-captures` returns a match once even when
+several ranges reach it, such as a table or a code block two panes both show part of. The
+lines between two panes far apart are not fetched, and lines outside every range are drawn
+raw until a render covers them. The line above a range is in it so that a table ending
+just above a pane's first shown line comes back: the empty line after it, at the top of
+the pane, carries that table's bottom border (see [Tables](#tables)). A header line opens a
+scope, so it is never the empty line a border is drawn on, and the line above it is not
+fetched.
 
 The per-buffer state, a render's line memo and the tables the block elements fill grow
 through `md-preview/box-insert!`, which empties the box before its `hash-insert`. Steel
@@ -168,9 +171,9 @@ and `'enabled` does not.
 the ranges, with every capture of the match, inside the ranges or not. So each pattern's root
 decides how far past the visible lines an element is fetched:
 
-- Headings are rooted at `section`: `(section (atx_heading (atx_h1_marker) @heading.1))`.
-  Every section that overlaps a range returns its heading, ancestors included, so the
-  heading of a section scrolled into a sticky header row keeps its level marker and bold text.
+- ATX headings are rooted at `atx_heading` and setext headings at `setext_heading`, so
+  only the ones on the given lines come back. A heading drawn in a scope header row is one
+  of them, since its line is in the ranges.
 - Fences are rooted at `fenced_code_block`. A block one line of which is visible comes back
   whole: both fence lines, and the line span its band and reveal need.
 - Tables are rooted at `pipe_table`, their rows and cells included. A table one row of
@@ -180,8 +183,6 @@ decides how far past the visible lines an element is fetched:
   themselves, so only the ones on the visible lines come back. The continuations a code
   block's content holds are also captured rooted at `code_fence_content`, so they come
   back with the whole block (see [Fenced blocks](#fenced-blocks)).
-- Setext headings are rooted at `setext_heading`. The markdown grammar opens no section for
-  them.
 - Inline delimiters are rooted at their construct: `(emphasis (emphasis_delimiter) @span-delimiter)`.
   An emphasis that starts on the last visible line and ends below it returns both
   delimiters. Links are rooted at the link, escapes, entities and autolinks at themselves.
@@ -193,7 +194,7 @@ Captures are grouped by name. Each element below is one or two capture names in
 
 | Element | Node | Drawn as |
 |---|---|---|
-| ATX heading | the `atx_hN_marker` of a section's `atx_heading` | The marker becomes the level as a Braille glyph of one to six dots followed by `▌` (`⠈▌`, `⠘▌`, `⠸▌`, `⠹▌`, `⠻▌`, `⠿▌`), scope `markup.heading.N.marker`. The space after it stays. The heading's `inline` gets `markup.heading.N.text` and its line `markup.heading.N.line` |
+| ATX heading | the `atx_hN_marker` of an `atx_heading` | The marker becomes the level as a Braille glyph of one to six dots followed by `▌` (`⠈▌`, `⠘▌`, `⠸▌`, `⠹▌`, `⠻▌`, `⠿▌`), scope `markup.heading.N.marker`. The space after it stays. The heading's `inline` gets `markup.heading.N.text` and its line `markup.heading.N.line` |
 | Setext heading | `setext_heading` with `setext_hN_underline` | No conceal: the text's `inline` gets `markup.heading.N.text`, and every line of the heading, underline included, `markup.heading.N.line` |
 | Bullet | `list_marker_minus`, `_plus`, `_star` | Its first char becomes `•`, unscoped, so the bullet keeps its syntax color. Ordered markers stay raw |
 | Task | `task_list_marker_unchecked`, `_checked` | The bullet and the box become `☐` or `☑`, scope `markup.list.unchecked` or `markup.list.checked`. A box starts where its bullet ends |

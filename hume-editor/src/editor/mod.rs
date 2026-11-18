@@ -571,19 +571,13 @@ pub(crate) struct Editor {
     /// Each buffer's pending diagnostics-pull debounce timer, replaced on
     /// the next edit.
     diagnostic_pull_debounce: rustc_hash::FxHashMap<BufferId, hume_core::TimerId>,
-    /// Each pane's `(buffer_id, visible range)` as of the last frame it was
-    /// visible, the range `OnViewportChange` carries. `prepare_frame` arms
+    /// Each pane's `(buffer_id, shown lines)` as of the last frame it was
+    /// visible, the lines `OnViewportChange` carries. `prepare_frame` arms
     /// the hook only when this differs. The buffer id makes a buffer switch
-    /// at an unchanged range (`:b#`) a change, and entries for panes outside
+    /// at unchanged lines (`:b#`) a change, and entries for panes outside
     /// the active set are dropped each frame, so a background tab's pane
     /// counts as changed when it returns.
-    last_visible_range: rustc_hash::FxHashMap<
-        PaneId,
-        (
-            BufferId,
-            hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
-        ),
-    >,
+    last_shown_lines: rustc_hash::FxHashMap<PaneId, (BufferId, geometry::ShownLines)>,
     /// `(buffer_id, decorations.generation(buffer_id))` as of each pane's
     /// last whole-buffer mirror (its virtual lines and conceals).
     /// `sync_buffer_mirrors` skips the rebuild when neither changed; the

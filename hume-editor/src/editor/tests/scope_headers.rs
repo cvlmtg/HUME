@@ -606,6 +606,117 @@ fn defaults_show_headers() {
     );
 }
 
+/// Header rows over lines 0 and 1 above a top line of 10: the body's range
+/// comes back under `'ranges`, the two header lines under `'headers` as one
+/// range.
+#[test]
+fn buffer_viewport_ranges_name_the_header_lines_apart() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let pid = ed.view.focused_pane();
+    wheel_down(&mut ed, pid, 10);
+    assert_eq!(
+        drawn_lines(&mut ed, pid, 2),
+        [0, 1],
+        "premise: two header rows"
+    );
+    assert_eq!(top_line(&ed, pid), 10, "premise: the view scrolled");
+
+    assert_eq!(
+        log_probe(
+            &mut ed,
+            tmp.path(),
+            r#"(let ([shown (buffer-viewport-ranges bid)])
+                 (if (and (equal? (hash-ref shown 'ranges) (list (viewport-range bid)))
+                          (equal? (hash-ref shown 'headers)
+                                  (list (hash 'start-line 0 'end-line 2))))
+                     "headers apart"
+                     (to-string shown)))"#
+        ),
+        "headers apart"
+    );
+}
+
+/// A header line that another pane's body shows is in `'ranges` already,
+/// so `'headers` leaves it out.
+#[test]
+fn buffer_viewport_ranges_leave_out_header_lines_a_range_covers() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let bid = ed.focused_buffer_id();
+    let top_pane = ed.view.focused_pane();
+    let scrolled = focused_split(&mut ed, bid);
+    wheel_down(&mut ed, scrolled, 10);
+    assert_eq!(
+        drawn_lines(&mut ed, scrolled, 2),
+        [0, 1],
+        "premise: two header rows"
+    );
+    assert_eq!(
+        top_line(&ed, top_pane),
+        0,
+        "premise: the other pane shows line 0"
+    );
+
+    assert_eq!(
+        log_probe(
+            &mut ed,
+            tmp.path(),
+            r#"(to-string (hash-ref (buffer-viewport-ranges bid) 'headers))"#
+        ),
+        "()"
+    );
+}
+
+/// Two panes whose header rows draw lines 0 and 34, and 0 and 1: `'headers`
+/// holds each line once, in order, lines 0 and 1 joined into one range.
+#[test]
+fn buffer_viewport_ranges_join_header_lines_across_panes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    let first = ed.view.focused_pane();
+    let bid = ed.focused_buffer_id();
+    let second = ed.split_onto(bid, Direction::Horizontal);
+    wheel_down(&mut ed, first, 36);
+    wheel_down(&mut ed, second, 10);
+    assert_eq!(
+        drawn_lines(&mut ed, first, 2),
+        [0, 34],
+        "premise: the first pane's header rows"
+    );
+    assert_eq!(
+        drawn_lines(&mut ed, second, 2),
+        [0, 1],
+        "premise: the second pane's header rows"
+    );
+    for pid in [first, second] {
+        let body = crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid).visible;
+        assert!(
+            [0, 1, 34]
+                .into_iter()
+                .all(|line| !body.contains(ContentLine::new(line))),
+            "premise: no body shows a header line: {body:?}"
+        );
+    }
+
+    assert_eq!(
+        log_probe(
+            &mut ed,
+            tmp.path(),
+            r#"(let ([headers (hash-ref (buffer-viewport-ranges bid) 'headers)])
+                 (if (equal? headers
+                             (list (hash 'start-line 0 'end-line 2)
+                                   (hash 'start-line 34 'end-line 35)))
+                     "joined"
+                     (to-string headers)))"#
+        ),
+        "joined"
+    );
+}
+
 #[test]
 fn pane_of_height_one_shows_no_header() {
     let source = nested_markdown(3);
@@ -833,6 +944,100 @@ fn settling_twice_does_not_scroll() {
     let settled = ed.pane_viewport(pid).top();
     draw(&mut ed);
     assert_eq!(ed.pane_viewport(pid).top(), settled);
+}
+
+/// An `on-viewport-change` handler gets the lines the pane's header rows
+/// draw, after the pane's body range: a range of one line per row, top row
+/// first.
+#[test]
+fn on_viewport_change_hands_the_header_lines_to_its_handler() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    ed.state.settings.hook_viewport_debounce_ms = 0;
+    let pid = ed.view.focused_pane();
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define seen "none")
+           (register-hook! 'on-viewport-change
+             (lambda (pane range headers)
+               (set! seen (to-string (map (lambda (r) (list (hash-ref r 'start-line)
+                                                            (hash-ref r 'end-line)))
+                                          headers)))))
+           (define-typed-command! "seen" "" (lambda (bid) (log! 'info seen)))"#,
+    );
+    wheel_down(&mut ed, pid, 10);
+    ed.drain_async_sources();
+    ed.settle();
+    let drawn = drawn_lines(&mut ed, pid, 2);
+    assert_eq!(drawn, [0, 1], "premise: two header rows");
+
+    type_cmd(&mut ed, ":seen");
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some(
+            format!(
+                "(({} {}) ({} {}))",
+                drawn[0],
+                drawn[0] + 1,
+                drawn[1],
+                drawn[1] + 1
+            )
+            .as_str()
+        )
+    );
+}
+
+/// Turning headers on over a scrolled pane adds header rows over the same
+/// body lines, and that alone fires `on-viewport-change` again.
+#[test]
+fn on_viewport_change_fires_when_only_the_header_rows_change() {
+    let tmp = tempfile::tempdir().unwrap();
+    let source = two_fn_impl();
+    let mut ed = rust_context_editor(&source);
+    ed.state.settings.hook_viewport_debounce_ms = 0;
+    run_set(&mut ed, "buffer context-enabled=false").expect("the setting applies");
+    let pid = ed.view.focused_pane();
+    seek_to_line(&mut ed, 20);
+    wheel_down(&mut ed, pid, 10);
+    run(
+        &mut ed,
+        tmp.path(),
+        r#"(define fires 0)
+           (register-hook! 'on-viewport-change (lambda (pane range headers) (set! fires (+ fires 1))))
+           (define-typed-command! "fires" "" (lambda (bid) (log! 'info (number->string fires))))"#,
+    );
+    let fires = |ed: &mut Editor| -> usize {
+        type_cmd(ed, ":fires");
+        ed.state
+            .status_msg
+            .text()
+            .expect("a count")
+            .parse()
+            .expect("a count")
+    };
+    ed.drain_async_sources();
+    ed.settle();
+    let body = crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid).visible;
+    let before = fires(&mut ed);
+
+    run_set(&mut ed, "buffer context-enabled=true").expect("the setting applies");
+    ed.render_to_buf(VIEW);
+    ed.drain_async_sources();
+    ed.settle();
+
+    assert_eq!(
+        drawn_lines(&mut ed, pid, 2),
+        [0, 1],
+        "premise: two header rows"
+    );
+    assert_eq!(
+        crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid).visible,
+        body,
+        "premise: the body shows the same lines"
+    );
+    assert_eq!(fires(&mut ed), before + 1);
 }
 
 #[test]

@@ -121,12 +121,17 @@
                       (cons (hash 'start-char (car piece) 'end-char (cadr piece) 'scope scope) spans)
                       (if known fresh (hash-insert fresh hex scope)))))))))
 
+(define (colorizer/shown-ranges pane)
+  (let ([shown (buffer-viewport-ranges pane)])
+    (sort (append (hash-ref shown 'ranges) (hash-ref shown 'headers))
+          (lambda (a b) (< (hash-ref a 'start-line) (hash-ref b 'start-line))))))
+
 (define (colorizer/render-buffer! pane options)
   (when (buffer-live? pane)
     (colorizer/track-buffer! pane options)
     (let ([state (colorizer/entry pane)])
       (when (colorizer/state-enabled? state)
-        (let* ([ranges (buffer-viewport-ranges pane)]
+        (let* ([ranges (colorizer/shown-ranges pane)]
                [generation (buffer-generation pane)]
                [names? (and (member (get-buffer-option pane "language")
                                     (colorizer/options-named-languages options))

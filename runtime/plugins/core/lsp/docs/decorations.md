@@ -135,8 +135,9 @@ refresh. When the debounce fires, the refresh:
    the active tab, then other tabs (see the
    [core plugins index](../../README.md#pane-values-vs-pane-less-values)).
 2. Sends nothing when the buffer's hints are off or no pane shows the buffer.
-3. Otherwise takes `buffer-viewport-ranges`, so two panes showing the same lines send one
-   request and two panes far apart send one each, never the lines between them.
+3. Otherwise takes the `'ranges` of `buffer-viewport-ranges`, so two panes showing the
+   same lines send one request and two panes far apart send one each, never the lines
+   between them. Its `'headers` are left out: a scope header row draws no inlay hint.
 4. Sends one request per range, a round, each asking every server of the buffer that
    offers inlay hints. The round is one `stdlib/lsp-batch` under the plugin's batch key,
    so it replaces the buffer's previous round: that round's unanswered requests are

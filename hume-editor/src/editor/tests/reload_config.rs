@@ -1216,7 +1216,7 @@ fn resync_refires_viewport_change_once_per_pane_on_a_surviving_buffer() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid range)
+        r#"(register-hook! 'on-viewport-change (lambda (bid range headers)
              (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
@@ -1266,7 +1266,7 @@ fn resync_does_not_refire_viewport_change_for_a_pane_on_a_buffer_absent_from_the
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid range)
+        r#"(register-hook! 'on-viewport-change (lambda (bid range headers)
              (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );

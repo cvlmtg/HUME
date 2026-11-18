@@ -712,7 +712,8 @@ impl PluginRenderBench {
         let pid = self.editor.view.focused_pane();
         let height = usize::from(self.editor.state.pane_size(&self.editor.view, pid).height());
         let shown =
-            super::geometry::viewport_range(&mut self.editor.state, &mut self.editor.view, pid);
+            super::geometry::shown_lines(&mut self.editor.state, &mut self.editor.view, pid)
+                .visible;
         let bid = self.editor.view.panes[pid].buffer_id();
         let lines = self
             .editor
@@ -741,7 +742,8 @@ impl PluginRenderBench {
     pub fn walked_chars(&mut self) -> usize {
         let pid = self.editor.view.focused_pane();
         let shown =
-            super::geometry::viewport_range(&mut self.editor.state, &mut self.editor.view, pid);
+            super::geometry::shown_lines(&mut self.editor.state, &mut self.editor.view, pid)
+                .visible;
         let bid = self.editor.view.panes[pid].buffer_id();
         let text = self.editor.state.buffers.get(bid).text();
         shown

@@ -28,8 +28,8 @@ fn wrapped(len: usize, lines: usize) -> Editor {
 fn ranges(ed: &mut Editor) -> [std::ops::Range<usize>; 2] {
     frame(ed, WIDTH, HEIGHT);
     let pid = ed.view.focused_pane();
-    let settled = crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, pid);
-    let (_, framed) = ed.last_visible_range[&pid];
+    let settled = crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid).visible;
+    let framed = ed.last_shown_lines[&pid].1.visible;
     [settled, framed].map(|range| range.start.index()..range.end.index())
 }
 

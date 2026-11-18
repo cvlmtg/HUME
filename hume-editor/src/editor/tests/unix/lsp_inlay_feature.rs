@@ -1088,7 +1088,7 @@ fn split_long_fixture(
 
 /// The lines pane `pid` showed on the last frame.
 fn visible(ed: &Editor, pid: PaneId) -> (usize, usize) {
-    let (_, range) = ed.last_visible_range[&pid];
+    let range = ed.last_shown_lines[&pid].1.visible;
     (range.start.index(), range.end.index())
 }
 

@@ -251,7 +251,7 @@ fn on_viewport_change_debounces_a_scroll_burst_into_one_fire() {
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid range) (call! "move-right" bid)))"#,
+        r#"(register-hook! 'on-viewport-change (lambda (bid range headers) (call! "move-right" bid)))"#,
         tmp.path(),
     );
     ed.scripting = Some(host);
@@ -280,7 +280,7 @@ fn count_viewport_fires(ed: &mut Editor, dir: &Path) {
     eval_with_real_host(
         ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid range)
+        r#"(register-hook! 'on-viewport-change (lambda (bid range headers)
              (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         dir,
     );

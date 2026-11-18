@@ -38,7 +38,7 @@
   (lambda (pane) (md-preview/warn-missing-grammars!)))
 
 (register-hook! 'on-viewport-change
-  (lambda (pane range) (md-preview/render! pane)))
+  (lambda (pane range headers) (md-preview/render! pane)))
 
 (register-hook! 'on-syntax-changed
   (lambda (pane)

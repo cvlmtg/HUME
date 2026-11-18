@@ -1459,7 +1459,7 @@ impl Editor {
             timers: super::timer_bridge::Timers::new(),
             viewport_debounce: rustc_hash::FxHashMap::default(),
             diagnostic_pull_debounce: rustc_hash::FxHashMap::default(),
-            last_visible_range: rustc_hash::FxHashMap::default(),
+            last_shown_lines: rustc_hash::FxHashMap::default(),
             buffer_mirrors_synced: rustc_hash::FxHashMap::default(),
             tui: super::tui::Tui::Off,
             applied_mouse_mode: None,

@@ -303,7 +303,7 @@ fn two_panes_show_both_ranges() {
     c.render();
 
     let visible = |pid: PaneId| {
-        let (_, range) = c.ed.last_visible_range[&pid];
+        let range = c.ed.last_shown_lines[&pid].1.visible;
         range.start.index()..range.end.index()
     };
     let (top, bottom) = (visible(first), visible(second));
@@ -328,7 +328,7 @@ fn overlapping_panes_paint_each_line_once() {
     c.render();
 
     let visible = |pid: PaneId| {
-        let (_, range) = c.ed.last_visible_range[&pid];
+        let range = c.ed.last_shown_lines[&pid].1.visible;
         range.start.index()..range.end.index()
     };
     let (top, bottom) = (visible(first), visible(second));
@@ -390,7 +390,7 @@ fn a_scroll_paints_lines_from_the_table() {
     for (cursor, shown) in [(60, 40..64), (65, 45..69), (38, 35..59)] {
         seek_to_line(&mut c.ed, cursor);
         c.render();
-        let (_, range) = c.ed.last_visible_range[&pid];
+        let range = c.ed.last_shown_lines[&pid].1.visible;
         assert_eq!(
             range.start.index()..range.end.index(),
             shown,
@@ -658,6 +658,46 @@ fn spans_over_syntax_and_among_sources() {
         assert_eq!(colors(cell(2, column)), green, "the same start: colorizer");
     }
     assert_eq!(cell(2, 20).fg, string, "syntax alone");
+}
+
+/// Line 0 opens the function the view is scrolled into, so a header row
+/// draws it above the pane's body: its color is painted, chars 12 to 19.
+#[test]
+fn a_header_row_line_is_painted() {
+    require_grammars(&["rust"]);
+    let mut c = colorizer();
+    let queries = QueryFiles::new(test_fixtures::grammar_query_path("rust")).with(
+        hume_core::OptionalQuery::Context,
+        test_fixtures::require_helix_query("rust", hume_core::OptionalQuery::Context.file_name()),
+    );
+    attach_fixture_grammar_with(&mut c.ed, "rust", "tree_sitter_rust", &queries);
+    let text = format!(
+        "fn a() {{ // #ff0000\n{}}}\n",
+        "    let x = 1;\n".repeat(100)
+    );
+    let bid = c.open("a.rs", &text);
+    poll_until(
+        &mut c.ed,
+        |ed| {
+            draw(ed);
+            ed.settle();
+        },
+        |ed| ed.state.buffers.get(bid).current_layers().is_some(),
+    );
+    seek_to_line(&mut c.ed, 60);
+    c.render();
+    let pid = c.ed.view.focused_pane();
+    assert_eq!(
+        super::super::scope_headers::drawn_lines(&mut c.ed, pid, 1),
+        [0],
+        "premise: a header row draws line 0"
+    );
+    assert!(
+        c.ed.last_shown_lines[&pid].1.visible.start.index() > 0,
+        "premise: the body starts below line 0"
+    );
+
+    assert_eq!(c.spans(bid), [span(12, 19, "colorizer.bg.ff0000")]);
 }
 
 /// `lines`, each followed by `\n`, and the span of each line paired with a color:

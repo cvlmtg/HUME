@@ -4,6 +4,7 @@
 
 ### Breaking changes
 - `buffer-search` takes a pattern compiled with `regex` instead of a string: write `(buffer-search pane (regex "foo"))`.
+- `on-viewport-change` handlers take a third argument, the lines the pane's scope headers show: write `(lambda (pane range headers) ...)`.
 
 ### Installation
 - Install on Arch Linux from the AUR: `paru -S hume`, a community-maintained package.
@@ -25,7 +26,7 @@
 - `set-conceals!` hides part of a line or draws other text in its place.
 - `syntax-captures` returns the nodes a tree-sitter query captures in a buffer.
 - The `on-syntax-changed` hook runs after a buffer's syntax tree is parsed.
-- `buffer-viewport-ranges` returns the lines every pane on a buffer shows, and `lsp-cancel!` cancels a pending request filed under a `#:supersede` key.
+- `buffer-viewport-ranges` returns the lines every pane on a buffer shows, and those its scope headers show apart, and `lsp-cancel!` cancels a pending request filed under a `#:supersede` key.
 - `stdlib/lsp-batch` sends several language server requests as one batch and calls back once all have answered.
 - `regex` compiles a search pattern once, and `string-matches` returns every place it matches in a string.
 - A grammar's `folds.scm` can use `#trim!` and `#not-has-parent?`, its `textobjects.scm` `#make-range!` and `#offset!`, and its `context.scm` `#make-range!`.

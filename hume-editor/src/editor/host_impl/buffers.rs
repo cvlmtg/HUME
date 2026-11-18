@@ -12,7 +12,7 @@ use crate::editor::buffer::lifecycle::CloseBufferRefused;
 use crate::editor::buffer::{TextRefusal, ViewLabel};
 use crate::editor::commands::{CommandPane, FocusedPane, effective_word_chars, word_search_input};
 use crate::editor::jump_list::{JumpRule, with_jump};
-use hume_scripting::host::{BufferHost, ShownHandle, StoredLanguage};
+use hume_scripting::host::{BufferHost, ShownHandle, StoredLanguage, ViewportLines};
 
 impl<'a> BufferHost for EditorHostImpl<'a> {
     // ── Enumeration ──────────────────────────────────────────────────────────
@@ -211,25 +211,33 @@ impl<'a> BufferHost for EditorHostImpl<'a> {
         let t = self.shown(pane)?;
         // No active-tab restriction: `EditorState::pane_size` lays out a
         // background tab's panes against the current terminal too, and
-        // `viewport_range` settles the pane's view before reading it, so a
+        // `shown_lines` settles the pane's view before reading it, so a
         // background-tab pane answers with the lines it would show once its
         // tab is focused again.
-        Ok(crate::editor::geometry::viewport_range(
-            self.state,
-            self.view,
-            t.pid(),
-        ))
+        Ok(crate::editor::geometry::shown_lines(self.state, self.view, t.pid()).visible)
     }
 
-    fn buffer_viewport_ranges(&mut self, id: BufferId) -> Vec<ExclusiveRange<ContentLine>> {
-        let panes = self.state.buffer_panes(self.view, id);
-        join_line_ranges(
-            panes
+    fn buffer_viewport_ranges(&mut self, id: BufferId) -> ViewportLines {
+        let shown: Vec<_> = self
+            .state
+            .buffer_panes(self.view, id)
+            .into_iter()
+            .map(|pid| crate::editor::geometry::shown_lines(self.state, self.view, pid))
+            .collect();
+        let ranges: Vec<ExclusiveRange<ContentLine>> =
+            join_line_ranges(shown.iter().map(|pane| pane.visible))
                 .into_iter()
-                .map(|pid| crate::editor::geometry::viewport_range(self.state, self.view, pid)),
+                .map(InclusiveRange::to_exclusive)
+                .collect();
+        let headers = join_line_ranges(
+            shown
+                .iter()
+                .flat_map(crate::editor::geometry::ShownLines::header_ranges)
+                .filter(|header| !ranges.iter().any(|range| range.contains(header.start))),
         )
         .into_iter()
         .map(InclusiveRange::to_exclusive)
-        .collect()
+        .collect();
+        ViewportLines { ranges, headers }
     }
 }

@@ -1184,7 +1184,8 @@ fn line_starts(text: &str) -> Vec<usize> {
 }
 
 /// The heading starts of [`sectioned`] text whose section shares a line
-/// with `lines`.
+/// with `lines`: the headings a pane showing `lines` draws, the one above
+/// its top line in a header row.
 fn sections_meeting(text: &str, lines: std::ops::Range<usize>) -> Vec<usize> {
     let starts = line_starts(text);
     (0..starts.len() - 1)
@@ -1197,7 +1198,7 @@ fn sections_meeting(text: &str, lines: std::ops::Range<usize>) -> Vec<usize> {
 impl Preview {
     /// The lines pane `pid` showed on the last frame.
     fn visible(&self, pid: PaneId) -> std::ops::Range<usize> {
-        let (_, range) = self.ed.last_visible_range[&pid];
+        let range = self.ed.last_shown_lines[&pid].1.visible;
         range.start.index()..range.end.index()
     }
 }
@@ -1425,12 +1426,6 @@ fn two_panes(p: &mut Preview, text: &str, line: usize) -> (BufferId, PaneId, Pan
     (bid, first, second)
 }
 
-/// The lines a render covers for a pane showing `shown`: those lines and the
-/// one above them.
-fn covered(shown: &std::ops::Range<usize>) -> std::ops::Range<usize> {
-    shown.start.saturating_sub(1)..shown.end
-}
-
 #[test]
 fn two_panes_on_one_buffer_render_each_viewport_and_not_the_lines_between() {
     let mut p = preview();
@@ -1442,8 +1437,8 @@ fn two_panes_on_one_buffer_render_each_viewport_and_not_the_lines_between() {
         first.end <= 30 && second.start >= 40 && second.end <= 90,
         "premise: {first:?} and {second:?} leave the section at 30 between them and the one at 90 after"
     );
-    let mut expected = sections_meeting(&text, covered(&first));
-    expected.extend(sections_meeting(&text, covered(&second)));
+    let mut expected = sections_meeting(&text, first);
+    expected.extend(sections_meeting(&text, second));
     expected.sort_unstable();
     expected.dedup();
     assert_eq!(p.conceal_starts(bid), expected);
@@ -1861,6 +1856,52 @@ fn heading_as_a_sticky_header_row() {
     seek_to_line(&mut p.ed, 30);
     p.render();
     insta::assert_snapshot!(p.snapshot());
+}
+
+/// A heading far above the top line keeps its inline formatting in its
+/// header row.
+#[test]
+fn heading_with_a_code_span_as_a_sticky_header_row() {
+    let mut p = preview().sized(30, 10);
+    let text = format!("## `foo` bar\n{}", "x\n".repeat(40));
+    p.open("a.md", &text);
+    seek_to_line(&mut p.ed, 30);
+    p.render();
+    insta::assert_snapshot!(p.snapshot());
+}
+
+/// A code block ending right above a heading drawn in a header row, far
+/// above the pane's body: no row shows the block, so it is not drawn.
+#[test]
+fn a_header_row_fetches_no_line_above_its_heading() {
+    let mut p = preview().sized(30, 10);
+    let fence = "```\ncode\n```\n";
+    let text = format!("{fence}## heading\n{}", "x\n".repeat(40));
+    let bid = p.open("a.md", &text);
+    seek_to_line(&mut p.ed, 30);
+    p.render();
+    let pid = p.ed.view.focused_pane();
+    assert_eq!(
+        super::super::scope_headers::drawn_lines(&mut p.ed, pid, 1),
+        [3],
+        "premise: the heading is drawn in a header row"
+    );
+
+    let heading_start = fence.chars().count();
+    assert_eq!(
+        p.conceal_starts(bid)
+            .into_iter()
+            .filter(|&start| start < heading_start)
+            .collect::<Vec<_>>(),
+        Vec::<usize>::new()
+    );
+    assert_eq!(
+        p.bands(bid)
+            .into_iter()
+            .filter(|(line, _)| *line < 3)
+            .collect::<Vec<_>>(),
+        Vec::<(usize, String)>::new()
+    );
 }
 
 /// A wrapping heading with an inlay hint, a table with EOL text on its last

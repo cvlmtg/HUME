@@ -328,7 +328,7 @@ A plugin reacts to editor events by registering a hook handler with `register-ho
 | `on-inlay-hints-refresh` | A language server asks for fresh inlay hints, once per buffer it gives hints to | `(pane server)`: `server` is the asking server's value |
 | `on-lsp-detach` | A language server stops serving a buffer that stays open: it was stopped or restarted, or the server list or the buffer's language changed so it doesn't include it | `(pane server)` |
 | `on-lsp-notification` | A language server sends a notification HUME doesn't handle itself (it handles `window/logMessage`, `window/showMessage`, `$/progress`, and `publishDiagnostics`) | `(server method params)`: the sending server, the method name, and `params` as a JSON handle. To handle only some methods, use `register-lsp-notification-hook!` |
-| `on-viewport-change` | The visible region of a pane changes | `(pane range)`: `range` is the value `viewport-range` returns, 0-based and end-exclusive |
+| `on-viewport-change` | The lines a pane shows change, the lines its scope headers show included | `(pane range headers)`: `range` is the value `viewport-range` returns, 0-based and end-exclusive. `headers` lists the lines the pane's scope headers show, one range of the same shape per header row, top row first, `'()` with none |
 | `on-trigger-char` | A registered trigger character is typed | `(pane char source)`: `char` is a Scheme char, like `#\.` |
 | `on-completion-accept` | A completion entry is accepted | `(pane item)` |
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: `key` is a string, `value` the option's new value as `get-option` returns it |

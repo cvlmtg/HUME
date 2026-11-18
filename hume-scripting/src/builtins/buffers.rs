@@ -12,8 +12,8 @@ use steel::rvals::{IntoSteelVal, SteelVal};
 use super::SteelResult;
 use super::args::{
     ArgPane, CHAR_RANGE_KEYS, HashEntry, LINE_RANGE_KEYS, bool_arg, char_range_value,
-    line_range_value, list_of, not_live_err, optional_hash_entry, optional_hash_list,
-    relative_base_arg, string_list, symbol_hash,
+    line_range_list_value, line_range_value, list_of, not_live_err, optional_hash_entry,
+    optional_hash_list, relative_base_arg, string_list, symbol_hash,
 };
 use super::errors::generic_err;
 use super::ids::{BufferGeneration, SteelBufferKey, SteelPane};
@@ -677,17 +677,18 @@ pub(crate) fn viewport_range(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResu
     Ok(line_range_value(range))
 }
 
-/// `(buffer-viewport-ranges pane)` → the lines every pane showing `pane`'s
-/// buffer shows, as a list of `viewport-range` values sorted by start, the
-/// ranges that overlap or touch joined. `'()` when no pane shows the buffer.
+/// `(buffer-viewport-ranges pane)` → `(hash 'ranges ranges 'headers
+/// headers)`: the lines every pane showing `pane`'s buffer shows.
+/// `ranges` lists `viewport-range` values sorted by start, the ranges that
+/// overlap or touch joined; `headers` lists, as ranges joined the same
+/// way, the lines the panes' scope header rows show that no range covers.
+/// Both are `'()` when no pane shows the buffer.
 pub(crate) fn buffer_viewport_ranges(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
-    let ranges = ctx
-        .host
-        .buffers()
-        .buffer_viewport_ranges(bid)
-        .into_iter()
-        .map(line_range_value);
-    Ok(list_of(ranges))
+    let shown = ctx.host.buffers().buffer_viewport_ranges(bid);
+    Ok(symbol_hash([
+        ("ranges", line_range_list_value(shown.ranges)),
+        ("headers", line_range_list_value(shown.headers)),
+    ]))
 }
 
 /// `(selections-linewise? pane)`.

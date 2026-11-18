@@ -64,9 +64,29 @@ impl ScopeHeaderInputs<'static> {
 pub struct PaneRows {
     top: DisplayLinePos,
     height: usize,
-    headers: [ContentLine; MAX_SCOPE_HEADERS],
-    header_count: usize,
+    headers: HeaderLines,
 }
+
+/// The lines a pane's scope header rows draw, top row first.
+#[derive(Copy, Clone, Debug, Default)]
+pub struct HeaderLines {
+    lines: [ContentLine; MAX_SCOPE_HEADERS],
+    count: usize,
+}
+
+impl HeaderLines {
+    pub fn as_slice(&self) -> &[ContentLine] {
+        &self.lines[..self.count]
+    }
+}
+
+impl PartialEq for HeaderLines {
+    fn eq(&self, other: &Self) -> bool {
+        self.as_slice() == other.as_slice()
+    }
+}
+
+impl Eq for HeaderLines {}
 
 /// What one row of a pane shows.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -98,8 +118,7 @@ impl PaneRows {
         let mut rows = Self {
             top,
             height: geo.height,
-            headers: [ContentLine::default(); MAX_SCOPE_HEADERS],
-            header_count: 0,
+            headers: HeaderLines::default(),
         };
         let ScopeHeaderInputs {
             source: Some(source),
@@ -125,7 +144,7 @@ impl PaneRows {
                 scratch.retain(|line| !dlm.hidden().is_hidden(*line));
                 scratch_line = Some(pos.line);
             }
-            if rows.header_count == cap {
+            if rows.headers.count == cap {
                 break;
             }
             let Some(&header) = scratch.iter().find(|line| !rows.headers().contains(*line)) else {
@@ -134,8 +153,8 @@ impl PaneRows {
             let Some(next) = dlm.next(pos) else {
                 return rows;
             };
-            rows.headers[rows.header_count] = header;
-            rows.header_count += 1;
+            rows.headers.lines[rows.headers.count] = header;
+            rows.headers.count += 1;
             pos = next;
         }
         // At the cap the line under the headers stays at row `cap`, so each of
@@ -146,8 +165,8 @@ impl PaneRows {
         let dropped = usize::from(settings.outer_level);
         for &header in &scratch {
             if dropped < cap {
-                rows.headers.copy_within(dropped + 1..cap, dropped);
-                rows.headers[cap - 1] = header;
+                rows.headers.lines.copy_within(dropped + 1..cap, dropped);
+                rows.headers.lines[cap - 1] = header;
             }
         }
         rows
@@ -160,12 +179,17 @@ impl PaneRows {
 
     /// The line each header row draws, top row first.
     pub fn headers(&self) -> &[ContentLine] {
-        &self.headers[..self.header_count]
+        self.headers.as_slice()
+    }
+
+    /// [`Self::headers`] as a value to keep past these rows.
+    pub fn header_lines(&self) -> HeaderLines {
+        self.headers
     }
 
     /// The display line drawn on the first row below the header rows.
     pub fn body_top(&self, dlm: &mut DisplayLineMap<'_>) -> DisplayLinePos {
-        dlm.advance_saturating(self.top, self.header_count as isize)
+        dlm.advance_saturating(self.top, self.headers.count as isize)
     }
 
     /// What pane row `row` shows.
@@ -180,7 +204,7 @@ impl PaneRows {
     /// past the pane's last row, or under a header row.
     pub fn row_of(&self, dlm: &mut DisplayLineMap<'_>, pos: DisplayLinePos) -> Option<usize> {
         dlm.distance(self.top, pos, self.height - 1)
-            .filter(|&row| row >= self.header_count)
+            .filter(|&row| row >= self.headers.count)
     }
 }
 

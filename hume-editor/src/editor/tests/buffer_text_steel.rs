@@ -419,7 +419,7 @@ fn buffer_viewport_ranges_keeps_panes_far_apart_separate() {
                   (lower (car shown))
                   (upper (cadr shown)))
              (and (< (hash-ref upper 'end-line) (hash-ref lower 'start-line))
-                  (equal? (buffer-viewport-ranges bid) (list upper lower))))"#,
+                  (equal? (hash-ref (buffer-viewport-ranges bid) 'ranges) (list upper lower))))"#,
     );
     assert!(fired, "each pane's lines must come back as their own range");
 }
@@ -434,7 +434,7 @@ fn buffer_viewport_ranges_joins_panes_showing_the_same_lines() {
         &mut ed,
         ScriptingHost::for_testing(&Dirs::none()),
         tmp.path(),
-        r#"(equal? (buffer-viewport-ranges bid) (list (viewport-range bid)))"#,
+        r#"(equal? (hash-ref (buffer-viewport-ranges bid) 'ranges) (list (viewport-range bid)))"#,
     );
     assert!(fired, "the two panes' lines must come back as one range");
 }

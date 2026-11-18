@@ -111,18 +111,19 @@ pub(in crate::editor) enum EditorEvent {
         buffer: BufferId,
         server: ServerRef,
     },
-    /// Fires when a pane's visible range changes (scroll, resize, an edit
-    /// that moves the EOF-clamped end, a buffer switch), debounced
-    /// (`hook-viewport-debounce-ms`) so a burst fires once. `lines` is the range
-    /// `viewport-range` returns, end-exclusive, and reaches the hook as the
-    /// same value; it covers every line that could be visible and is exact
-    /// unless soft wrap
-    /// makes lines span several rows.
+    /// Fires when the lines a pane shows change (scroll, resize, an edit
+    /// that moves the EOF-clamped end, a buffer switch, its scope header
+    /// rows changing), debounced (`hook-viewport-debounce-ms`) so a burst
+    /// fires once. `lines.visible` is the range `viewport-range` returns,
+    /// end-exclusive, and reaches the hook as the same value; it covers
+    /// every line that could be visible and is exact unless soft wrap makes
+    /// lines span several rows. `lines.headers` reaches the hook as a list
+    /// of ranges in `viewport-range`'s shape, one line each, top row first.
     /// `target`'s pane is the pane whose viewport actually scrolled, not
     /// necessarily the focused one.
     OnViewportChange {
         target: PaneHandle,
-        lines: hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>,
+        lines: super::geometry::ShownLines,
     },
     /// Fires in Insert mode after a registered trigger char (see
     /// `set-hook-triggers!`) has been inserted into the buffer, once
@@ -439,7 +440,7 @@ editor_event_names! {
         OnLspDetach => "on-lsp-detach" (2, Buffer),
         OnDiagnosticsChanged => "on-diagnostics-changed" (1, Buffer),
         OnInlayHintsRefresh => "on-inlay-hints-refresh" (2, Buffer),
-        OnViewportChange => "on-viewport-change" (2, Buffer),
+        OnViewportChange => "on-viewport-change" (3, Buffer),
         OnTriggerChar => "on-trigger-char" (3, Buffer),
         OnCompletionAccept => "on-completion-accept" (2, Buffer),
         OnLspNotification => "on-lsp-notification" (3, Editor),
@@ -502,7 +503,8 @@ impl EditorEvent {
             EditorEvent::OnViewportChange { target, lines } => {
                 vec![
                     SteelPane::new(target).into_steel_val(),
-                    hume_scripting::line_range_value(lines),
+                    hume_scripting::line_range_value(lines.visible),
+                    hume_scripting::line_range_list_value(lines.header_ranges()),
                 ]
             }
             EditorEvent::OnTriggerChar { target, ch, source } => {

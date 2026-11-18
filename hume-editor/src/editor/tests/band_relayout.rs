@@ -180,7 +180,7 @@ fn a_viewport_change_queued_after_a_drawer_opens_counts_the_drawer() {
         tmp.path(),
         r#"(define *end* #f)
            (register-hook! 'on-viewport-change
-             (lambda (pane range) (set! *end* (hash-ref range 'end-line))))"#,
+             (lambda (pane range headers) (set! *end* (hash-ref range 'end-line))))"#,
     );
     seed_frame(&mut ed, 80, 24);
 

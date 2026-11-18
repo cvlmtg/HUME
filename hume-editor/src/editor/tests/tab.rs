@@ -223,7 +223,7 @@ fn hiding_the_tab_bar_resizes_a_hidden_tab_s_pane_before_the_next_frame() {
     frame(&mut ed, 80, 25);
 
     ed.state.settings.tabline = crate::editor::settings::TablineVisibility::Never;
-    let range = crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, pid_b);
+    let range = crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid_b).visible;
 
     // Two tabs show the bar under the `dynamic` default. Without it the pane
     // keeps 25 - 1 (statusline) = 24 rows.
@@ -256,11 +256,11 @@ fn a_hidden_tab_s_pane_reports_the_range_its_tab_shows_when_focused() {
         .entries
         .seeded_mut(pid_b, bid_b)
         .set_selections(sels, text);
-    let hidden = crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, pid_b);
+    let hidden = crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid_b).visible;
 
     ed.execute_typed("tabnext", None).unwrap();
     frame(&mut ed, 80, 25);
-    let shown = crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, pid_b);
+    let shown = crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid_b).visible;
 
     assert_eq!(hidden.start, hume_rope::line::ContentLine::new(61));
     assert_eq!(hidden, shown);
@@ -725,7 +725,7 @@ fn tabclose_while_in_insert_exits_insert_and_commits_the_outgoing_pane() {
 /// `prepare_frame`'s scroll pass only ever visits *active-tab* panes, so a
 /// background tab's pane is not observed while it is hidden. Returning to it
 /// at unchanged terminal geometry must still re-arm `on-viewport-change`.
-/// A stale `last_visible_range` entry matching on return would leave a
+/// A stale `last_shown_lines` entry matching on return would leave a
 /// viewport-driven consumer (LSP inlay hints) pinned to whatever it last saw
 /// before the tab went to the background.
 #[test]
@@ -748,7 +748,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid range)
+        r#"(register-hook! 'on-viewport-change (lambda (bid range headers)
              (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
@@ -768,7 +768,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
     );
 }
 
-/// `last_visible_range`'s key includes the `buffer_id`, so a pane switching
+/// `last_shown_lines`'s key includes the `buffer_id`, so a pane switching
 /// buffers (`:e`, `:b#`) at an unchanged range must re-arm
 /// `on-viewport-change` for the newly-shown buffer. Single pane, single
 /// tab. This is the
@@ -778,7 +778,7 @@ fn returning_to_a_background_tab_at_unchanged_geometry_still_refires_viewport_ch
 fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = editor_from("-[a]>bc\n");
-    seed_frame(&mut ed, 40, 10); // seeds last_visible_range[pid] keyed on A's buffer
+    seed_frame(&mut ed, 40, 10); // seeds last_shown_lines[pid] keyed on A's buffer
 
     let file_tmp = tempfile::tempdir().unwrap();
     let file = file_tmp.path().join("second.txt");
@@ -788,7 +788,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid range)
+        r#"(register-hook! 'on-viewport-change (lambda (bid range headers)
              (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
@@ -813,7 +813,7 @@ fn switching_buffer_in_place_at_unchanged_geometry_still_refires_viewport_change
 /// A pane's debounced `on-viewport-change` timer must not fire with its
 /// frozen bounds if the pane's tab went to the background before the timer
 /// came due. `prepare_frame`'s own housekeeping (dropping
-/// `last_visible_range`, retiring `viewport_debounce` on close) only runs
+/// `last_shown_lines`, retiring `viewport_debounce` on close) only runs
 /// for a pane no longer in the pool at all (a background-tab pane still is),
 /// and the timer can come due from `settle()`'s drain, which runs
 /// *before* that housekeeping even sees the pane leave the active set. The
@@ -832,13 +832,13 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
     let mut ed = editor_from("-[a]>bc\ndef\nghi\njkl\nmno\n");
     ed.state.settings.hook_viewport_debounce_ms = 0;
     let bid_a = ed.focused_buffer_id();
-    seed_frame(&mut ed, 40, 3); // baseline last_visible_range[pid_a] at top_line 0
+    seed_frame(&mut ed, 40, 3); // baseline last_shown_lines[pid_a] at top_line 0
 
     let mut host = ScriptingHost::for_testing(&Dirs::none());
     eval_with_real_host(
         &mut ed,
         &mut host,
-        r#"(register-hook! 'on-viewport-change (lambda (bid range)
+        r#"(register-hook! 'on-viewport-change (lambda (bid range headers)
              (set-buffer-option! bid "indent-width" (+ 1 (get-buffer-option bid "indent-width")))))"#,
         tmp.path(),
     );
@@ -856,7 +856,7 @@ fn a_pending_debounced_viewport_change_does_not_fire_for_a_pane_that_went_backgr
 
     // The new tab's own next frame drains the still-pending timer, inside
     // its `settle()`, which runs before this same frame's own housekeeping
-    // drops pid_a's `last_visible_range`. Must not fire on-viewport-change for A.
+    // drops pid_a's `last_shown_lines`. Must not fire on-viewport-change for A.
     // (It legitimately arms and fires for the new tab's own buffer, but that's
     // not under test here.)
     frame(&mut ed, 40, 3);

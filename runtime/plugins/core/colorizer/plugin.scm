@@ -25,7 +25,7 @@
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 (register-hook! 'on-viewport-change
-  (lambda (pane range) (colorizer/render! pane)))
+  (lambda (pane range headers) (colorizer/render! pane)))
 
 (register-hook! 'on-text-changed
   (lambda (pane changes) (colorizer/render-soon! pane)))

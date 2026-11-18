@@ -28,7 +28,7 @@ mod ui;
 pub use crate::builtins::args::pane::{FocusedHandle, ShownHandle};
 pub(crate) use async_process::process_result;
 pub use async_process::{AsyncProcessHost, JobHandle, async_callback_args, names_callback_args};
-pub use buffers::{BufferHost, StoredLanguage, UndoNode};
+pub use buffers::{BufferHost, StoredLanguage, UndoNode, ViewportLines};
 pub(crate) use commands::check_name_free;
 pub use commands::{CommandHolder, CommandHost, CommandKind, NativeCall, check_lazy_claim};
 pub use completion::{

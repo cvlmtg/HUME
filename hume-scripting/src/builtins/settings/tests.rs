@@ -400,10 +400,7 @@ impl crate::host::BufferHost for RecordingBufferOptionHost {
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String> {
         self.inner.viewport_range(pane)
     }
-    fn buffer_viewport_ranges(
-        &mut self,
-        id: BufferId,
-    ) -> Vec<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>> {
+    fn buffer_viewport_ranges(&mut self, id: BufferId) -> crate::host::ViewportLines {
         self.inner.buffer_viewport_ranges(id)
     }
 }

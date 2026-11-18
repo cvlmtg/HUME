@@ -88,7 +88,7 @@
     (lambda (pane)
       (let ((pane (lsp/resolve-pane pane)))
         (when (and pane (lsp/inlay-on? pane))
-          (lsp/request-round! pane (buffer-viewport-ranges pane)))))
+          (lsp/request-round! pane (hash-ref (buffer-viewport-ranges pane) 'ranges)))))
     #:key (lambda (p . _) (buffer-key p))))
 
 (define (lsp/refresh-hints pane)
@@ -96,7 +96,7 @@
     (lsp/request-hints pane)))
 
 (register-hook! 'on-viewport-change
-  (lambda (pane range) (lsp/refresh-hints pane)))
+  (lambda (pane range headers) (lsp/refresh-hints pane)))
 
 (register-hook! 'on-lsp-attach
   (lambda (pane server) (lsp/refresh-hints pane)))

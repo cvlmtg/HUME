@@ -49,8 +49,8 @@ pub(crate) mod watchdog;
 
 // ── Public API re-exports ─────────────────────────────────────────────────────
 // Types the editor and editor tests use directly.
-pub use builtins::args::line_range_value;
 pub use builtins::args::symbol_hash;
+pub use builtins::args::{line_range_list_value, line_range_value};
 pub use builtins::commands::count_to_steel;
 pub use builtins::diff::hunk_list_value;
 pub use builtins::ids::{DocPos, DocRange, DocUri, ServerRef, SteelPane};

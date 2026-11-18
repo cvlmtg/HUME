@@ -207,13 +207,13 @@ impl Editor {
             .queue_event(EditorEvent::OnBufferSave { buffer: bid });
     }
 
-    /// Fire `OnViewportChange (pane first-line end-line)` for `pane_id`,
+    /// Fire `OnViewportChange (pane range headers)` for `pane_id`,
     /// called only when its debounce timer actually fires (`timer_bridge`),
     /// reading the pane's *current* bounds rather than whatever they were
     /// when the timer was armed. A no-op if the pane closed in the meantime,
     /// or if its tab went to the background before the (debounced) timer
     /// fired: a hidden pane shows no lines to announce. `prepare_frame`
-    /// drops that pane's `last_visible_range` when its tab backgrounds, so
+    /// drops that pane's `last_shown_lines` when its tab backgrounds, so
     /// the pane's first frame back on screen reads as a fresh change and
     /// re-arms this on its own. This guard only
     /// skips the fire for the frames spent hidden, not the one on return.
@@ -221,8 +221,7 @@ impl Editor {
         if !self.view.layout().contains_leaf(pane_id) {
             return;
         }
-        let lines =
-            crate::editor::geometry::viewport_range(&mut self.state, &mut self.view, pane_id);
+        let lines = crate::editor::geometry::shown_lines(&mut self.state, &mut self.view, pane_id);
         let bid = self.view.panes[pane_id].buffer_id();
         self.state.queue_event(EditorEvent::OnViewportChange {
             target: PaneHandle::with_pane(bid, pane_id),

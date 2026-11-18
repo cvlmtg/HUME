@@ -320,7 +320,7 @@ fn the_visible_range_reaches_past_a_fold() {
     let pid = ed.view.focused_pane();
     ed.resize_terminal(40, 8);
     ed.settle();
-    let range = crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, pid);
+    let range = crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid).visible;
     assert!(
         range.end.index() > 31,
         "lines after the fold are in range: {range:?}"

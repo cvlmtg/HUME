@@ -398,7 +398,7 @@ impl Editor {
         buf
     }
 
-    /// Drop `viewport_debounce`/`last_visible_range`/`buffer_mirrors_synced`
+    /// Drop `viewport_debounce`/`last_shown_lines`/`buffer_mirrors_synced`
     /// entries whose pane no longer exists in `self.view.panes`. A pending
     /// debounce timer is cancelled outright (its `TimerPayload` no-ops via
     /// `queue_viewport_change`'s own liveness check anyway, but there is no
@@ -410,7 +410,7 @@ impl Editor {
     /// `SecondaryMap` entries.
     fn prune_closed_pane_caches(&mut self) {
         let panes = &self.view.panes;
-        self.last_visible_range
+        self.last_shown_lines
             .retain(|pid, _| panes.contains_key(*pid));
         self.buffer_mirrors_synced
             .retain(|pid, _| panes.contains_key(*pid));
@@ -554,8 +554,7 @@ impl Editor {
         //
         // A pane whose tab went to the background keeps no key, so its
         // next visible frame always counts as a viewport change.
-        self.last_visible_range
-            .retain(|pid, _| active.contains(pid));
+        self.last_shown_lines.retain(|pid, _| active.contains(pid));
 
         let mut pane_rows = Vec::with_capacity(sizes.len());
         for &(pid, size) in &sizes {
@@ -568,6 +567,7 @@ impl Editor {
                 pid,
                 &layout_key,
             );
+            let rows = settled.as_ref().map(|settled| settled.rows);
             let cursor_screen = settled.and_then(|settled| {
                 pane_rows.push((
                     pid,
@@ -591,19 +591,20 @@ impl Editor {
                 ctx.cursor_content_pos = cursor_screen;
             }
 
-            // A visible-range change arms the `OnViewportChange` debounce
-            // timer; the hook fires later from the timer drain.
+            // A change in the lines shown arms the `OnViewportChange`
+            // debounce timer; the hook fires later from the timer drain.
             let text = self.state.buffers.get(buf_id).text();
             #[allow(clippy::disallowed_methods)] // the view this frame's reveal just settled
             let (mut dlm, viewport) =
                 self.view.panes[pid].display_lines_and_viewport(text.rope(), layout_key.inputs());
-            let range = super::geometry::pane_visible_range(
+            let shown = super::geometry::ShownLines::read(
                 &mut dlm,
                 viewport,
                 usize::from(size.height()),
                 text.content_line_count(),
+                rows.as_ref(),
             );
-            if self.last_visible_range.insert(pid, (buf_id, range)) != Some((buf_id, range)) {
+            if self.last_shown_lines.insert(pid, (buf_id, shown)) != Some((buf_id, shown)) {
                 self.debounce_viewport_change(pid);
             }
         }

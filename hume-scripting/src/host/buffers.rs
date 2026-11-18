@@ -9,6 +9,19 @@ use hume_platform::path::AbsolutePath;
 use super::ShownHandle;
 use crate::BufferVisibility;
 
+/// The lines every pane showing a buffer shows, as
+/// `(buffer-viewport-ranges pane)` reports them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ViewportLines {
+    /// Each pane's [`viewport_range`](BufferHost::viewport_range), joined by
+    /// [`hume_rope::line::join_line_ranges`] and each given up to the line
+    /// after its last.
+    pub ranges: Vec<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>,
+    /// The lines the panes' scope header rows show, joined as `ranges` are,
+    /// holding no line a range holds.
+    pub headers: Vec<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>,
+}
+
 /// One revision of a buffer's undo history, as `(buffer-undo-tree pane)`
 /// reports it. `id` and `parent` are the raw integers Steel sees; the only
 /// way back to a revision is [`EditHost::goto_revision`], which validates the
@@ -151,13 +164,7 @@ pub trait BufferHost {
         pane: ShownHandle,
     ) -> Result<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>, String>;
 
-    /// The content lines every pane showing `id` shows, as
-    /// [`viewport_range`](Self::viewport_range) gives them, joined by
-    /// [`hume_rope::line::join_line_ranges`] and each given up to the line
-    /// after its last, for `(buffer-viewport-ranges pane)`. Empty when no
-    /// pane shows `id`.
-    fn buffer_viewport_ranges(
-        &mut self,
-        id: BufferId,
-    ) -> Vec<hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine>>;
+    /// The content lines every pane showing `id` shows, for
+    /// `(buffer-viewport-ranges pane)`. Empty when no pane shows `id`.
+    fn buffer_viewport_ranges(&mut self, id: BufferId) -> ViewportLines;
 }

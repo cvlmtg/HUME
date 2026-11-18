@@ -310,7 +310,7 @@ impl BufferHost for ReadOnlyHost<'_> {
     fn viewport_range(&mut self, pane: ShownHandle) -> Result<ExclusiveRange<ContentLine>, String> {
         self.inner.get_mut().buffers().viewport_range(pane)
     }
-    fn buffer_viewport_ranges(&mut self, id: BufferId) -> Vec<ExclusiveRange<ContentLine>> {
+    fn buffer_viewport_ranges(&mut self, id: BufferId) -> crate::host::ViewportLines {
         self.inner.get_mut().buffers().buffer_viewport_ranges(id)
     }
 }

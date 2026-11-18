@@ -12,7 +12,9 @@ use hume_engine::pane::{ViewGeometry, Viewport};
 use hume_engine::pipeline::{ChromeRows, EngineView, PaneSize, ScreenLayout};
 use hume_engine::providers::{GutterInputs, SyntaxSource};
 use hume_engine::reveal::RevealedLines;
-use hume_engine::scope_headers::{ContextSettings, ScopeHeaderInputs};
+use hume_engine::scope_headers::{ContextSettings, HeaderLines, PaneRows, ScopeHeaderInputs};
+use hume_rope::line::ContentLine;
+use hume_rope::offset::{ExclusiveRange, InclusiveRange};
 use hume_treesitter::syntax::Syntax;
 
 use super::input_stack::{FocusedBox, ResolvedPopupLayout};
@@ -301,21 +303,54 @@ pub(in crate::editor) fn pane_visible_range(
     hume_rope::offset::ExclusiveRange::new(top.line, end_line)
 }
 
-/// Pane `pid`'s visible line range (end-exclusive) between frames, for
-/// `(viewport-range pane)` and the `OnViewportChange` payload, read from
-/// the settled view (`frame::settled_pane_view`).
-pub(in crate::editor) fn viewport_range(
+/// What a pane shows: the lines of its body and of its scope header rows.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(in crate::editor) struct ShownLines {
+    /// The body's lines, as [`pane_visible_range`] gives them: what
+    /// `(viewport-range pane)` returns.
+    pub(in crate::editor) visible: ExclusiveRange<ContentLine>,
+    /// The line each header row draws, top row first.
+    pub(in crate::editor) headers: HeaderLines,
+}
+
+impl ShownLines {
+    /// The lines `viewport` shows on `dlm`'s layout in a pane of `height`
+    /// rows laid out as `rows`, `None` for a pane with no rows.
+    pub(in crate::editor) fn read(
+        dlm: &mut DisplayLineMap<'_>,
+        viewport: &mut Viewport,
+        height: usize,
+        content_lines: hume_rope::line::ContentLineCount,
+        rows: Option<&PaneRows>,
+    ) -> Self {
+        Self {
+            visible: pane_visible_range(dlm, viewport, height, content_lines),
+            headers: rows.map(PaneRows::header_lines).unwrap_or_default(),
+        }
+    }
+
+    /// Each header row's line as a range of that one line, top row first.
+    pub(in crate::editor) fn header_ranges(
+        &self,
+    ) -> impl Iterator<Item = ExclusiveRange<ContentLine>> + '_ {
+        self.headers
+            .as_slice()
+            .iter()
+            .map(|&line| InclusiveRange::new(line, line).to_exclusive())
+    }
+}
+
+/// The lines pane `pid` shows between frames, for `(viewport-range pane)`,
+/// `(buffer-viewport-ranges pane)` and the `OnViewportChange` payload, read
+/// from the settled view (`frame::settled_pane_view`).
+pub(in crate::editor) fn shown_lines(
     state: &mut EditorState,
     view: &mut EngineView,
     pid: PaneId,
-) -> hume_rope::offset::ExclusiveRange<hume_rope::line::ContentLine> {
+) -> ShownLines {
     let size = state.pane_size(view, pid);
     let key = state.layout_key(view, pid, size);
-    let content_lines = state
-        .buffers
-        .get(view.panes[pid].buffer_id())
-        .text()
-        .content_line_count();
+    let doc = state.buffers.get(view.panes[pid].buffer_id());
     let (mut dlm, viewport) = super::frame::settled_pane_view(
         &state.buffers,
         &mut state.panes.entries,
@@ -323,10 +358,14 @@ pub(in crate::editor) fn viewport_range(
         pid,
         &key,
     );
-    pane_visible_range(
+    let rows = key
+        .geometry(doc.syntax_source())
+        .map(|geo| geo.rows(&mut dlm, viewport));
+    ShownLines::read(
         &mut dlm,
         viewport,
         usize::from(size.height()),
-        content_lines,
+        doc.text().content_line_count(),
+        rows.as_ref(),
     )
 }

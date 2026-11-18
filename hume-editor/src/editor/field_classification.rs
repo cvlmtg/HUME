@@ -156,7 +156,7 @@ fn editor_fields_are_classified() {
             // preserved: indexes the native DiagnosticPullDebounce timers
             // that themselves survive the reset
             diagnostic_pull_debounce: _,
-            last_visible_range: _, // preserved
+            last_shown_lines: _, // preserved
             // preserved: staleness after a reload is forced by
             // DecorationStores::reset bumping the generation
             // counter, not by resetting this map directly

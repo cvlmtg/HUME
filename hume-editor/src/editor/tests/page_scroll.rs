@@ -239,7 +239,7 @@ fn viewport_range_after_an_unrendered_jump_is_the_jump_s_view() {
             ed.render_to_buf(rect);
         }
         let pid = ed.view.focused_pane();
-        crate::editor::geometry::viewport_range(&mut ed.state, &mut ed.view, pid)
+        crate::editor::geometry::shown_lines(&mut ed.state, &mut ed.view, pid).visible
     };
 
     let unrendered = range_after_jump(false);
