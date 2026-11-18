@@ -284,6 +284,8 @@ A table wider than the pane draws a broken grid when soft wrap is on. A table's 
 
 ## core:colorizer
 
+<img src="/core_colorizer.png" alt="core:colorizer in action" />
+
 Paints color literals with the color they name: hex colors of three, four, six or eight digits (`#f00`, `#ff0000cc`), `rgb()`, `rgba()`, `hsl()`, `hsla()` and `oklch()` calls, and, in CSS, SCSS and Less files, color names such as `rebeccapurple`. By default a literal's background takes its color and its text turns black or white, whichever reads.
 
 ```scheme
