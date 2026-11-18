@@ -20,10 +20,10 @@
 (load-plugin! "core:undotree")         ; undo history graph in the drawer
 (load-plugin! "core:markdown-preview") ; Markdown drawn without its syntax
 
-;; (load-plugin! "core:buffer-words")     ; identifiers already in the buffer, as completions
-;; (load-plugin! "core:vim-keybind")      ; vim muscle memory
-;; (load-plugin! "core:classic-paste")    ; GUI-style paste
-;; (load-plugin! "core:colorizer")        ; color literals painted with their color
+;; (load-plugin! "core:buffer-words")  ; identifiers already in the buffer, as completions
+;; (load-plugin! "core:vim-keybind")   ; vim muscle memory
+;; (load-plugin! "core:classic-paste") ; GUI-style paste
+;; (load-plugin! "core:colorizer")     ; color literals painted with their color
 ;; (load-plugin! "core:steel-server")  ; scheme LSP for HUME config; needs :steel-server-install
 
 ;; ── Your settings & key bindings ─────────────────────────────────────────────
