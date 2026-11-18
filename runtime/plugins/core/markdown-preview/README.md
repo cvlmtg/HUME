@@ -93,7 +93,7 @@ The choices the plugin and the Rust surface under it are built on:
 |---|---|
 | `manifest.scm` | Lazy activation on the language and the three commands |
 | `plugin.scm` | Config, the hooks and the commands |
-| `lib/state.scm` | Per-buffer state, keyed by `(buffer-key pane)`: whether the preview is on, and the generation the buffer's last parsed tree was built from. The grammar names warned about this session |
+| `lib/state.scm` | Per-buffer state, keyed by `(buffer-key pane)`: whether the preview is on, and the generation the buffer's last parsed tree was built from. The grammar names warned about this session, and `md-preview/box-insert!` |
 | `lib/queries.scm` | The block and inline queries, their capture names, the capture accessors, the grouping of captures by name, and the conceal constructor and order |
 | `lib/blocks.scm` | Block captures to conceals, line backgrounds and highlights. Calls no editor builtin: lines come in as procedures |
 | `lib/table.scm` | Table captures to conceals, and the line spans of the tables, which the inline query also covers. Reads no buffer either: lines come in as procedures, and cells are measured with `string-width` |
@@ -145,6 +145,12 @@ apart are not fetched, and lines outside every range are drawn raw until a rende
 them. The line above a range is in it so that a table ending just above a pane's first
 shown line comes back: the empty line after it, at the top of the pane, carries that
 table's bottom border (see [Tables](#tables)).
+
+The per-buffer state, a render's line memo and the tables the block elements fill grow
+through `md-preview/box-insert!`, which empties the box before its `hash-insert`. Steel
+changes a hash that nothing else holds in place. A hash still held by its box is copied
+instead, and dropping the version the box held then walks every entry, so each insert would
+cost the size of the table.
 
 ### Popups
 

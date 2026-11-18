@@ -1,18 +1,23 @@
 ;;; core:markdown-preview — state.scm. See README.md.
 
 (provide md-preview/entry md-preview/track-buffer! md-preview/remove-buffer!
-         md-preview/note-tree! md-preview/toggle-enabled! md-preview/warn-once!)
+         md-preview/note-tree! md-preview/toggle-enabled! md-preview/warn-once!
+         md-preview/box-insert!)
 
 (define md-preview/*buffers* (box (hash)))
 
 (define md-preview/*warned* (box '()))
 
+(define (md-preview/box-insert! table-box key value)
+  (let ([table (unbox table-box)])
+    (set-box! table-box #f)
+    (set-box! table-box (hash-insert table key value))))
+
 (define (md-preview/entry pane)
   (hash-try-get (unbox md-preview/*buffers*) (buffer-key pane)))
 
 (define (md-preview/put-entry! pane entry)
-  (set-box! md-preview/*buffers*
-            (hash-insert (unbox md-preview/*buffers*) (buffer-key pane) entry)))
+  (md-preview/box-insert! md-preview/*buffers* (buffer-key pane) entry))
 
 (define (md-preview/track-buffer! pane enabled?)
   (unless (md-preview/entry pane)

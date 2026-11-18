@@ -28,7 +28,7 @@
         (or (hash-try-get (unbox memo) line)
             (let ([info (cons (line->char-offset pane line)
                               (car (buffer-lines pane #:range (hash 'start-line line 'end-line (+ line 1)))))])
-              (set-box! memo (hash-insert (unbox memo) line info))
+              (md-preview/box-insert! memo line info)
               info))))))
 
 (define (md-preview/fence-contents captures)

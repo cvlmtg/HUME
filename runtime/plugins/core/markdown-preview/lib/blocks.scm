@@ -1,6 +1,7 @@
 ;;; core:markdown-preview — blocks.scm. See README.md.
 
 (require "queries.scm")
+(require "state.scm")
 
 (provide md-preview/block-elements)
 
@@ -79,7 +80,7 @@
 (define (md-preview/quotes! groups ranges line-of line-info emit!)
   (let ([marked (box (hash))])
     (define (bar! at)
-      (set-box! marked (hash-insert (unbox marked) (line-of at) #t))
+      (md-preview/box-insert! marked (line-of at) #t)
       (emit! 'conceals (md-preview/conceal at (+ at 1) "┃" "markup.quote" #f)))
     (for-each (lambda (c) (bar! (md-preview/capture-start c)))
               (md-preview/captured groups "quote-marker"))
@@ -103,7 +104,7 @@
                 (let loop ([line (max (hash-ref range 'start-line) (hash-ref span 'start-line))])
                   (when (< line end)
                     (unless (hash-contains? (unbox marked) line)
-                      (set-box! marked (hash-insert (unbox marked) line #t))
+                      (md-preview/box-insert! marked line #t)
                       (let* ([info (line-info line)]
                              [content (md-preview/content-start (cdr info))])
                         (when content
@@ -137,8 +138,7 @@
 (define (md-preview/block-elements groups ranges line-of line-info rule-width)
   (let* ([found (box (hash 'conceals '() 'bands '() 'highlights '()))]
          [emit! (lambda (kind item)
-                  (let ([table (unbox found)])
-                    (set-box! found (hash-insert table kind (cons item (hash-ref table kind))))))])
+                  (md-preview/box-insert! found kind (cons item (hash-ref (unbox found) kind))))])
     (md-preview/atx-headings! groups line-of emit!)
     (md-preview/setext-headings! groups line-of emit!)
     (md-preview/lists! groups emit!)
