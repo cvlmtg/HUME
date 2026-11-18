@@ -15,6 +15,7 @@
 
 ### Plugins & scripting
 - `core:markdown-preview` draws Markdown without its syntax, and the lines you are on show their source. Install its grammar with `:plum-install-grammar markdown`.
+- `core:colorizer` paints color literals, such as `#ff0000`, `rgb()`, `hsl()`, `oklch()` and CSS color names, with the color they name.
 - `set-scope-styles!` styles scopes from `init.scm` or a plugin without editing the theme, and the styles stay when you switch themes.
 - `core:markdown-preview` also draws Markdown popups, the hover and the completion documentation box included.
 - A plugin can format a language's popups by defining a `format-text/<language>` command; `parsed-text-captures` queries the popup text's syntax tree.

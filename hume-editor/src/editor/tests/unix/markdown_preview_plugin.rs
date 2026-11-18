@@ -112,12 +112,7 @@ impl Preview {
 
     /// Opens `text` as `<tmp>/<name>` in the focused pane.
     fn open(&mut self, name: &str, text: &str) -> BufferId {
-        let path = self.tmp.path().join(name);
-        std::fs::write(&path, text).unwrap();
-        self.ed
-            .execute_typed("e", Some(path.to_str().unwrap()))
-            .unwrap();
-        self.ed.focused_buffer_id()
+        open_in(&mut self.ed, self.tmp.path(), name, text)
     }
 
     /// Draws frames until the focused buffer's tree matches its text (a
@@ -219,23 +214,7 @@ impl Preview {
 
     /// `(start, end, scope)` of each extra highlight, sorted.
     fn highlights(&self, bid: BufferId) -> Vec<(usize, usize, String)> {
-        let mut v: Vec<_> = self
-            .ed
-            .state
-            .config
-            .decorations
-            .extra_highlights_for(SOURCE, bid)
-            .iter()
-            .map(|e| {
-                (
-                    e.start.index(),
-                    e.end.index(),
-                    scope_name(&self.ed, e.scope).to_owned(),
-                )
-            })
-            .collect();
-        v.sort();
-        v
+        extra_highlight_triples(&self.ed, SOURCE, bid)
     }
 
     fn is_blank(&self, bid: BufferId) -> bool {

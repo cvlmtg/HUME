@@ -67,7 +67,6 @@ Structural work, an invalidation contract, or a wide signature change — none i
 - [ ] Session-scoped hooks — `register-hook!` works only during init or plugin load, so a plugin with a transient UI session keeps its hook for the rest of the editor's life and filters inside the handler: `core:undotree`'s `on-undo-history-changed` and `core:lsp`'s locations `on-text-changed` both fire on every change and return early when no drawer is open. A pair that can be called from a command body would let a session listen only while it is open: a register call that returns a handle, and an unregister call that takes it, with the handle tied to the session's owner so plugin rollback still removes it. Cheap today (one Steel call per change that returns immediately); worth building when a third client appears or a profile shows the calls.
 - [x] `:lsp-install` argument completion — a `#:target 'minibuf` source over the installable server names, declared via `define-typed-command!`'s `#:complete`.
 - [ ] Per-language user scripts — a `languages/` directory next to the user's `init.scm`, one `<language>.scm` per language, run when a newly loaded buffer has its language set (Neovim's ftplugin). These files are code, evaluated as Steel, unlike the data-only `runtime/scheme/languages/<name>.scm` files, which are parsed and never run.
-- [ ] Color highlighter plugin — inline-highlight hex color literals (`#abcdef`, `#0365AF01`) in a buffer, like `nvim-colorizer.lua`.
 
 ## Open questions
 

@@ -89,3 +89,7 @@ harness = false
 [[bench]]
 name = "markdown_preview"
 harness = false
+
+[[bench]]
+name = "colorizer"
+harness = false

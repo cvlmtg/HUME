@@ -132,6 +132,39 @@ fn write_core_plugin(dirs: &RuntimeDirs, name: &str, source: &str) {
     std::fs::write(plugin_dir.join("plugin.scm"), source).unwrap();
 }
 
+/// Opens `text` as `<dir>/<name>` in the focused pane.
+fn open_in(ed: &mut Editor, dir: &Path, name: &str, text: &str) -> BufferId {
+    let path = dir.join(name);
+    std::fs::write(&path, text).unwrap();
+    ed.execute_typed("e", Some(path.to_str().unwrap())).unwrap();
+    ed.focused_buffer_id()
+}
+
+/// `(start, end, scope)` of each extra highlight `source` holds for `bid`,
+/// sorted.
+fn extra_highlight_triples(
+    ed: &Editor,
+    source: &str,
+    bid: BufferId,
+) -> Vec<(usize, usize, String)> {
+    let mut v: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .extra_highlights_for(source, bid)
+        .iter()
+        .map(|e| {
+            (
+                e.start.index(),
+                e.end.index(),
+                scope_name(ed, e.scope).to_owned(),
+            )
+        })
+        .collect();
+    v.sort();
+    v
+}
+
 /// Evaluates `init` as an `init.scm` under `dirs` and asserts the load of
 /// `core:<plugin>` is contained: `eval_init` returns `Ok`, the plugin is
 /// `Failed`, and an `Error` message names it and contains each of `expected`.
@@ -749,6 +782,7 @@ mod buffer;
 mod buffer_store;
 mod buffer_words_plugin;
 mod cd;
+mod colorizer_plugin;
 mod column_display_agreement;
 mod command_mode;
 mod completion;

@@ -1,7 +1,8 @@
 //! Headless editors for the criterion benches: a pane with a full selection
 //! history (`benches/selection_history.rs`), a concealed Markdown buffer
-//! (`benches/conceal.rs`) and a Markdown buffer drawn by the real
-//! `core:markdown-preview` plugin (`benches/markdown_preview.rs`).
+//! (`benches/conceal.rs`), and a file drawn by a real plugin: a Markdown
+//! buffer by `core:markdown-preview` (`benches/markdown_preview.rs`) and color
+//! literals by `core:colorizer` (`benches/colorizer.rs`).
 
 use std::path::Path;
 
@@ -332,19 +333,22 @@ impl ConcealBench {
     }
 }
 
-/// The text a [`MarkdownPreviewBench`] opens, its first screen being what
+/// The text [`markdown_preview_bench`] opens, its first screen being what
 /// each render draws.
 #[derive(Clone, Copy, Debug)]
 pub enum PreviewSample {
     /// The 5,000-line [`markdown_sample`].
     Prose,
-    /// A [`TALL_TABLE_ROWS`]-row table under a heading: a render that shows
-    /// one of its rows fetches and draws all of them.
+    /// A table of 400 rows under a heading, many screens tall: a render that
+    /// shows one of its rows fetches and draws all of them.
     TallTable,
 }
 
-/// Rows of the [`PreviewSample::TallTable`] table, many screens tall.
-pub const TALL_TABLE_ROWS: usize = 400;
+/// Rows of the [`PreviewSample::TallTable`] table.
+const TALL_TABLE_ROWS: usize = 400;
+
+/// Pipes on each row of the tall table, each one conceal.
+const PIPES_PER_ROW: usize = 4;
 
 impl PreviewSample {
     fn text(self) -> String {
@@ -363,43 +367,273 @@ impl PreviewSample {
     }
 }
 
-/// Loads `core:markdown-preview` as a user's `init.scm` does.
-const PREVIEW_INIT: &str =
-    "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:markdown-preview\")\n";
+/// The text [`colorizer_bench`] opens. Every sample but the minified one is
+/// 5,000 lines.
+#[derive(Clone, Copy, Debug)]
+pub enum ColorizerSample {
+    /// Prose with no color literal, in a `.txt` file.
+    Prose,
+    /// One `#rrggbb` per line, each line's color distinct, in a `.txt` file.
+    Hex,
+    /// One `oklch(<lightness> 0.4 <hue>)` per line, outside sRGB, in a `.txt`
+    /// file. The hue is distinct on each line and the lightness cycles over
+    /// 60%-80%: at one lightness every hue maps onto one sRGB boundary curve
+    /// of about 1,250 colors, so a page of lines can show none the session
+    /// has not styled.
+    Oklch,
+    /// One minified CSS line of this many chars, rules with a hex literal, an
+    /// `rgb()` call and a color name each, then two short rules, in a `.css`
+    /// file so names are looked up.
+    Minified(usize),
+    /// A [`Self::Minified`] line of the plugin's default render budget on
+    /// every line, opened with that budget, so a render spends it all on the
+    /// densest content.
+    LongLines,
+    /// Prose lines of this many chars with no color literal, in a `.txt`
+    /// file: a render walks the whole screen, the chars
+    /// [`PluginRenderBench::walked_chars`] counts.
+    Screen(usize),
+}
 
-/// The plugin's decoration source.
-const PREVIEW_SOURCE: &str = "markdown-preview";
+/// Lines of every [`ColorizerSample`] but the minified one.
+const COLORIZER_LINES: usize = 5_000;
 
-/// How often, and how long apart, [`MarkdownPreviewBench::new`] looks for the
-/// first render: the parse runs on a worker thread and the render it leads
-/// to waits out the plugin's own debounce.
+/// The rule a [`ColorizerSample::Minified`] line repeats.
+const MINIFIED_RULE: &str = ".a{color:#fff;background:rgb(1,2,3);border-color:red}";
+
+/// The default of `core:colorizer`'s `'max-render-chars`, read from the
+/// plugin's own config call.
+fn colorizer_default_budget() -> usize {
+    const PLUGIN: &str = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../runtime/plugins/core/colorizer/plugin.scm"
+    ));
+    let (_, after) = PLUGIN
+        .split_once("'max-render-chars ")
+        .expect("plugin.scm reads 'max-render-chars");
+    after
+        .split_whitespace()
+        .next()
+        .and_then(|default| default.parse().ok())
+        .expect("'max-render-chars has a number for its default")
+}
+
+/// `chars` minified CSS chars: [`MINIFIED_RULE`] repeated, padded with
+/// spaces.
+fn minified_line(chars: usize) -> String {
+    let mut line = MINIFIED_RULE.repeat(chars / MINIFIED_RULE.len());
+    line.push_str(&" ".repeat(chars - line.len()));
+    line
+}
+
+/// [`ColorizerSample::Prose`]'s line `n`, without its newline.
+fn prose_line(n: usize) -> String {
+    format!("Line {n} of plain prose, with no literal in it and only the number {n}.")
+}
+
+impl ColorizerSample {
+    fn file_name(self) -> String {
+        match self {
+            Self::Prose => "prose.txt".into(),
+            Self::Hex => "hex.txt".into(),
+            Self::Oklch => "oklch.txt".into(),
+            Self::Minified(chars) => format!("minified_{chars}.css"),
+            Self::LongLines => "long_lines.css".into(),
+            Self::Screen(chars) => format!("screen_{chars}.txt"),
+        }
+    }
+
+    fn text(self) -> String {
+        let lines =
+            |line: &dyn Fn(usize) -> String| (0..COLORIZER_LINES).map(line).collect::<String>();
+        match self {
+            Self::Prose => lines(&|n| format!("{}\n", prose_line(n))),
+            // An odd step is invertible modulo 2^24, so no two lines share a color.
+            Self::Hex => lines(&|n| {
+                format!(
+                    "Line {n} sets the color #{:06x} on item {n}.\n",
+                    n * 0x01_0101 % 0x100_0000
+                )
+            }),
+            Self::Oklch => lines(&|n| {
+                let lightness = 60 + n % 21;
+                let hue = n as f64 * 360.0 / COLORIZER_LINES as f64;
+                format!("Line {n} sets oklch({lightness}% 0.4 {hue:.3}) on item {n}.\n")
+            }),
+            Self::Minified(chars) => {
+                format!(
+                    "{}\n.b{{color:blue}}\n.c{{margin:0}}\n",
+                    minified_line(chars)
+                )
+            }
+            Self::LongLines => {
+                let line = minified_line(colorizer_default_budget());
+                lines(&|_| format!("{line}\n"))
+            }
+            Self::Screen(chars) => lines(&|n| {
+                let line: String = prose_line(n).chars().cycle().take(chars).collect();
+                format!("{line}\n")
+            }),
+        }
+    }
+}
+
+/// A plugin a [`PluginRenderBench`] loads: the `init.scm` that loads it as a
+/// user's does, and the store its render fills. `skips_painted` says its
+/// render does nothing on a text and view it has painted, so a render it
+/// is to time follows [`PluginRenderBench::touch`].
+struct BenchPlugin {
+    init: &'static str,
+    store: PluginStore,
+    skips_painted: bool,
+}
+
+/// The decoration store a plugin fills for the focused buffer, by the
+/// plugin's decoration source.
+#[derive(Clone, Copy)]
+enum PluginStore {
+    Conceals(&'static str),
+    ExtraHighlights(&'static str),
+}
+
+impl PluginStore {
+    /// How many entries the store holds for the focused buffer.
+    fn count(self, editor: &Editor) -> usize {
+        let bid = editor.focused_buffer_id();
+        let decorations = &editor.state.config.decorations;
+        match self {
+            Self::Conceals(source) => decorations.conceals_for(source, bid).len(),
+            Self::ExtraHighlights(source) => decorations.extra_highlights_for(source, bid).len(),
+        }
+    }
+
+    /// Empties the store for the focused buffer.
+    fn clear(self, editor: &mut Editor) {
+        let bid = editor.focused_buffer_id();
+        let decorations = &mut editor.state.config.decorations;
+        match self {
+            Self::Conceals(source) => decorations.set_conceals(source.into(), bid, Vec::new()),
+            Self::ExtraHighlights(source) => {
+                decorations.set_extra_highlights(source.into(), bid, Vec::new());
+            }
+        }
+    }
+}
+
+const MARKDOWN_PREVIEW: BenchPlugin = BenchPlugin {
+    init: "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:markdown-preview\")\n",
+    store: PluginStore::Conceals("markdown-preview"),
+    skips_painted: false,
+};
+
+/// `core:colorizer`, with a render budget no sample reaches.
+const COLORIZER: BenchPlugin = BenchPlugin {
+    init: "(load-plugin! \"core:stdlib\")\n\
+     (load-plugin! \"core:colorizer\" #:config (hash 'max-render-chars 1000000))\n",
+    store: PluginStore::ExtraHighlights("colorizer"),
+    skips_painted: true,
+};
+
+/// `core:colorizer` with its default render budget.
+const COLORIZER_DEFAULT: BenchPlugin = BenchPlugin {
+    init: "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:colorizer\")\n",
+    store: PluginStore::ExtraHighlights("colorizer"),
+    skips_painted: true,
+};
+
+/// How often, and how long apart, [`PluginRenderBench::settle_until`] looks
+/// for the plugin's first render: it can wait on a worker thread's parse and
+/// on a debounce, so setup polls for it.
 const SETUP_TRIES: usize = 1_000;
 const SETUP_PAUSE: std::time::Duration = std::time::Duration::from_millis(5);
 
-/// A headless editor started as a user's would, with `core:markdown-preview`
-/// loaded by its `init.scm` and the `markdown` and `markdown.inline` grammars
-/// installed in its data dir, showing a [`PreviewSample`] the plugin has
-/// drawn.
-pub struct MarkdownPreviewBench {
+/// A headless editor started as a user's would, with a plugin loaded by its
+/// `init.scm`, showing a file the plugin has drawn. Built by
+/// [`markdown_preview_bench`] or [`colorizer_bench`].
+pub struct PluginRenderBench {
     editor: Editor,
 }
 
-impl MarkdownPreviewBench {
-    /// Writes `sample` to `<root>/<name>.md` and an `init.scm` loading the
-    /// plugin to `<root>/config/`, starts the editor on the file at
-    /// `width` x `height` with `<root>/data/` as its data dir and the repo's
-    /// `runtime/`, and waits for the plugin's first render. `<root>/data/grammars/`
-    /// holds both grammars, installed as PLUM installs them.
+/// A [`PluginRenderBench`] on `sample`, with `core:markdown-preview` loaded
+/// and the `markdown` and `markdown.inline` grammars read from
+/// `<root>/data/grammars/`, where the caller installs them as PLUM does.
+///
+/// # Panics
+/// Panics as [`PluginRenderBench::drawn`] does, or if the render drew less
+/// than the whole tall table.
+pub fn markdown_preview_bench(
+    root: &Path,
+    sample: PreviewSample,
+    width: u16,
+    height: u16,
+) -> PluginRenderBench {
+    let file_name = format!("{sample:?}.md");
+    let bench = PluginRenderBench::drawn(
+        root,
+        &MARKDOWN_PREVIEW,
+        &file_name,
+        &sample.text(),
+        (width, height),
+        true,
+    );
+    if let PreviewSample::TallTable = sample {
+        let conceals = MARKDOWN_PREVIEW.store.count(&bench.editor);
+        assert!(
+            conceals >= PIPES_PER_ROW * TALL_TABLE_ROWS,
+            "the render drew {conceals} conceals, not the whole table"
+        );
+    }
+    bench
+}
+
+/// A [`PluginRenderBench`] on `sample`, with `core:colorizer` loaded.
+///
+/// # Panics
+/// Panics as [`PluginRenderBench::drawn`] does.
+pub fn colorizer_bench(
+    root: &Path,
+    sample: ColorizerSample,
+    width: u16,
+    height: u16,
+) -> PluginRenderBench {
+    let plugin = match sample {
+        ColorizerSample::LongLines => &COLORIZER_DEFAULT,
+        _ => &COLORIZER,
+    };
+    PluginRenderBench::drawn(
+        root,
+        plugin,
+        &sample.file_name(),
+        &sample.text(),
+        (width, height),
+        !matches!(sample, ColorizerSample::Prose | ColorizerSample::Screen(_)),
+    )
+}
+
+impl PluginRenderBench {
+    /// Writes `text` to `<root>/<file_name>` and `plugin`'s `init.scm` to
+    /// `<root>/config/init.scm`, then starts the editor on the file at
+    /// `size`, width by height, with `<root>/data/` as its data dir and the
+    /// repo's `runtime/`. Once the plugin has drawn, its store is emptied
+    /// and refilled by one [`Self::render`]; `paints` says the sample has
+    /// something to draw.
     ///
     /// # Panics
-    /// Panics if the editor cannot start, the plugin draws nothing, a pending
-    /// timer outlasts the wait, or the setup logs an error.
-    pub fn new(root: &Path, sample: PreviewSample, width: u16, height: u16) -> Self {
+    /// Panics if the editor cannot start, a sample that `paints` is not
+    /// drawn, a pending timer outlasts the wait, or the setup logs an error.
+    fn drawn(
+        root: &Path,
+        plugin: &BenchPlugin,
+        file_name: &str,
+        text: &str,
+        (width, height): (u16, u16),
+        paints: bool,
+    ) -> Self {
         let config = root.join("config");
         std::fs::create_dir_all(&config).expect("the config dir is made");
-        std::fs::write(config.join("init.scm"), PREVIEW_INIT).expect("init.scm is written");
-        let file = root.join(format!("{sample:?}.md"));
-        std::fs::write(&file, sample.text()).expect("the bench file is written");
+        std::fs::write(config.join("init.scm"), plugin.init).expect("init.scm is written");
+        let file = root.join(file_name);
+        std::fs::write(&file, text).expect("the bench file is written");
         let dirs = Dirs {
             config: Some(config),
             data: Some(root.join("data")),
@@ -414,45 +648,36 @@ impl MarkdownPreviewBench {
         let mut editor = headless_editor(&file, dirs, ConfigSource::Default);
         editor.resize_terminal(width, height);
         let mut bench = Self { editor };
-        bench.settle_until_drawn();
+        bench.settle_until(|editor| !paints || plugin.store.count(editor) > 0);
         // The hook the timed loop fires renders on its own: with the store
         // emptied, only that render can refill it.
-        let bid = bench.editor.focused_buffer_id();
-        bench
-            .editor
-            .state
-            .config
-            .decorations
-            .set_conceals(PREVIEW_SOURCE.into(), bid, Vec::new());
+        plugin.store.clear(&mut bench.editor);
+        if plugin.skips_painted {
+            bench.touch();
+        }
         bench.render();
-        assert!(bench.conceal_count() > 0, "the viewport hook drew nothing");
+        if paints {
+            assert!(
+                plugin.store.count(&bench.editor) > 0,
+                "the viewport hook drew nothing"
+            );
+        }
         assert_setup_clean(&bench.editor);
         bench
     }
 
-    /// Draws frames until the plugin has set conceals and no timer is left
-    /// to fire inside a timed loop.
-    fn settle_until_drawn(&mut self) {
+    /// Draws frames until `drawn` holds and no timer is left to fire inside
+    /// a timed loop.
+    fn settle_until(&mut self, drawn: impl Fn(&Editor) -> bool) {
         for _ in 0..SETUP_TRIES {
             self.editor.settle();
             self.editor.prepare_frame(&mut RenderContext::new());
-            if self.conceal_count() > 0 && self.editor.timers.is_empty() {
+            if drawn(&self.editor) && self.editor.timers.is_empty() {
                 return;
             }
             std::thread::sleep(SETUP_PAUSE);
         }
         panic!("the plugin did not draw, or a timer stayed pending");
-    }
-
-    /// How many conceals the plugin holds for the focused buffer.
-    pub fn conceal_count(&self) -> usize {
-        let bid = self.editor.focused_buffer_id();
-        self.editor
-            .state
-            .config
-            .decorations
-            .conceals_for(PREVIEW_SOURCE, bid)
-            .len()
     }
 
     /// The focused pane's `on-viewport-change`, fired as its debounce timer
@@ -463,9 +688,77 @@ impl MarkdownPreviewBench {
         self.editor.settle();
     }
 
+    /// Deletes the focused pane's selection and undoes it, then draws the
+    /// frame: the text is as it was, at a new generation, so the next
+    /// [`Self::render`] paints it in full.
+    pub fn touch(&mut self) {
+        for command in ["delete-selection", "undo"] {
+            self.editor
+                .execute_keymap_command(command, hume_core::Count::UNTYPED, false);
+        }
+        self.editor.settle();
+        self.editor.prepare_frame(&mut RenderContext::new());
+    }
+
     /// [`Self::render`], then the frame that draws what it set.
     pub fn render_then_frame(&mut self) {
         self.render();
         std::hint::black_box(self.editor.prepare_frame(&mut RenderContext::new()));
+    }
+
+    /// How many whole pages of lines lie below the focused pane's viewport,
+    /// a page being the pane's text height, the distance `page-down` scrolls.
+    pub fn screens_below(&mut self) -> usize {
+        let pid = self.editor.view.focused_pane();
+        let height = usize::from(self.editor.state.pane_size(&self.editor.view, pid).height());
+        let shown =
+            super::geometry::viewport_range(&mut self.editor.state, &mut self.editor.view, pid);
+        let bid = self.editor.view.panes[pid].buffer_id();
+        let lines = self
+            .editor
+            .state
+            .buffers
+            .get(bid)
+            .text()
+            .content_line_count();
+        lines.end_exclusive().lines_since(shown.end) / height
+    }
+
+    /// One `page-down`, the frame drawn after it, then
+    /// [`Self::render_then_frame`]. Called while [`Self::screens_below`] is
+    /// at least 1, every line the render paints is one the plugin has not
+    /// painted before.
+    pub fn scroll_render_then_frame(&mut self) {
+        self.editor
+            .execute_keymap_command("page-down", hume_core::Count::UNTYPED, false);
+        self.editor.prepare_frame(&mut RenderContext::new());
+        self.render_then_frame();
+    }
+
+    /// The chars `core:colorizer` walks to paint the focused pane with no
+    /// line skipped and none known: every char of the lines it shows,
+    /// newlines left out.
+    pub fn walked_chars(&mut self) -> usize {
+        let pid = self.editor.view.focused_pane();
+        let shown =
+            super::geometry::viewport_range(&mut self.editor.state, &mut self.editor.view, pid);
+        let bid = self.editor.view.panes[pid].buffer_id();
+        let text = self.editor.state.buffers.get(bid).text();
+        shown
+            .iter()
+            .map(|line| {
+                let lines = text.lines();
+                lines
+                    .newline(line)
+                    .offset()
+                    .chars_since(lines.start(line).offset())
+            })
+            .sum()
+    }
+
+    /// How many scope names the session's registry holds: it grows when a
+    /// render names a scope the session has not seen.
+    pub fn scope_count(&self) -> usize {
+        self.editor.view.registry.len()
     }
 }
