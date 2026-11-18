@@ -1,4 +1,4 @@
-//! What one `core:markdown-preview` render costs on the main thread: the
+//! What one `core:markdown` render costs on the main thread: the
 //! `on-viewport-change` hook its viewport debounce fires, alone and with the
 //! frame drawn after it. Each runs on prose and on a table taller than the
 //! pane, which a render that shows one of its rows draws whole, at a small

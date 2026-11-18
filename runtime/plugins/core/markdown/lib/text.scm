@@ -1,4 +1,4 @@
-;;; core:markdown-preview — text.scm. See README.md.
+;;; core:markdown — text.scm. See README.md.
 
 (require "queries.scm")
 (require "render.scm")

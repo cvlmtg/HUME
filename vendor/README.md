@@ -64,7 +64,7 @@ defined after its use. The rest of this patch is proposed in [#732].
 (`src/scheme/modules/sort.scm`) hands a native comparator to `#%list-sort`, and sorts with a
 Scheme procedure through a quicksort that takes the last element as its pivot. That is
 quadratic on input already in order or in reverse, and it reorders equal elements. A bottom-up
-merge sort replaces it: O(n log n) on any input, and stable. `core:markdown-preview` sorts the
+merge sort replaces it: O(n log n) on any input, and stable. `core:markdown` sorts the
 conceals of a whole popup text, which arrive nearly in order: formatting a 3,000-line Markdown
 text took 30.1 s with the quicksort and 0.82 s with the merge sort (debug build, Apple M4
 Pro). Not proposed upstream.

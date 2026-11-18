@@ -1,4 +1,4 @@
-;;; core:markdown-preview — plugin.scm. See README.md.
+;;; core:markdown — plugin.scm. See README.md.
 
 (require "lib/state.scm")
 (require "lib/render.scm")
@@ -8,9 +8,9 @@
 
 (define md-preview/cfg (plugin-config))
 (define md-preview/enabled-default
-  (call! "stdlib/config-boolean" "core:markdown-preview" md-preview/cfg 'enabled #t))
+  (call! "stdlib/config-boolean" "core:markdown" md-preview/cfg 'preview #t))
 (define md-preview/rule-width
-  (call! "stdlib/config-integer" "core:markdown-preview" md-preview/cfg 'rule-width 40 1))
+  (call! "stdlib/config-integer" "core:markdown" md-preview/cfg 'rule-width 40 1))
 
 ;; ── Rendering ─────────────────────────────────────────────────────────────────
 
@@ -28,7 +28,7 @@
     (lambda (name)
       (unless (language-has-grammar? name)
         (md-preview/warn-once! name
-          (string-append "markdown-preview: no " name " grammar, so its syntax shows raw;"
+          (string-append "markdown: no " name " grammar, so its syntax shows raw;"
                          " run :plum-install-grammar " name))))
     '("markdown" "markdown.inline")))
 
@@ -56,7 +56,7 @@
 
 (define (md-preview/toggle! pane)
   (unless (member (buffer-key pane) (map buffer-key (buffers)))
-    (error "markdown-preview: the current buffer is not a Markdown buffer"))
+    (error "markdown: the current buffer is not a Markdown buffer"))
   (md-preview/track! pane)
   (let ([on? (md-preview/toggle-enabled! pane)])
     (if on?
@@ -67,13 +67,13 @@
 (define md-preview/toggle-doc
   "Toggle the Markdown live preview for the current buffer, which draws Markdown without its syntax.")
 
-(define-command! "markdown-preview/toggle" md-preview/toggle-doc md-preview/toggle!)
+(define-command! "markdown/toggle-preview" md-preview/toggle-doc md-preview/toggle!)
 
 (define-typed-command! "toggle-markdown-preview" md-preview/toggle-doc md-preview/toggle!)
 
 (define (md-preview/format-text! text parsed)
   (unless (string? text)
-    (error "markdown-preview: format-text/markdown takes a text and its parsed tree"))
+    (error "markdown: format-text/markdown takes a text and its parsed tree"))
   (md-preview/format-text text parsed md-preview/rule-width))
 
 (define-command! "format-text/markdown"

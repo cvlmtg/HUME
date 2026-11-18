@@ -1,4 +1,4 @@
-# core:markdown-preview
+# core:markdown
 
 Draws Markdown without its syntax, in the style of Obsidian's live preview. Every line a selection touches shows its source, and a code block or a table shows its source as a whole while a selection is inside it.
 
@@ -6,7 +6,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 
 ```scheme
 (load-plugin! "core:stdlib")
-(load-plugin! "core:markdown-preview" #:config (hash 'enabled #t 'rule-width 40))
+(load-plugin! "core:markdown" #:config (hash 'preview #t 'rule-width 40))
 ```
 
 - **Depends on:** `core:stdlib`, for config validation.
@@ -22,7 +22,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `'enabled` | bool | `#t` | Whether the preview starts on for each buffer. Popups are drawn either way |
+| `'preview` | bool | `#t` | Whether the preview starts on for each buffer. Popups are drawn either way |
 | `'rule-width` | integer ≥ 1 | `40` | How many `─` a horizontal rule draws. Plugins cannot read the pane width |
 
 ## Commands
@@ -30,7 +30,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 | Command | Effect |
 |---|---|
 | `:toggle-markdown-preview` | Turn the preview off for the current buffer, clearing everything it drew, or back on, rendering at once |
-| `markdown-preview/toggle` | The same function, bindable |
+| `markdown/toggle-preview` | The same function, bindable |
 | `format-text/markdown` | `(format-text/markdown text parsed)`: what the preview draws for a Markdown text, given the text and its parsed tree, as the hash a text formatter returns. The editor calls it for every Markdown popup and the completion documentation box, and `call!` reaches it |
 
 ## Decisions
@@ -162,7 +162,7 @@ tree with `parsed-text-captures` over every line, and returns the elements a buf
 would set as its result's `'conceals`, `'line-backgrounds` and `'highlights`, with
 `'overlaps 'drop` (see [Overlapping conceals](#overlapping-conceals)). Nothing is stored
 and no hook runs: the call reads the editor and cannot change it. `'rule-width` applies,
-and `'enabled` does not.
+and `'preview` does not.
 
 ### Widening by query roots
 

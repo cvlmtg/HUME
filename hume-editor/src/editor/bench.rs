@@ -1,7 +1,7 @@
 //! Headless editors for the criterion benches: a pane with a full selection
 //! history (`benches/selection_history.rs`), a concealed Markdown buffer
 //! (`benches/conceal.rs`), and a file drawn by a real plugin: a Markdown
-//! buffer by `core:markdown-preview` (`benches/markdown_preview.rs`) and color
+//! buffer by `core:markdown` (`benches/markdown_preview.rs`) and color
 //! literals by `core:colorizer` (`benches/colorizer.rs`).
 
 use std::path::Path;
@@ -521,7 +521,7 @@ impl PluginStore {
 }
 
 const MARKDOWN_PREVIEW: BenchPlugin = BenchPlugin {
-    init: "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:markdown-preview\")\n",
+    init: "(load-plugin! \"core:stdlib\")\n(load-plugin! \"core:markdown\")\n",
     store: PluginStore::Conceals("markdown-preview"),
     skips_painted: false,
 };
@@ -554,7 +554,7 @@ pub struct PluginRenderBench {
     editor: Editor,
 }
 
-/// A [`PluginRenderBench`] on `sample`, with `core:markdown-preview` loaded
+/// A [`PluginRenderBench`] on `sample`, with `core:markdown` loaded
 /// and the `markdown` and `markdown.inline` grammars read from
 /// `<root>/data/grammars/`, where the caller installs them as PLUM does.
 ///

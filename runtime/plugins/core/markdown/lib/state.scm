@@ -1,4 +1,4 @@
-;;; core:markdown-preview — state.scm. See README.md.
+;;; core:markdown — state.scm. See README.md.
 
 (provide md-preview/entry md-preview/track-buffer! md-preview/remove-buffer!
          md-preview/note-tree! md-preview/toggle-enabled! md-preview/warn-once!
