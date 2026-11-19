@@ -94,8 +94,10 @@ Two shortcuts select the word under the cursor directly:
 
 | Key | Effect |
 |-----|--------|
-| `m m` | Word under the cursor, same as `m a w`: with one adjacent whitespace run by default, by the same rule as `w`/`b`. Set `word-selects-whitespace` to `off` to get `m i w` instead (see [Buffer options](settings.md#buffer-options)) |
+| `m m` | Word under the cursor, same as `m a w` by default (see below) |
 | `M M` | WORD under the cursor, same as `m a W` |
+
+By default `m m` takes one adjacent whitespace run, by the same rule as `w`/`b`. Set `word-selects-whitespace` to `off` to get `m i w` instead (see [Buffer options](settings.md#buffer-options)).
 
 How `m i` and `m a` differ on a word and on brackets:
 
@@ -137,11 +139,22 @@ call<span class="sel">(one, two<span class="head">)</span></span>
 
 `m u` brings back selections you built and then lost to a later change: a set of lines, several cursors, a text object, a drag. It restores every selection, not just the primary one.
 
-Each selection command, such as `x`, `%`, `C`, `,`, `s`, `*` or a text object, saves the selections it leaves. Extending, in Extend mode or with a `Ctrl` key, updates the selections it started from, so a run of extensions is saved once, and so is a mouse drag. Moving around saves nothing: a motion such as `j`, `w` or `f`, a search with `/`, `?` or `n`, a click, scrolling or the jump list.
+- **Selection commands**, such as `x`, `%`, `C`, `,`, `s`, `*` or a text object, save the selections they leave.
+- **Extending**, in Extend mode or with a `Ctrl` key, updates the selections it started from. A run of extensions is saved once, and so is a mouse drag.
+- **Moving around** saves nothing: a motion such as `j`, `w` or `f`, a search with `/`, `?` or `n`, a click, scrolling or the jump list.
 
-An edit keeps two selections in the undo history: the ones you made it with and the ones it left, such as the text a paste or `r` wrote, or the text you typed in Insert mode. `i` and `a` keep the selection you pressed them on. Once you edit, `m u` goes back through these, newest edit first, so `d` then `u` brings back what you deleted even after you collapse it. Selections you built but did not edit with are dropped at your next edit. A single cursor is never a step.
+An edit keeps two selections in the undo history:
 
-After you move away, the first `m u` returns to the selections you last saved, and each further one steps back. A count steps back that many (`3 m u`). Saving new selections after stepping back drops the ones `m U` would have returned to. Each pane keeps its own selections for each buffer and offers only the edits it made; edits from another pane move them along with the text. In a read-only buffer, `m u` goes back only as far as your last edit, as `u` cannot run there.
+- The ones you made it with.
+- The ones it left, such as the text a paste or `r` wrote, or the text you typed in Insert mode.
+
+`i` and `a` keep the selection you pressed them on. Once you edit, `m u` goes back through these, newest edit first, so `d` then `u` brings back what you deleted even after you collapse it. Selections you built but did not edit with are dropped at your next edit. A single cursor is never a step.
+
+After you move away, the first `m u` returns to the selections you last saved, and each further one steps back. A count steps back that many (`3 m u`). Saving new selections after stepping back drops the ones `m U` would have returned to.
+
+Each pane keeps its own selections for each buffer and offers only the edits it made. Edits from another pane move them along with the text.
+
+In a read-only buffer, `m u` goes back only as far as your last edit, as `u` cannot run there.
 
 ## Multiple selections
 

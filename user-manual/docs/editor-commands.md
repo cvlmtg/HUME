@@ -304,12 +304,14 @@ Split, focus, and close panes; switch buffers; switch tabs.
 | `pane-focus-prev` | `Shift-Tab` *(kitty)* / `Ctrl-p P` | Focus the previous pane. |
 | `pane-focus-right` | `Ctrl-p l` | Focus the pane to the right. |
 | `pane-focus-up` | `Ctrl-p k` | Focus the pane above. |
-| `pane-grow-height` | `Ctrl-p +` | Make the focused pane a row taller (that many with a count), taking it from the next pane in its innermost column, or the one before when it is the last. |
-| `pane-grow-width` | `Ctrl-p >` | Widen the focused pane by a column (that many with a count), taking it from the next pane in its innermost row, or the one before when it is the last. |
+| `pane-grow-height` | `Ctrl-p +` | Make the focused pane a row taller (that many with a count). |
+| `pane-grow-width` | `Ctrl-p >` | Widen the focused pane by a column (that many with a count). |
 | `pane-rotate-backward` | `Ctrl-p R` | Rotate the panes in the focused pane's row or column backward (that many places with a count). |
 | `pane-rotate-forward` | `Ctrl-p r` | Rotate the panes in the focused pane's row or column forward (that many places with a count). |
-| `pane-shrink-height` | `Ctrl-p -` | Make the focused pane a row shorter (that many with a count), giving it to the next pane in its innermost column, or the one before when it is the last. |
-| `pane-shrink-width` | `Ctrl-p <` | Narrow the focused pane by a column (that many with a count), giving it to the next pane in its innermost row, or the one before when it is the last. |
+| `pane-shrink-height` | `Ctrl-p -` | Make the focused pane a row shorter (that many with a count). |
+| `pane-shrink-width` | `Ctrl-p <` | Narrow the focused pane by a column (that many with a count). |
 | `pane-split` | `Ctrl-p s` | Split the focused pane, stacking the new pane below it. |
 | `pane-vsplit` | `Ctrl-p v` | Split the focused pane side by side. |
 | `tab-new` | — | Open a fresh pane viewing the focused buffer in a new tab. |
+
+The four resize commands take the space from, or give it to, the next pane: in the focused pane's innermost column for a height change, in its innermost row for a width change. When the focused pane is the last there, the pane before it is used instead.

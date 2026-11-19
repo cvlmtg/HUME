@@ -81,7 +81,7 @@ For a bracket, `#` searches a selection that stays on one line, so it still find
 
 ## Structural navigation
 
-When the language's grammar supports it (see [Syntax Highlighting](syntax-highlighting.md)), these commands jump to the next or previous instance of a structural kind and select all of it, with the cursor (head) on its first character:
+When the language's grammar supports it (see [Syntax Highlighting](syntax-highlighting.md)), these commands jump to the next or previous instance of a structural kind. They select all of it, with the cursor (head) on its first character:
 
 | Key | Command | Selects |
 |-----|---------|---------|

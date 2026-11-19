@@ -24,26 +24,40 @@ A paste remembers how its text was taken. A selection that starts at the beginni
 
 | Taken as | On a bare cursor | Over a selection |
 |----------|------------------|------------------|
-| Whole lines | `p` puts the lines below the cursor's line, `P` above it | The lines replace the selection. When the selection does not start its line, the pasted lines begin on a new line of their own, and the text after the selection continues on the line below them |
+| Whole lines | `p` puts the lines below the cursor's line, `P` above it | The lines replace the selection |
 | Inline text | `p` puts the text after the cursor without crossing the line break, `P` before the cursor | The text replaces the selection |
+
+When whole lines replace a selection that does not start its line, the pasted lines begin on a new line of their own, and the text after the selection continues on the line below them.
 
 Text from outside HUME, such as the system clipboard after another program wrote to it, or text a plugin supplies, has no remembered shape. It pastes as whole lines when it ends with a line break, and as inline text otherwise.
 
-`d` and `y` take what the selection covers, except the buffer's final line break on its own: a cursor on that line break gives them nothing to take, and `x` then `d` on the last line leaves no empty line behind. `c` keeps the line break a selection ends on and always takes the rest as inline text.
+`d` and `y` take what the selection covers, except the buffer's final line break on its own. A cursor on that line break gives them nothing to take, and `x` then `d` on the last line leaves no empty line behind. `c` keeps the line break a selection ends on and always takes the rest as inline text.
 
 ## Smart paste
 
-A bare `p` or `P` pastes the newest kill-ring entry: right after a `d`, `c`, or `y`, the text it deleted, changed, or yanked, and right after a paste or a `[`/`]` cycle, the entry that paste or cycle used. Editing in between doesn't change that.
+A bare `p` or `P` pastes the newest kill-ring entry. Right after a `d`, `c`, or `y`, that is the text it deleted, changed, or yanked. Right after a paste or a `[`/`]` cycle, it is the entry that paste or cycle used. Editing in between doesn't change that.
 
-When the system clipboard holds text copied in another application, `p` first adds it to the kill ring as the newest entry, so that is what it pastes. A `d`, `c`, or `y` adds it too, just below what it takes, so `d` then `p` still pastes what you deleted, and `[` reaches the copied text. Text is added once: after you cycle past it, `p` keeps pasting the entry you chose until you copy something new. What HUME writes to the clipboard itself, with `y` or `"cy`, is never added this way.
+When the system clipboard holds text copied in another application, HUME adds it to the kill ring:
 
-The [`clipboard-joins-ring`](settings.md) option sets when copied text is added. With `paste`, only `p` adds it, so a `d` then `p` pastes the copied text and `[` brings back what you deleted. With `never`, copied text stays on the clipboard, and `"cp` pastes it. `y` writes both the kill ring and the clipboard, and `"cy` the clipboard alone, whatever the option says.
+- `p` first adds it as the newest entry, so that is what it pastes.
+- A `d`, `c`, or `y` adds it just below what it takes, so `d` then `p` still pastes what you deleted, and `[` reaches the copied text.
+
+Text is added once. After you cycle past it, `p` keeps pasting the entry you chose until you copy something new. What HUME writes to the clipboard itself, with `y` or `"cy`, is never added this way.
+
+The [`clipboard-joins-ring`](settings.md) option sets when copied text is added:
+
+- `paste`: only `p` adds it, so a `d` then `p` pastes the copied text and `[` brings back what you deleted.
+- `never`: copied text stays on the clipboard, and `"cp` pastes it.
+
+Whatever the option says, `y` writes both the kill ring and the clipboard, and `"cy` the clipboard alone.
 
 With nothing on the kill ring and nothing new on the clipboard, `p` pastes nothing, and says why when the clipboard couldn't be read.
 
 Yanking to an explicit register (`"0y`) leaves the clipboard and the kill ring untouched: a following bare `p` behaves as if the `"0y` hadn't happened. Use `"0p` to read the register back.
 
-`[` and `]` only work inside a paste session, opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session is a single undo step. The entry the session ends on becomes the newest in the kill ring, so the next `p` pastes it again. After a paste from `"c` or a numbered register, the first `[` starts at the newest kill-ring entry, or at the one after it when the newest entry holds the pasted text (as after a `y`, which writes both).
+`[` and `]` only work inside a paste session, opened by a preceding `p` or `P`. Each cycle replaces the previous paste, and the whole session is a single undo step. The entry the session ends on becomes the newest in the kill ring, so the next `p` pastes it again.
+
+After a paste from `"c` or a numbered register, the first `[` starts at the newest kill-ring entry. When the newest entry holds the pasted text (as after a `y`, which writes both), it starts at the one after it.
 
 Two editor commands, `paste-after` and `paste-before`, exist alongside `p`/`P` with no key bound by default. They always read the kill-ring head without adding new clipboard text to it, and always replace a real selection outright, with no same-text check. To stack a copy with them, collapse the selection (`;`) before pasting. [`core:classic-paste`](#gui-style-paste-core-plugin) binds them to `p` and `P`.
 
@@ -65,7 +79,7 @@ Text pasted from outside HUME (your system clipboard via the terminal's paste sh
 
 ## Whitespace and the kill ring
 
-When the kill-ring head is pure whitespace (any whitespace characters, such as spaces, tabs and line breaks, and nothing else), the next delete, change, yank, or copied text added to the ring overwrites that slot instead of taking a fresh one. To keep whitespace for later, yank it into a numbered register (`"0`–`"9`).
+When the kill-ring head is pure whitespace, the next delete, change, yank, or copied text added to the ring overwrites that slot instead of taking a fresh one. Pure whitespace means any whitespace characters, such as spaces, tabs and line breaks, and nothing else. To keep whitespace for later, yank it into a numbered register (`"0`–`"9`).
 
 The ring never holds two identical entries, meaning the same text with the same shape (whole lines or inline). Deleting, changing, yanking, or copying elsewhere text already in the ring moves that entry back to the front instead of adding a duplicate, so cycling with `[`/`]` never shows the same entry twice.
 
@@ -115,7 +129,9 @@ While a macro is recording, the default statusline shows `[recording @q]` on its
 In Insert mode and on the `:` prompt, `Ctrl-r` followed by a register name inserts that register's text.
 
 - A register yanked from several selections gives each cursor its own selection's text when there are as many cursors as selections, as `p` does, and all of it joined otherwise. The `:` prompt gets all of it joined.
-- Two other keys insert paths relative to the working directory: `f` the current file's, and `p` its directory's. The directory path ends in a separator so you can type a file name after it (`./` for a file directly in the working directory). A file outside the working directory gets its full path.
+- Two other keys insert paths relative to the working directory. A file outside the working directory gets its full path.
+  - `f` inserts the current file's path.
+  - `p` inserts its directory's path. It ends in a separator so you can type a file name after it (`./` for a file directly in the working directory).
 - Any other key inserts nothing and reports that it names no register. `Esc` cancels.
 
 ## GUI-style paste (core plugin)

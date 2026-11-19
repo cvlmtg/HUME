@@ -80,9 +80,11 @@ Splitting a pane that is already too small is refused with a message. Focusing, 
 | Command | Effect |
 |---------|--------|
 | `:tabe [path]`, `:tabnew [path]` | Open a new tab. Its pane shows the current buffer, or opens `path` |
-| `:tabc`, `:tabclose` | Close the current tab and its panes; its buffers stay open. Refused for the only tab, or while a shell command started with `\|` from one of its panes is running; `:tabclose!` stops the command and closes the tab |
+| `:tabc`, `:tabclose` | Close the current tab and its panes; its buffers stay open. Refused for the only tab, or while a shell command runs (see below) |
 | `:tabn`, `:tabnext` | Switch to the next tab, wrapping around |
 | `:tabp`, `:tabprev` | Switch to the previous tab, wrapping around |
+
+`:tabc` is refused while a shell command started with `|` from one of the tab's panes is running. `:tabclose!` stops the command and closes the tab.
 
 `Ctrl-p t`/`Ctrl-p T` also cycle tabs. See [Tabs](files-and-buffers.md#tabs) for how tabs behave.
 
@@ -101,7 +103,9 @@ Splitting a pane that is already too small is refused with a message. Focusing, 
 - Select whole lines to sort a file (`%` selects the whole buffer).
 - Select a single column across a block of lines to sort by that column.
 
-A run sorts numerically only if every row's key looks like a number: one row with non-numeric text drops the whole run back to plain text order. Two selections on the same row combine into one key rather than counting as separate rows, so `:sort` can't sort several items within one line.
+A run sorts numerically only if every row's key looks like a number: one row with non-numeric text drops the whole run back to plain text order.
+
+Two selections on the same row combine into one key rather than counting as separate rows, so `:sort` can't sort several items within one line.
 
 A single selection that spans several rows keeps its place in the buffer: the rows underneath it reorder, but the selection still covers the same stretch of text afterward.
 

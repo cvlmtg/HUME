@@ -14,7 +14,9 @@ There is no file explorer, and the fuzzy finder is a plugin. Load `core:pickers`
 
 ### Editing
 
-`h` `j` `k` `l` move and `i`, `a`, `I`, `A`, `o`, `O` enter Insert mode as usual. The rest of editing turns Vim's grammar around. In Vim, most operators act on a motion typed *after* them: `dw` deletes a word, `ci"` changes inside quotes. In HUME you select first, then act: `w` selects the next word, then `d` deletes the selection. This means:
+`h` `j` `k` `l` move and `i`, `a`, `I`, `A`, `o`, `O` enter Insert mode as usual.
+
+The rest of editing turns Vim's grammar around. In Vim, most operators act on a motion typed *after* them: `dw` deletes a word, `ci"` changes inside quotes. In HUME you select first, then act: `w` selects the next word, then `d` deletes the selection. This means:
 
 - Motions always change the selection before anything else
 - Operators (`d`, `c`, `y`, …) act on whatever is currently selected
@@ -41,9 +43,14 @@ Type `:tutor` and press `Enter`. The tutor is your own copy, so edit it freely. 
 What each step shows:
 
 - **`/` selects what it finds.** The whole match becomes the selection: after `/Welcome` it already covers `Welcome`, and after `/practice` a plain `c` changes the word with no `iw`.
-- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing. `e` toggles Extend mode, Vim's Visual mode, where every motion extends until you act or press `Esc`. So `t T` grows `Welcome` to `Welcome. `, and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t T` grows the selection without entering Extend mode.
+- **`t` only moves; Extend mode makes it select.**
+  - `f`, `F`, `t` and `T` move the cursor and select nothing.
+  - `e` toggles Extend mode, Vim's Visual mode, where every motion extends until you act or press `Esc`. So `t T` grows `Welcome` to `Welcome. `, and `d` deletes it and leaves the mode.
+  - On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t T` grows the selection without entering Extend mode.
 - **`x` selects a line.** It replaces Vim's `dd`/`yy`/`cc` doubling: `x d` deletes a line, `x c` rewrites its content and keeps the line. `Ctrl-x` adds the line below to the selection.
-- **`Esc` keeps what you typed selected.** After the change, `play` is still highlighted, rather than the cursor parking on its last character. Pressing `i` now inserts *before* it; use `a` to carry on after it. Turn this off with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
+- **`Esc` keeps what you typed selected.** After the change, `play` is still highlighted, rather than the cursor parking on its last character.
+  - Pressing `i` now inserts *before* it; use `a` to carry on after it.
+  - Turn this off with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 - **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring, with no `"+` prefix. `p` pastes your last yank or delete, or text you have since copied in another application. See [Copy & Paste](copy-and-paste.md).
 
 A few more keys you'll want early:
@@ -57,7 +64,13 @@ A few more keys you'll want early:
 
 `:w`, `:w path`, `:qa` and `:qa!` do what you expect. There is no `:x` and no `ZZ`. On `*scratch*`, `:w` needs a path: `:w notes.txt`.
 
-`:q` closes the focused pane when the tab has several, and the tab when other tabs are open. On the last pane it closes the current buffer, not the editor: if another file is still open you land on it, and HUME quits only when no other file or unsaved buffer is left. `:q!` and `:wq` close the same way, discarding your changes or saving them first. `:qa` leaves in one step. See [Quitting](files-and-buffers.md#quitting).
+`:q` closes:
+
+- **The focused pane**, when the tab has several.
+- **The tab**, when other tabs are open.
+- **The current buffer**, not the editor, on the last pane. If another file is still open you land on it, and HUME quits only when no other file or unsaved buffer is left.
+
+`:q!` and `:wq` close the same way, discarding your changes or saving them first. `:qa` leaves in one step. See [Quitting](files-and-buffers.md#quitting).
 
 HUME writes no swap files, and undo history survives a restart only with the `undo-persist` setting on. See [Persistence and safety](files-and-buffers.md#persistence-and-safety).
 
@@ -176,7 +189,9 @@ Vim's `iw` / `aw` family lives behind the `m` prefix, and, as everywhere else, y
 
 The available objects are word (`w`), WORD (`W`), the bracket pairs (`(`, `[`, `{`, `<`), the quote pairs (`"`, `'`, `` ` ``), argument (`a`), tag pair (`x`), line (`l`), and paragraph (`p`), each with an `i` (inner) and `a` (around) form. HUME has no sentence object.
 
-`m i i` selects the text you typed during your last insert. With a grammar that supports them, HUME also has function, class, comment, unit test and value objects, with no plugin to install, and a `g` jump to the next or previous of each kind. See [Text objects](selections.md#text-objects) and [Structural navigation](moving-around.md#structural-navigation).
+`m i i` selects the text you typed during your last insert.
+
+With a grammar that supports them, HUME also has function, class, comment, unit test and value objects, with no plugin to install, and a `g` jump to the next or previous of each kind. See [Text objects](selections.md#text-objects) and [Structural navigation](moving-around.md#structural-navigation).
 
 ### Search and replace
 
@@ -193,7 +208,13 @@ new<Esc>   type the replacement
 
 That replaces Vim's `:%s/old/new/g`. To scope it to a region, select the region first and skip the `%`.
 
-To replace only some matches, drop the unwanted ones before pressing `c`: `(` / `)` makes a selection primary, `Ctrl-,` removes the primary, and `,` keeps only the primary. `Ctrl-,` needs kitty; on other terminals, bind `remove-primary-selection` to a key of your own, e.g. `(bind-key! 'normal "alt-," "remove-primary-selection")`.
+To replace only some matches, drop the unwanted ones before pressing `c`:
+
+- `(` / `)` makes a selection primary
+- `Ctrl-,` removes the primary
+- `,` keeps only the primary
+
+`Ctrl-,` needs kitty; on other terminals, bind `remove-primary-selection` to a key of your own, e.g. `(bind-key! 'normal "alt-," "remove-primary-selection")`.
 
 `m /` is the other route: search with `/pattern` first, then `m /` turns every match in the buffer into a selection.
 
@@ -205,11 +226,23 @@ Vim's confirm-each-match flag (`:%s/…/gc`) has no equivalent, but you see ever
 
 ### Registers
 
-HUME has no letter registers `a`–`z`. `"0`–`"9` hold text or macros, written only when you name them (`"0y`); `"c` is the system clipboard (Vim's `"+`), `"b` the black hole (Vim's `"_`), and `"k` the kill-ring head. Yanks and deletes go to the kill ring. See [Register prefix](copy-and-paste.md#register-prefix).
+HUME has no letter registers `a`–`z`. The registers you name after `"` are:
 
-The default paste (`p`) reads the kill ring. Text copied in another application joins the kill ring at your next `p`, `d`, `c` or `y`, so `p` pastes it until you delete or yank something else. Yanking to a named register (`"0y`) leaves both untouched, so `p` behaves as if the `"0y` never happened; use `"0p` to paste from that register.
+- `"0`–`"9` hold text or macros, written only when you name them (`"0y`)
+- `"c` is the system clipboard (Vim's `"+`)
+- `"b` is the black hole (Vim's `"_`)
+- `"k` is the kill-ring head
 
-Two more registers exist but can't be typed after `"`: the search register (the last pattern, Vim's `"/`), written by `/`, `?`, `*` and `Ctrl-/`; and the macro register `q`, written by `Q` recording. You reach both through the commands that use them.
+Yanks and deletes go to the kill ring. See [Register prefix](copy-and-paste.md#register-prefix).
+
+The default paste (`p`) reads the kill ring. Text copied in another application joins the kill ring at your next `p`, `d`, `c` or `y`, so `p` pastes it until you delete or yank something else.
+
+Yanking to a named register (`"0y`) leaves both untouched, so `p` behaves as if the `"0y` never happened; use `"0p` to paste from that register.
+
+Two more registers exist but can't be typed after `"`. You reach both through the commands that use them:
+
+- the search register (the last pattern, Vim's `"/`), written by `/`, `?`, `*` and `Ctrl-/`
+- the macro register `q`, written by `Q` recording
 
 `[` and `]` work only right after a paste: they swap the pasted text for an older or newer kill-ring entry.
 

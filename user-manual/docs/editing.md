@@ -128,7 +128,7 @@ Which end of the selection is the anchor decides whether it aligns to the left o
 
 ## Indentation
 
-Enter, `o` and `O` start the new line at the indent the surrounding code calls for: one level deeper after a line that opens a block, level with the code around it otherwise. With `insert-auto-pairs` on, Enter between a pair of brackets opens a block: the cursor lands on an indented line and the closing bracket moves to the line below.
+Enter, `o` and `O` start the new line at the indent the surrounding code calls for: one level deeper after a line that opens a block, level with the code around it otherwise. With `insert-auto-pairs` on, Enter between a pair of brackets opens a block. The cursor lands on an indented line and the closing bracket moves to the line below.
 
 When the first thing you type on a new line closes a block, such as a closing bracket or keyword, the line moves back to the block's indent. A closing word moves back once it is finished: when you type a space or punctuation after it, or press Enter. A line whose indent you changed by hand is left alone.
 

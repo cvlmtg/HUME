@@ -29,7 +29,9 @@ Keys with a ✓ in the **Kitty** column need the kitty keyboard protocol, which 
 | `Ctrl-o` | `jump-backward` |  | Jump list back |
 | `Ctrl-i` | `jump-forward` |  | Jump list forward |
 | `Tab` | `jump-forward` |  | Jump list forward. Under the kitty protocol, `Tab` focuses the next pane instead (see [Pane prefix](#pane-prefix-ctrl-p)) |
-| `Ctrl` + a motion key, e.g. `Ctrl-h/j/k/l/w/b` | the motion's own command, extended | ✓ | One-shot extend of that motion. Keys with their own `Ctrl` binding keep it; `Ctrl` with a key that is not a motion does nothing |
+| `Ctrl` + a motion key, e.g. `Ctrl-h/j/k/l/w/b` | the motion's own command, extended | ✓ | One-shot extend of that motion |
+
+Keys with their own `Ctrl` binding keep it, and `Ctrl` with a key that is not a motion does nothing.
 
 ### Character find
 
@@ -231,8 +233,8 @@ Press `Ctrl-p` then a second key:
 | `Ctrl-p s` | `pane-split` |  | Split the focused pane, stacking the new pane below it |
 | `Ctrl-p v` | `pane-vsplit` |  | Split the focused pane side by side |
 | `Ctrl-p c` | `pane-close` |  | Close the focused pane (does nothing if it's the only pane, and refuses while a `\|` run from it is running) |
-| `Ctrl-p r` | `pane-rotate-forward` |  | Move each pane in the focused pane's row or column one place right or down (that many places with a count); the last one wraps to the first |
-| `Ctrl-p R` | `pane-rotate-backward` |  | Move each pane in the focused pane's row or column one place left or up (that many places with a count); the first one wraps to the last |
+| `Ctrl-p r` | `pane-rotate-forward` |  | Move each pane in the focused pane's row or column one place right or down; the last one wraps to the first |
+| `Ctrl-p R` | `pane-rotate-backward` |  | Move each pane in the focused pane's row or column one place left or up; the first one wraps to the last |
 | `Ctrl-p >` | `pane-grow-width` |  | Widen the focused pane by a column (that many with a count) |
 | `Ctrl-p <` | `pane-shrink-width` |  | Narrow the focused pane by a column (that many with a count) |
 | `Ctrl-p +` | `pane-grow-height` |  | Make the focused pane a row taller (that many with a count) |
@@ -240,6 +242,8 @@ Press `Ctrl-p` then a second key:
 | `Ctrl-p =` | `pane-equalize` |  | Give every pane of the tab an equal share of its row or column |
 | `Ctrl-p t` | `goto-next-tab` |  | Switch to the next tab in display order |
 | `Ctrl-p T` | `goto-prev-tab` |  | Switch to the previous tab in display order |
+
+With a count, `Ctrl-p r` and `Ctrl-p R` move the panes that many places.
 
 Under the kitty protocol, two keys also move focus without the prefix:
 

@@ -25,16 +25,27 @@ Type `:tutor` and press `Enter`. The tutor is your own copy, so edit it freely. 
 
 What each step shows:
 
-- **`t` only moves; Extend mode makes it select.** `f`, `F`, `t` and `T` move the cursor and select nothing, where Helix selects up to the target. `e` toggles Extend mode (Helix's `v`), where every motion grows the selection. So `t T` grows `Welcome` to `Welcome. `, and `d` deletes it and leaves the mode. On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t T` grows the selection without entering Extend mode.
+- **`t` only moves; Extend mode makes it select.**
+  - `f`, `F`, `t` and `T` move the cursor and select nothing, where Helix selects up to the target.
+  - `e` toggles Extend mode (Helix's `v`), where every motion grows the selection. So `t T` grows `Welcome` to `Welcome. `, and `d` deletes it and leaves the mode.
+  - On a terminal with the [kitty keyboard protocol](installation.md#terminal-compatibility), holding `Ctrl` does the same for one motion: `Ctrl-t T` grows the selection without entering Extend mode.
 - **A second `x` moves on.** Each `x` selects the next line on its own, dropping the previous one. `Ctrl-x` extends instead. See [Line selection](#line-selection-x-vs-extend-mode-e).
-- **`Esc` keeps what you typed selected.** After the change, `play` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it. One consequence: `i` re-enters *before* that selection, so use `a` to keep typing after it. Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
+- **`Esc` keeps what you typed selected.** After the change, `play` is still selected instead of a plain cursor, ready to act on again: delete it, surround it, search for it.
+  - `i` re-enters *before* that selection, so use `a` to keep typing after it.
+  - Disable this with the `insert-select-on-exit` option (see [Buffer options](settings.md#buffer-options)).
 - **`y` reaches the system clipboard.** It copies to the clipboard as well as HUME's own kill ring. `p` pastes your last yank or delete, or text you have since copied in another application. See [Copy & Paste](copy-and-paste.md).
 
 ### Saving and quitting
 
 `:w`, `:qa` and `:qa!` work as in Helix. There is no `:x`; `:write-quit` is the long form of `:wq`.
 
-`:q` closes the focused pane when the tab has several, and the tab when other tabs are open. On the last pane it closes the current buffer, not the editor: if another file is still open you land on it, and HUME quits only when no other file or unsaved buffer is left. `:q!` and `:wq` close the same way, discarding your changes or saving them first. `:qa` leaves in one step. See [Quitting](files-and-buffers.md#quitting).
+`:q` closes:
+
+- **The focused pane**, when the tab has several.
+- **The tab**, when other tabs are open.
+- **The current buffer**, not the editor, on the last pane. If another file is still open you land on it, and HUME quits only when no other file or unsaved buffer is left.
+
+`:q!` and `:wq` close the same way, discarding your changes or saving them first. `:qa` leaves in one step. See [Quitting](files-and-buffers.md#quitting).
 
 The tutor you started is the hands-on tour of everything else: carry on from its Introduction. To start over with a clean copy, close it with `:bd!` and run `:tutor` again.
 
@@ -91,20 +102,30 @@ HUME's tab bar reads `ui.tabline`, and falls back to Helix's `ui.bufferline` whe
 - `d`, `c`, `y`, `p` for delete/change/yank/paste
 - `u` / `U` undo / redo
 - `>` / `<` indent / unindent the lines a selection touches, with count support (`3>`). HUME rewrites each line's whole indent in the buffer's `indent-style`; see [Lines and alignment](editing.md#lines-and-alignment)
-- `m i` or `m a` followed by `f`, `t`, `a`, `c`, `u`, `v` or `x` selects the enclosing function, class/type, argument, comment, unit test, value, or tag pair. The letters match Helix's match-mode text objects, except unit test (`T` → `u`) and value (`e` → `v`). Function, class, comment, unit test and value need a grammar with text-object support; argument and tag pair fall back to a plain-text scan without one. See [Text objects](selections.md#text-objects)
-- Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `indent-style`. There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`. `indent-smart` turns automatic indentation off. HUME also moves a closing bracket or keyword back as you type it
-- Syntax highlighting uses the same tree-sitter grammars as Helix, with Helix's queries, and the [language servers](lsp.md) each language uses, how they start, their root markers and default settings follow Helix's own defaults
+- `m i` or `m a` followed by `f`, `t`, `a`, `c`, `u`, `v` or `x` selects the enclosing function, class/type, argument, comment, unit test, value, or tag pair. See [Text objects](selections.md#text-objects)
+  - The letters match Helix's match-mode text objects, except unit test (`T` → `u`) and value (`e` → `v`)
+  - Function, class, comment, unit test and value need a grammar with text-object support. Argument and tag pair fall back to a plain-text scan without one
+- Enter, `o` and `O` indent new lines with Helix's indentation queries (see [Indentation](editing.md#indentation)), written in the buffer's `indent-style`
+  - There is no `indent-heuristic` setting: HUME always uses Helix's default, `hybrid`
+  - `indent-smart` turns automatic indentation off
+  - HUME also moves a closing bracket or keyword back as you type it
+- Syntax highlighting uses the same tree-sitter grammars as Helix, with Helix's queries
+- The [language servers](lsp.md) each language uses, how they start, their root markers and default settings follow Helix's own defaults
 - Insert mode shows a bar cursor; Normal and Extend mode a block
 
 ## Key differences
 
 ### Plugin system
 
-HUME's plugins are written in Steel Scheme, and the core plugins ship with every release. Plugins written for Helix's Steel plugin work won't run in HUME: the two editors expose different functions to scripts. [PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker plugin.
+HUME's plugins are written in Steel Scheme, and the core plugins ship with every release. Plugins written for Helix's Steel plugin work won't run in HUME: the two editors expose different functions to scripts.
+
+[PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker plugin.
 
 ### Growing selections
 
-Helix grows a selection in select mode (`v`). HUME's equivalent is Extend mode (`e`), where every motion extends until you act or press `Esc`. HUME also has one-shot extends (`Ctrl-w`, `Ctrl-b`, …) that extend for a single keystroke without changing mode. They need the kitty keyboard protocol, except `Ctrl-x`, which works on any terminal.
+Helix grows a selection in select mode (`v`). HUME's equivalent is Extend mode (`e`), where every motion extends until you act or press `Esc`.
+
+HUME also has one-shot extends (`Ctrl-w`, `Ctrl-b`, …) that extend for a single keystroke without changing mode. They need the kitty keyboard protocol, except `Ctrl-x`, which works on any terminal.
 
 ### Word motions and whitespace
 
@@ -116,7 +137,9 @@ To take the whitespace after the word instead, as Helix does, set `word-selects-
 (set-option! "word-selects-whitespace" "after")
 ```
 
-`w` still selects a whole word: with the cursor inside `foo`, Helix's `w` selects the rest of `foo`, while HUME's selects the next word. `off` selects the bare word with no whitespace. See [Buffer options](settings.md#buffer-options). [helix.hume](https://github.com/cvlmtg/helix.hume) sets the option to `after` and makes `w`, `e` and `b` select from the cursor as Helix's do.
+`w` still selects a whole word: with the cursor inside `foo`, Helix's `w` selects the rest of `foo`, while HUME's selects the next word. `off` selects the bare word with no whitespace. See [Buffer options](settings.md#buffer-options).
+
+[helix.hume](https://github.com/cvlmtg/helix.hume) sets the option to `after` and makes `w`, `e` and `b` select from the cursor as Helix's do.
 
 ### Line selection: `x` vs Extend mode (`e`)
 
@@ -184,7 +207,7 @@ You can also add custom elements written in Scheme; see [Statusline](settings.md
 
 ### Bufferline vs tab bar
 
-Helix's `bufferline` (`never` / `always` / `multiple`) is a strip of open buffers. HUME's bar lists tab pages instead: each tab holds its own pane layout, and buffers are shared across tabs, so you reach them with `:ls`, `:b`, `:bn` and `:bp`, not from the bar. See [Tabs](files-and-buffers.md#tabs).
+Helix's `bufferline` (`never` / `always` / `multiple`) is a strip of open buffers. HUME's bar lists tab pages instead: each tab holds its own pane layout. Buffers are shared across tabs, so you reach them with `:ls`, `:b`, `:bn` and `:bp`, not from the bar. See [Tabs](files-and-buffers.md#tabs).
 
 `:set global tabline=never/always/dynamic` controls visibility. `dynamic` (the default) is the analogue of Helix's `multiple`: the bar shows only once a second tab is open. A Helix theme colors it through `ui.bufferline`; see [Themes](#themes).
 
@@ -204,13 +227,14 @@ In HUME, `m s` selects the surrounding pair, and the ordinary `d` and `r` act on
 
 Helix's match mode binds `m m` to jump to the matching bracket. HUME binds the same jump to `#`, which also matches HTML/XML/JSX tag pairs. `%` selects the whole buffer in both editors.
 
-Helix's bracket mode (`]` or `[` plus an object letter) jumps to the next or previous function, class, argument and so on. HUME puts these jumps on the `g` prefix, with the same letter as each `m i`/`m a` text object, lowercase forward and uppercase backward: `g f`/`g F`, `g t`/`g T`, `g a`/`g A`, `g c`/`g C`, `g u`/`g U` (unit test), `g v`/`g V` (value), `g x`/`g X` (tag pair). See [Structural navigation](moving-around.md#structural-navigation).
+Helix's bracket mode (`]` or `[` plus an object letter) jumps to the next or previous function, class, argument and so on. HUME puts these jumps on the `g` prefix, with the same letter as each `m i`/`m a` text object. Lowercase jumps forward and uppercase backward: `g f`/`g F`, `g t`/`g T`, `g a`/`g A`, `g c`/`g C`, `g u`/`g U` (unit test), `g v`/`g V` (value), `g x`/`g X` (tag pair). See [Structural navigation](moving-around.md#structural-navigation).
 
 ## What Helix has that HUME doesn't
 
 - `*` searching the selection with automatic word-boundary anchors (see [Multiple selections](#multiple-selections))
 - Splitting selections on a regex (`S`)
-- Inserting or appending a command's output (`!`, `Alt-!`), piping selections to a command and ignoring its output (`Alt-|`), and filtering selections by a command's exit status (`$`). HUME's `|` pipes each selection through a command, as Helix's does, and in Insert mode `Ctrl-|` (kitty only) inserts a command's output at each cursor. See [Shell commands](editing.md#shell-commands)
+- Inserting or appending a command's output (`!`, `Alt-!`), piping selections to a command and ignoring its output (`Alt-|`), and filtering selections by a command's exit status (`$`)
+  - HUME's `|` pipes each selection through a command, as Helix's does, and in Insert mode `Ctrl-|` (kitty only) inserts a command's output at each cursor. See [Shell commands](editing.md#shell-commands)
 - Merging every selection into one span across gaps (`Alt--`)
 - `:x` and `:o`/`:open` as command aliases; use `:wq`/`:write-quit` and `:e` instead
 
