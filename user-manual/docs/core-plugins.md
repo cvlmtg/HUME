@@ -259,6 +259,10 @@ It needs the `markdown` and `markdown.inline` grammars: install them with `:plum
 
 Every line the cursor or a selection touches shows its source, in every mode. While a selection is inside a code block or a table, the whole block shows its source.
 
+Pasting a URL over selected text makes a link: select `foo`, paste `https://example.com`, and get `[foo](https://example.com)`. It works with `p`, `P` and your terminal's paste shortcut, and one `u` brings the selected text back. Pasting a URL over a URL or a link replaces it, as does pasting at a cursor, over text that spans lines, or over text that holds a `[` or `]` or ends with `\`.
+
+In a link's destination, right after `](`, `Ctrl-Space` lists the files and folders next to the Markdown file, and after a folder you have typed, such as `](notes/`, the ones in that folder. Typing `(` right after `]`, or `/` after a folder's name, opens the list too. The list narrows as you type, and the letters need only appear in order, so `rdm` finds `README.md`. Start the name with `.` to list hidden files. A name with a space is inserted as it is, which Markdown doesn't read as a link.
+
 Ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block are left as written. The colors and bands come from the [theme](themes.md#scopes-hume-adds); to change them without editing it, [style the scopes from your config](themes.md#styling-scopes-from-your-config).
 
 Only the lines on screen are drawn. After you scroll, the lines that came into view appear as written until `hook-viewport-debounce-ms` after you stop; lower it in [Settings](settings.md#global-options) to shorten the wait.

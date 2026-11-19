@@ -1,4 +1,4 @@
-;;; core:markdown — inline.scm. See README.md.
+;;; core:markdown — inline.scm. See docs/elements.md.
 
 (require "queries.scm")
 (require "entities.scm")

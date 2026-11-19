@@ -113,6 +113,15 @@ impl Preview {
         open_in(&mut self.ed, self.tmp.path(), name, text)
     }
 
+    /// Opens `marked`'s text as `<tmp>/<name>`, announces its open, and
+    /// selects as `marked` marks it.
+    fn open_marked(&mut self, name: &str, marked: &str) {
+        let (text, _) = test_fixtures::testing::parse_state(marked);
+        self.open(name, &text.to_string());
+        self.ed.settle();
+        select_marked(&mut self.ed, marked);
+    }
+
     /// Draws frames until the focused buffer's tree matches its text (a
     /// parse runs on a worker thread), then lets every pending debounce run
     /// out, three times over: the syntax hook arms the render debounce, the
@@ -2053,3 +2062,6 @@ fn the_completion_documentation_box_draws_markdown_without_its_syntax() {
     assert_eq!(rows, ["bold text"]);
     assert_eq!(error_log(&p.ed), Vec::<String>::new());
 }
+
+mod link_paste;
+mod link_paths;

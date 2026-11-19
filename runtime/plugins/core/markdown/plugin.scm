@@ -1,8 +1,10 @@
-;;; core:markdown — plugin.scm. See README.md.
+;;; core:markdown — plugin.scm. See docs/architecture.md.
 
 (require "lib/state.scm")
 (require "lib/render.scm")
 (require "lib/text.scm")
+(require "lib/links.scm")
+(require "lib/paths.scm")
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
@@ -51,6 +53,16 @@
     (md-preview/remove-buffer! pane)
     (when (buffer-live? pane)
       (md-preview/clear! pane))))
+
+;; ── Links ─────────────────────────────────────────────────────────────────────
+
+(register-hook! 'on-paste
+  (lambda (pane pasted previous) (md-links/paste-link pasted previous)))
+
+(register-completion-source! "markdown:paths" md-paths/complete!
+  #:target 'buffer #:token-chars "/.-")
+
+(set-completion-triggers! "markdown" "markdown:paths" (list #\( #\/))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

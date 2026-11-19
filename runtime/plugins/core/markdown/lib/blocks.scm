@@ -1,4 +1,4 @@
-;;; core:markdown — blocks.scm. See README.md.
+;;; core:markdown — blocks.scm. See docs/elements.md.
 
 (require "queries.scm")
 (require "state.scm")

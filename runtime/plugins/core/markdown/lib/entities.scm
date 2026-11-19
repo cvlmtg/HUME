@@ -1,4 +1,4 @@
-;;; core:markdown — entities.scm. See README.md.
+;;; core:markdown — entities.scm. See docs/elements.md.
 
 (provide md-preview/entity-text)
 

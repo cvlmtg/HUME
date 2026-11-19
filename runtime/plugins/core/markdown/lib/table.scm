@@ -1,4 +1,4 @@
-;;; core:markdown — table.scm. See README.md.
+;;; core:markdown — table.scm. See docs/elements.md.
 
 (require "queries.scm")
 

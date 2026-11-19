@@ -1,4 +1,4 @@
-;;; core:markdown — queries.scm. See README.md.
+;;; core:markdown — queries.scm. See docs/elements.md.
 
 (provide md-preview/block-query md-preview/inline-query md-preview/atx-levels md-preview/setext-levels
          md-preview/capture-start md-preview/capture-end md-preview/line-span md-preview/inside?
