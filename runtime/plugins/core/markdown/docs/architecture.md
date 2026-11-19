@@ -52,8 +52,6 @@
   Markdown reads as text, not as a link.
 - The path menu also shows what the other completion sources offer for the word before
   the cursor, such as `core:buffer-words`'s words.
-- A language server's paths leave the menu once a `.` or `/` is typed, which ends the
-  `lsp` source's word token, until `Ctrl-Space` asks the server again.
 - Lines scrolled into view draw raw until the next render, `hook-viewport-debounce-ms`
   after scrolling stops. The plugin adds no delay of its own.
 - A table or fenced block is fetched and drawn whole by every render whose ranges reach

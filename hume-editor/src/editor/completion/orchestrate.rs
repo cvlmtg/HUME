@@ -189,6 +189,7 @@ impl EditorState {
             Some(LiveDoc {
                 text: self.buffers.get(bid).text(),
                 head: head.offset(),
+                word_chars: self.buffers.get(bid).overrides.word_chars(&self.settings),
             }),
         );
         if session.is_spent() {
@@ -549,6 +550,7 @@ impl EditorState {
         let live = live.map(|(bid, head)| LiveDoc {
             text: self.buffers.get(bid).text(),
             head: head.offset(),
+            word_chars: self.buffers.get(bid).overrides.word_chars(&self.settings),
         });
         session.rank(&self.config.completion_sources, live);
         if self

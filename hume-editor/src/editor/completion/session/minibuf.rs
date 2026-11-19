@@ -233,7 +233,7 @@ impl MinibufSession {
             kept_pick,
             core,
         } = self;
-        *menu_anchor = core.rank_with(sources, None, |inv| {
+        *menu_anchor = core.rank_with(sources, None, |_, inv| {
             let start = inv.span.bytes.start;
             Some(SlotTokens::single(input[start..*cursor].to_owned(), start))
         });

@@ -11,6 +11,7 @@
 ### Fixes
 - The completion menu no longer hides an item as a duplicate of another source's when the two insert different text.
 - A language server's completion no longer goes missing when its label leaves out the start of what it replaces, such as the `/` of a path.
+- A language server's completions stay in the menu while what you type, such as a path's `.` or `/`, still starts one of them.
 
 ## [0.22.2] - 2026-11-19
 

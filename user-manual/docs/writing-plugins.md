@@ -641,7 +641,7 @@ If the user keeps typing or closes the menu before `git` answers, the request is
 ### Source options
 
 - **`#:target`** (required): `'buffer` or `'minibuf`. Each has its own token, which is what items are matched against and what accepting one replaces.
-  - `'buffer` serves Insert mode and calls `(proc id pane prefix)`, only in buffers of the languages a plugin declared with `#:languages` works in (see [Shipping a manifest](#shipping-a-manifest)). Its token is the run of word characters before the cursor.
+  - `'buffer` serves Insert mode and calls `(proc id pane prefix)`, only in buffers of the languages a plugin declared with `#:languages` works in (see [Shipping a manifest](#shipping-a-manifest)). Its token is the run of word characters before the cursor. An item with its own `textEdit` is matched from where that edit starts, and keeps its answer in the menu while its filter text starts with what was typed from there, even past characters outside the token.
   - `'minibuf` serves the `:` and `|` prompts and calls `(proc id input cursor)`, with `input` the whole line and `cursor` counted in characters. Its token is the whitespace-delimited argument the cursor is in, unless the answer names its own with `#:span`.
 - **`#:match`**: how items are scored against the token.
   - `'fuzzy` (default) keeps items containing the typed characters in order, not necessarily adjacent.

@@ -687,7 +687,7 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
         &mut self,
         sources: &SourceRegistry,
         hidden: Option<&rustc_hash::FxHashSet<(u32, u32)>>,
-        mut token_of: impl FnMut(&Invocation<S>) -> Option<SlotTokens<A>>,
+        mut token_of: impl FnMut(Id, &Invocation<S>) -> Option<SlotTokens<A>>,
     ) -> Option<A> {
         let Self {
             slots,
@@ -705,7 +705,7 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
         let mut anchor: Option<A> = None;
         for (s, slot) in slots.iter().enumerate() {
             let Some(inv) = &slot.shown else { continue };
-            let Some(tokens) = token_of(inv) else {
+            let Some(tokens) = token_of(slot.source, inv) else {
                 continue;
             };
             let (_, match_kind, priority) = slot.source.facts(sources);

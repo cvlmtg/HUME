@@ -104,6 +104,21 @@ fn accepting_a_rewritten_path_writes_it_relative() {
     assert_eq!(rig.ed.doc().text().to_string(), "[x](../../README.md)\n");
 }
 
+#[test]
+fn typing_a_path_past_the_word_keeps_the_servers_paths() {
+    let tmp = tempfile::tempdir().unwrap();
+    let (mut rig, _guard) = marksman_rig(tmp.path(), "[x](-[)]>\n", sibling_and_readme());
+    complete(&mut rig);
+    for ch in "../../RE".chars() {
+        rig.ed.feed_key(key(ch));
+        rig.ed.settle();
+    }
+    assert_eq!(menu_labels(&rig.ed), ["../../README.md"]);
+    rig.ed.feed_key(key_enter());
+    rig.ed.settle();
+    assert_eq!(rig.ed.doc().text().to_string(), "[x](../../README.md)\n");
+}
+
 /// What `lsp-completion/markdown` makes of `item`, as its `newText`,
 /// `filterText` and label.
 fn rewritten(item: serde_json::Value) -> Vec<String> {

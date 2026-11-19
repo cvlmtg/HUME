@@ -46,8 +46,9 @@ pub(in crate::editor) struct BufferSpan {
     /// The distinct edit-range starts of this answer's items, ascending and
     /// carried like `start`; an item's `token_group` indexes it. The server
     /// says where an item's token starts, which need not be where the
-    /// source's own token rule puts `start`.
-    starts: Vec<CharOffset>,
+    /// source's own token rule puts `start`. A start is `None` once the
+    /// character before it was deleted, as `crossed` records for `start`.
+    starts: Vec<Option<CharOffset>>,
 }
 
 impl BufferSpan {
@@ -80,7 +81,7 @@ impl BufferSpan {
                 .map(|g| g as u32);
         }
         doc.cs_since.map_positions(&mut distinct, Assoc::Before);
-        *starts = distinct;
+        *starts = distinct.into_iter().map(Some).collect();
     }
 }
 
@@ -126,7 +127,17 @@ impl Invocation<BufferSpan> {
             *crossed = true;
         }
         *start = cursor.map_anchor(*start, Assoc::Before).pos;
-        cs.map_positions(starts, Assoc::Before);
+        // The same check per item start, through one cursor: the starts
+        // ascend, so their `[s-1, s]` pairs never step backward.
+        let mut cursor = PosMapCursor::new(cs.ops());
+        for item_start in starts.iter_mut() {
+            let Some(s) = *item_start else { continue };
+            let crossed = s > CharOffset::new(0)
+                && cursor
+                    .map_anchor(s.retreat(1), Assoc::Before)
+                    .anchor_deleted;
+            *item_start = (!crossed).then(|| cursor.map_anchor(s, Assoc::Before).pos);
+        }
         // `compose` takes `self` by value; swap the accumulated changeset
         // out (rather than cloning its whole op list, including every
         // typed-text `Insert` op, just to feed it in) and compose in place.
@@ -134,10 +145,10 @@ impl Invocation<BufferSpan> {
         doc.cs_since = prev.compose(cs.clone());
     }
 
-    /// Whether the token `start..head` is still the one this invocation
-    /// answered for: not crossed, the cursor still at or past its start, and
-    /// every character between them in the source's token class.
-    fn holds(&self, text: &BufferText, head: CharOffset, chars: WordChars<'_>) -> bool {
+    /// Whether the source's own token `start..head` is still the one this
+    /// invocation answered for: not crossed, the cursor still at or past its
+    /// start, and every character between them in the source's token class.
+    fn word_holds(&self, text: &BufferText, head: CharOffset, chars: WordChars<'_>) -> bool {
         let BufferSpan { start, crossed, .. } = &self.span;
         !*crossed
             && *start <= head
@@ -146,13 +157,37 @@ impl Invocation<BufferSpan> {
                 .chars()
                 .all(|c| chars.classify(c) == CharClass::Word)
     }
+
+    /// Whether an item with its own edit range still has a filter text that
+    /// starts with what was typed from that range's start, ignoring ASCII
+    /// case: the server's word, which may run past the source's (a path's
+    /// `.` and `/`).
+    fn items_hold(&self, text: &BufferText, head: CharOffset) -> bool {
+        let typed: Vec<Option<String>> = self
+            .span
+            .starts
+            .iter()
+            .map(|&start| {
+                start
+                    .filter(|&s| s <= head)
+                    .map(|s| token_text(text, s, head))
+            })
+            .collect();
+        self.items().iter().any(|item| {
+            item.token_group
+                .and_then(|g| typed.get(g as usize)?.as_deref())
+                .is_some_and(|typed| super::prefix_matches(item.filter_text(), typed, false))
+        })
+    }
 }
 
-/// The document a `Buffer` session's tokens are read against when ranking
-/// the live text and the primary cursor's head.
+/// The document a `Buffer` session's tokens are read against when ranking:
+/// the live text, the primary cursor's head, and the buffer's `word-chars`
+/// each source's token class is built over.
 pub(in crate::editor) struct LiveDoc<'a> {
     pub(in crate::editor) text: &'a BufferText,
     pub(in crate::editor) head: CharOffset,
+    pub(in crate::editor) word_chars: &'a str,
 }
 
 /// What [`BufferSession::reconcile`] found.
@@ -384,7 +419,7 @@ impl BufferSession {
         // so `recompute_dedup` runs only then.
         let dropped = self.core.drop_shown_where(|source, inv| {
             let token_chars = sources.buffer_get(source).token_chars_over(word_chars);
-            !inv.holds(text, head, WordChars::new(&token_chars))
+            !inv.word_holds(text, head, WordChars::new(&token_chars)) && !inv.items_hold(text, head)
         });
         if dropped {
             self.recompute_dedup(sources);
@@ -460,7 +495,7 @@ impl BufferSession {
     pub(in crate::editor) fn rank(&mut self, sources: &SourceRegistry, live: Option<LiveDoc<'_>>) {
         let anchor = self
             .core
-            .rank_with(sources, Some(&self.dedup_hidden), |inv| {
+            .rank_with(sources, Some(&self.dedup_hidden), |source, inv| {
                 let doc = live.as_ref()?;
                 // An answer that landed since the last reconcile may start
                 // after the cursor; its items are skipped rather than
@@ -468,9 +503,18 @@ impl BufferSession {
                 let token = |start: CharOffset| {
                     (start <= doc.head).then(|| (token_text(doc.text, start, doc.head), start))
                 };
+                // An answer kept only by its ranged items has no word of its
+                // own left for the other items to match.
+                let token_chars = sources.buffer_get(source).token_chars_over(doc.word_chars);
+                let word_holds = inv.word_holds(doc.text, doc.head, WordChars::new(&token_chars));
                 Some(SlotTokens {
-                    base: token(inv.span.start),
-                    groups: inv.span.starts.iter().map(|&start| token(start)).collect(),
+                    base: token(inv.span.start).filter(|_| word_holds),
+                    groups: inv
+                        .span
+                        .starts
+                        .iter()
+                        .map(|&start| start.and_then(token))
+                        .collect(),
                 })
             });
         self.menu_anchor = anchor

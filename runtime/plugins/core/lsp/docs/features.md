@@ -121,7 +121,9 @@ whole response, so its `isIncomplete` and `itemDefaults` still apply, and edits 
 
 The rest happens in the editor. Each item's own edit range, or the list's default
 `itemDefaults.editRange`, says where its token starts, and the item is filtered against
-the text from there to the cursor. Snippet stripping happens as items enter the store.
+the text from there to the cursor. Once a character outside the source's identifier is
+typed, such as a path's `.` or `/`, the answer stays while one of those items' filter texts
+starts with that text, ignoring case, and goes when none does. Snippet stripping happens as items enter the store.
 Accepting an item applies its main edit, its `additionalTextEdits` and
 `completionItem/resolve` together, so the plugin has no accept handler.
 
