@@ -5,6 +5,12 @@
 ### Plugins & scripting
 - `core:markdown` turns a URL pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
 - The `on-paste` hook lets a plugin change the text a paste puts in a buffer.
+- In Markdown, the file paths a language server such as marksman completes in a link are written relative to the file, not from the project's root.
+- An editor command named `lsp-completion/` plus a language changes the completions a language server offers in that language's buffers. `json-with` edits a language server's answer without losing how its positions are counted.
+
+### Fixes
+- The completion menu no longer hides an item as a duplicate of another source's when the two insert different text.
+- A language server's completion no longer goes missing when its label leaves out the start of what it replaces, such as the `/` of a path.
 
 ## [0.22.2] - 2026-11-19
 

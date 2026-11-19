@@ -155,7 +155,8 @@ impl BufferSession {
         // live coordinates and a label for the containment error. The
         // containment check and the `(back, forward)` distance it licenses
         // are then shared by both, just after the match.
-        let (start_now, end_now, new_text, what) = match &item.text_edit {
+        let new_text = item.inserted_text();
+        let (start_now, end_now, what) = match &item.text_edit {
             Some(te) => {
                 let range = edits::edit_range_to_chars(
                     &doc.rope,
@@ -179,12 +180,7 @@ impl BufferSession {
                 doc.cs_since.map_positions(&mut start_pos, Assoc::Before);
                 let mut end_pos = [end_b];
                 doc.cs_since.map_positions(&mut end_pos, Assoc::After);
-                (
-                    start_pos[0],
-                    end_pos[0],
-                    te.new_text.as_str(),
-                    "textEdit range",
-                )
+                (start_pos[0], end_pos[0], "textEdit range")
             }
             // No server-provided range: replace the token from this
             // source's carried start to the cursor, as if the completion had
@@ -192,12 +188,7 @@ impl BufferSession {
             // triggering completion (e.g. "fo" before the popup opened) is
             // otherwise left untouched, duplicating it ahead of
             // `insert_text`.
-            None => (
-                *start,
-                head_now.offset(),
-                item.insert_text.as_str(),
-                "insertText token",
-            ),
+            None => (*start, head_now.offset(), "insertText token"),
         };
         // The delta model below rests entirely on this containment: a
         // conforming server's completion range always contains the request

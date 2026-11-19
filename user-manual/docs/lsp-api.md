@@ -103,6 +103,7 @@ An `lsp-request!` response, `lsp-capabilities`, a `diagnostics-for-buffer` entry
 | `json-ref-or` | `(json-ref-or j default seg ...)`{.sig} `json-ref`, but `default` in place of raising when the path doesn't resolve or the value there is `null` |
 | `json-contains?` | `(json-contains? j seg ...)`{.sig} `#t` if the path resolves; a `null` value at the end still counts as present |
 | `json-list` | `(json-list j)`{.sig} The elements of `j`, a JSON array handle, as a Steel list, each converted as `json-ref` would. Raises if `j` isn't an array |
+| `json-with` | `(json-with j edits)`{.sig} A copy of handle `j` with each `(path . string)` in the list `edits` written, `path` being a list of keys and indices. Only a string can be written, over a string or a key the object does not have yet. The copy still decodes positions as the server that sent `j` counts them, so a completion answer edited this way can be passed to `completion-emit!`. Raises, naming the path, on anything else |
 | `json-array?`<br>`json-object?` | `(json-array? v)`{.sig} `(json-object? v)`{.sig} `#t` if `v` is a JSON handle onto an array/object, `#f` for anything else, including a value that isn't a handle |
 
 Values HUME builds itself, rather than decoding from a server's JSON, are ordinary hashes read with `hash-ref`: `lsp-request!`'s `err`, `lsp-server-status`, and a `diagnostics-for-buffer` entry outside its `'raw` field.

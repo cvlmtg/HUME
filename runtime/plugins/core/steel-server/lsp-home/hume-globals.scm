@@ -215,6 +215,7 @@
 (#%register-global "json-parse")
 (#%register-global "json-ref")
 (#%register-global "json-ref-or")
+(#%register-global "json-with")
 (#%register-global "jump-backward")
 (#%register-global "jump-forward")
 (#%register-global "keep-primary-selection")

@@ -267,6 +267,38 @@ fn a_higher_priority_duplicate_hides_the_lower_priority_plain_item() {
     );
 }
 
+/// A higher-priority item that matches the same text but inserts other text
+/// is not a duplicate: hiding the plain item would lose what it inserts.
+#[test]
+fn an_item_inserting_other_text_does_not_hide_a_plain_item() {
+    let reg = registry(&[("lo", 0), ("hi", 10)]);
+    let (mut session, text) = buffer_session("\n");
+    invoke_and_answer(
+        &mut session,
+        &reg,
+        id_of(&reg, "lo"),
+        &text,
+        0,
+        &["README.md"],
+    );
+    let id = buffer_invoke(&mut session, id_of(&reg, "hi"), &text, 0);
+    assert!(session.contribute(
+        &reg,
+        id,
+        vec![item_with_edits(
+            "README.md",
+            Some(edit_over((0, 0), (0, 0), "/README.md")),
+            Vec::new(),
+        )],
+        false,
+        AnswerEnd::Final,
+    ));
+    session.rank(&reg, live(&text, 0));
+    let mut sources = ranked_sources(&session, &reg);
+    sources.sort();
+    assert_eq!(sources, vec!["hi", "lo"]);
+}
+
 #[test]
 fn equal_priority_duplicates_are_not_deduplicated() {
     let reg = registry(&[("a", 0), ("b", 0)]);
@@ -336,7 +368,7 @@ fn item_with_edits(
         documentation: None,
         resolution: None,
         sort_text: label.into(),
-        filter_text: label.into(),
+        filter_text: None,
         insert_text: label.into(),
         text_edit,
         additional_text_edits,
@@ -468,6 +500,48 @@ fn an_item_whose_edit_range_is_reversed_takes_no_token_start_from_it() {
         session.menu_anchor(&text).map(ClusterStart::offset),
         Some(CharOffset::new(6))
     );
+}
+
+/// A `Fuzzy` source over "[x](/scrip" whose token is the word "scrip",
+/// answering `label` with an edit range over "/scrip" and `filter_text`
+/// as the server's own `filterText`.
+fn slash_session(
+    label: &str,
+    filter_text: Option<&str>,
+) -> (BufferSession, SourceRegistry, BufferText) {
+    let reg = registry(&[("s", 0)]);
+    let (mut session, text) = buffer_session("[x](/scrip\n");
+    let mut answer = item_with_edits(label, Some(edit_over((0, 4), (0, 10), "/x")), Vec::new());
+    answer.filter_text = filter_text.map(str::to_string);
+    let id = session.invoke(
+        id_of(&reg, "s"),
+        Invocation::buffer(text.rope().clone(), CharOffset::new(5)),
+    );
+    assert!(session.contribute(&reg, id, vec![answer], false, AnswerEnd::Final));
+    (session, reg, text)
+}
+
+/// A label may leave out the start of the text the edit replaces: with no
+/// `filterText`, the label also matches the source's own word.
+#[test]
+fn a_label_without_the_edit_ranges_leading_slash_still_matches() {
+    let (mut session, reg, text) = slash_session("scripts/README.md", None);
+    session.rank(&reg, live(&text, 10));
+    assert_eq!(ranked_labels(&session, &reg), vec!["scripts/README.md"]);
+    assert_eq!(
+        session.menu_anchor(&text).map(ClusterStart::offset),
+        Some(CharOffset::new(4)),
+        "the menu anchors where accepting the item starts writing"
+    );
+}
+
+/// A `filterText` the server sent is what it says the edit range's text
+/// should match.
+#[test]
+fn a_servers_filter_text_is_matched_from_its_edit_range_start() {
+    let (mut session, reg, text) = slash_session("x", Some("scripts/README.md"));
+    session.rank(&reg, live(&text, 10));
+    assert!(ranked_labels(&session, &reg).is_empty());
 }
 
 #[test]

@@ -195,10 +195,10 @@ pub(in crate::editor) struct BufferSession {
     menu_anchor: Option<Tracked<ClusterStart>>,
     /// `(slot, item)` pairs a lower-priority slot's plain item (see
     /// [`CompletionItem::is_plain`]) is hidden because a strictly-higher-
-    /// priority slot already shows an item with the same `filter_text`,
-    /// rebuilt by [`Self::recompute_dedup`] only when the shown item *set*
-    /// changes (an answer lands, a slot is dropped), not every keystroke;
-    /// [`Self::rank`] only ever reads it.
+    /// priority slot already shows an item with the same `filter_text` and
+    /// [`CompletionItem::inserted_text`], rebuilt by [`Self::recompute_dedup`]
+    /// only when the shown item *set* changes (an answer lands, a slot is
+    /// dropped), not every keystroke; [`Self::rank`] only ever reads it.
     dedup_hidden: rustc_hash::FxHashSet<(u32, u32)>,
     /// The selected item [`Self::doc_request`] last considered. It is not
     /// considered again until the selection leaves it: a request that failed
@@ -401,9 +401,10 @@ impl BufferSession {
     /// Rebuilds [`Self::dedup_hidden`] from the current shown items: a
     /// plain item ([`CompletionItem::is_plain`]) is hidden when a strictly-
     /// higher-priority slot's shown answer has an item with the same
-    /// `filter_text`. An item carrying edits is never hidden: accepting it
-    /// does something a duplicate-*looking* plain item from another source
-    /// wouldn't, so it stays regardless of what else duplicates its label.
+    /// `filter_text` that inserts the same text. An item carrying edits is
+    /// never hidden: accepting it does something a duplicate-*looking* plain
+    /// item from another source wouldn't, so it stays regardless of what else
+    /// duplicates its label.
     /// Priority is a static, per-source fact, so this only ever needs to
     /// run when the shown item *set* changes ([`Self::contribute`] landing
     /// an answer, [`Self::reconcile`] dropping a slot), not on every
@@ -412,20 +413,21 @@ impl BufferSession {
         self.dedup_hidden.clear();
         let slots = self.core.slots_mut();
         // The highest priority among every shown item (plain or not, any
-        // slot) carrying a given `filter_text`: O(total items), not the
-        // O(items²) an all-pairs scan across slots costs (a 20k-word
+        // slot) carrying a given filter and inserted text: O(total items), not
+        // the O(items²) an all-pairs scan across slots costs (a 20k-word
         // buffer-words slot against a 1k-item LSP slot is ~20M string
         // compares per landed answer with the naive version). A slot's own
         // priority never exceeds its own contribution to this map, so
         // below, a strict `>` against it already excludes comparing a slot
         // against itself; no separate index check needed.
-        let mut max_priority: rustc_hash::FxHashMap<&str, i64> = rustc_hash::FxHashMap::default();
+        let mut max_priority: rustc_hash::FxHashMap<(&str, &str), i64> =
+            rustc_hash::FxHashMap::default();
         for slot in slots.iter() {
             let Some(inv) = &slot.shown else { continue };
             let priority = sources.buffer_get(slot.source).priority;
             for item in inv.items() {
                 max_priority
-                    .entry(item.filter_text.as_str())
+                    .entry((item.filter_text(), item.inserted_text()))
                     .and_modify(|p| *p = (*p).max(priority))
                     .or_insert(priority);
             }
@@ -438,7 +440,7 @@ impl BufferSession {
                     continue;
                 }
                 let outranked = max_priority
-                    .get(item.filter_text.as_str())
+                    .get(&(item.filter_text(), item.inserted_text()))
                     .is_some_and(|&p| p > priority);
                 if outranked {
                     self.dedup_hidden.insert((s as u32, i as u32));

@@ -112,6 +112,13 @@ non-null response to `completion-emit!` as one entry each, so their items merge 
 menu. A server's error is reported; the others' items still show. A server's own trigger
 characters invoke the source in the buffers attached to that server.
 
+A language plugin can change what a server's completions write. Before a response is
+passed on, the source looks for an editor command named `lsp-completion/` followed by the
+buffer's language. When there is one, it is called with the pane, the server value and the
+response, and what it returns is emitted in the response's place. The command returns a
+whole response, so its `isIncomplete` and `itemDefaults` still apply, and edits it with
+`json-with`, so its positions still decode in the server's encoding.
+
 The rest happens in the editor. Each item's own edit range, or the list's default
 `itemDefaults.editRange`, says where its token starts, and the item is filtered against
 the text from there to the cursor. Snippet stripping happens as items enter the store.
