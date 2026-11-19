@@ -147,7 +147,7 @@ HUME targets modern terminals, but it starts on any terminal and works with what
 
 - **24-bit true color.** HUME always sends colors as RGB. Terminals without true color show approximate or wrong colors, but HUME still runs.
 - **Synchronized output.** HUME uses it once per frame to avoid tearing. Terminals that don't recognise it ignore it harmlessly.
-- **The kitty keyboard protocol.** HUME requests it at startup and uses it whenever the terminal answers. It unlocks a few extra key combinations, which the manual marks "kitty only"; everything else works without it. While the protocol is on, the statusline shows a cat (ᓚᘏᗢ).
+- **The kitty keyboard protocol.** HUME requests it at startup and uses it whenever the terminal answers. It unlocks a few extra key combinations, which the manual marks "kitty only". Everything else works without it. While the protocol is on, the statusline shows a cat (ᓚᘏᗢ).
 
 Terminals that support the kitty keyboard protocol:
 

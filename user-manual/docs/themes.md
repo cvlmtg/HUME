@@ -47,15 +47,19 @@ A theme in your config directory wins over an installed or bundled one of the sa
 
 An entry takes the fields a theme file entry does: `'fg`, `'bg`, `'underline` with its `'style` and `'color`, and `'modifiers`. Modifier and underline style names are symbols spelled as in a theme file (`'crossed_out`, `'double_line`). An entry replaces the scope's whole style, so a field it leaves out is unset rather than taken from the theme.
 
-A style from `init.scm` wins over every theme and stays when you switch with `:theme`. A plugin's styles are defaults: the theme's own entry for a scope wins, and the plugin's applies where the theme has none, even when the theme styles a parent scope. A plugin's `markup.heading.1.line` style applies under a theme that styles only `markup.heading.1`.
+A style from `init.scm` wins over every theme and stays when you switch with `:theme`. A plugin's styles are defaults. The theme's own entry for a scope wins, and the plugin's applies where the theme has none, even when the theme styles a parent scope. For example, a plugin's `markup.heading.1.line` style applies under a theme that styles only `markup.heading.1`.
 
-A color is a hex literal, one of the sixteen terminal color names, or a name from the current theme's palette. A palette name is looked up again in each theme you switch to. In a theme that doesn't define it, that field stays unset and `:messages` names it. A malformed hex color or an unknown modifier or underline name raises an error, and none of the call's entries apply.
+A color is a hex literal, one of the sixteen terminal color names, or a name from the current theme's palette. A palette name is looked up again in each theme you switch to. In a theme that doesn't define it, that field stays unset and `:messages` names it.
+
+A malformed hex color or an unknown modifier or underline name raises an error, and none of the call's entries apply.
 
 ## Theme files
 
 Most Helix themes load and render unchanged. A scope can be written as a flat key (`"ui.cursor" = { fg = "..." }`) or as a TOML section header (`[ui.cursor]` / `fg = "..."`). HUME treats the two the same, but Helix reads only the flat form, so a section-header theme won't work in Helix. The theme editor below exports the flat form.
 
-A color can be a hex literal, a palette name you define, or one of the sixteen terminal color names Helix themes use (`red`, `light-gray`, and so on). The names resolve to fixed colors from the standard terminal palette, not to whatever your terminal has those colors set to. A color value in any other form leaves that one entry unstyled instead of failing the whole load, and `:messages` names it.
+A color can be a hex literal, a palette name you define, or one of the sixteen terminal color names Helix themes use (`red`, `light-gray`, and so on). The names resolve to fixed colors from the standard terminal palette, not to whatever your terminal has those colors set to.
+
+A color value in any other form leaves that one entry unstyled instead of failing the whole load, and `:messages` names it.
 
 HUME has no rainbow-bracket highlighting, so it ignores a Helix theme's top-level `rainbow` array. The rest of the theme still loads, and `:messages` reports the entry like any other entry HUME couldn't use.
 
@@ -99,9 +103,9 @@ These have no Helix equivalent:
 - `ui.window.focused`: seam divider segments next to the focused pane, falling back to `ui.window`
 - `ui.drawer`: background and border of the bottom drawer, the list panel that shows diagnostics, references and similar lists
 - `ui.tabline` / `ui.tabline.active`: the tab bar's row and its active tab. An unset `.active` falls back to the base `ui.tabline` style, unlike the statusline separator below
-- `ui.statusline.search` / `.command` / `.sift`: the statusline tint for Search, Command and [Sift](modes.md#sift-mode) mode, which Helix doesn't have. Helix's own `ui.statusline.normal`/`.insert`/`.select` work too; `.select` colors Extend mode, HUME's name for Helix's Select mode
+- `ui.statusline.search` / `.command` / `.sift`: the statusline tint for Search, Command and [Sift](modes.md#sift-mode) mode, which Helix doesn't have. Helix's own `ui.statusline.normal`/`.insert`/`.select` work too. `.select` colors Extend mode, HUME's name for Helix's Select mode
 - `ui.virtual.invisible`: the `<200b>`-style stand-in for a character the terminal must not be shown as itself (see [Buffer options](settings.md#buffer-options))
-- `diff.plus.line` / `diff.minus.line` / `diff.delta.line`: the whole-line background tint `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also colors the text of a deleted line). Left undefined, they paint nothing: an unmodified Helix theme colors the gutter marker (through `diff.plus`, `diff.minus` and `diff.delta`) but paints no line tint
+- `diff.plus.line` / `diff.minus.line` / `diff.delta.line`: the whole-line background tint `core:git-diff` paints for an added, deleted, or changed line (`diff.minus.line` also colors the text of a deleted line). Left undefined, they paint nothing. An unmodified Helix theme colors the gutter marker (through `diff.plus`, `diff.minus` and `diff.delta`) but paints no line tint
 - `diff.plus.word` / `diff.minus.word`: word-level highlight inside a changed line (`core:git-diff`'s inline diff), inside the line-level `.line` tint above
 - `markup.heading.1.marker` to `markup.heading.6.marker`: the level glyph and bar that stand in for a heading's `#` marker in the Markdown preview, which the bundled themes color like `markup.heading.N`. An unset one falls back to `markup.heading.N`
 - `markup.heading.1.text` to `markup.heading.6.text`: the text of a heading in the Markdown preview, which the bundled themes color like `markup.heading.N` and make bold. An unset one falls back to `markup.heading.N`
@@ -143,4 +147,6 @@ HUME's interface works differently for these, so put the color in the listed alt
 
 `ui.statusline.separator` divides the statusline's segments. HUME tints the whole statusline row by mode, so an undefined separator takes the row's current color rather than the untinted `ui.statusline`. A separator you set explicitly wins, in every mode.
 
-HUME's tab bar shows one tab per saved pane layout, not one per buffer, so it has its own `ui.tabline` / `ui.tabline.active` scopes rather than Helix's `ui.bufferline` / `ui.bufferline.active`. A theme that sets only the latter (every Helix theme) still renders correctly: `ui.tabline` falls back to `ui.bufferline` when unset, and `ui.tabline.active` to `ui.bufferline.active`.
+HUME's tab bar shows one tab per saved pane layout, not one per buffer. So it has its own `ui.tabline` / `ui.tabline.active` scopes rather than Helix's `ui.bufferline` / `ui.bufferline.active`.
+
+A theme that sets only the latter (every Helix theme) still renders correctly. `ui.tabline` falls back to `ui.bufferline` when unset, and `ui.tabline.active` to `ui.bufferline.active`.

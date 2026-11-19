@@ -12,9 +12,11 @@ Load `core:lsp` and `core:lsp-install` from your [`init.scm`](configuration.md) 
 (load-plugin! "core:lsp-install")  ; :lsp-install and friends; leave it out to manage servers yourself
 ```
 
-Neither plugin loads at startup: each loads the first time a buffer gets a language, or when you run one of its commands. To start `core:lsp` only for some languages, or only from some commands, see [Choosing your own triggers](plugins.md#choosing-your-own-triggers).
+Neither plugin loads at startup. Each loads the first time a buffer gets a language, or when you run one of its commands. To start `core:lsp` only for some languages, or only from some commands, see [Choosing your own triggers](plugins.md#choosing-your-own-triggers).
 
-A language uses the servers its [server list](#choosing-which-server-a-language-uses) names. Opening a file attaches every server on its language's list, starting each one once per project root. [`:lsp-install`](#installing-servers) installs a server, registers it and puts it on the list, so it is usually all you need. To manage a server yourself, [register it by hand](#registering-a-language-server) instead.
+A language uses the servers its [server list](#choosing-which-server-a-language-uses) names. Opening a file attaches every server on its language's list, starting each one once per project root.
+
+[`:lsp-install`](#installing-servers) installs a server, registers it and puts it on the list, so it is usually all you need. To manage a server yourself, [register it by hand](#registering-a-language-server) instead.
 
 ## Installing servers
 
@@ -35,7 +37,7 @@ Installing a server runs a few external tools. If one is missing, the install na
 - `gem`: for servers distributed as a Ruby gem
 - `dotnet`: for servers distributed as a .NET tool
 
-Install them with your system's package manager; `cargo` comes from [rustup.rs](https://rustup.rs). On Windows 10 and later, `tar` and `curl` come with the system and `gzip` comes with Git for Windows.
+Install them with your system's package manager. `cargo` comes from [rustup.rs](https://rustup.rs). On Windows 10 and later, `tar` and `curl` come with the system and `gzip` comes with Git for Windows.
 
 ### Install a server
 
@@ -51,7 +53,12 @@ Or name the language directly. Tab completes language names and the servers `:ls
 :lsp-install rust
 ```
 
-HUME installs the pinned version of the server, then registers it. A server published as a download is fetched and checked against its checksum; a server published as a package is installed through its package manager (npm, cargo, go, pip, gem or dotnet). Already-open buffers of that language attach immediately, with no restart. Running `:lsp-install` again for a server already at the pinned version never re-downloads.
+HUME installs the pinned version of the server, then registers it:
+
+- A server published as a download is fetched and checked against its checksum.
+- A server published as a package is installed through its package manager (npm, cargo, go, pip, gem or dotnet).
+
+Already-open buffers of that language attach immediately, with no restart. Running `:lsp-install` again for a server already at the pinned version never re-downloads.
 
 `:lsp-install` with a language installs the first server HUME knows for it. Some languages have more than one (Python has several, for example). To install another, name the server:
 
@@ -63,7 +70,7 @@ Naming a server HUME can't install tells you why ([Troubleshooting](#troubleshoo
 
 Installed servers for one language run together on a buffer, in the order HUME's catalog lists them, with any limits the catalog puts on what each is used for. To choose the order or the limits yourself, see [Choosing which server a language uses](#choosing-which-server-a-language-uses).
 
-You don't need to run this ahead of time: opening a file whose language has an installable, uninstalled server shows a one-line `run :lsp-install` hint, once per language per session.
+You don't need to run this ahead of time. Opening a file whose language has an installable, uninstalled server shows a one-line `run :lsp-install` hint, once per language per session.
 
 ### See what's available
 
@@ -71,7 +78,7 @@ You don't need to run this ahead of time: opening a file whose language has an i
 :lsp-catalog
 ```
 
-Opens a read-only `[lsp-catalog]` buffer listing every server HUME knows about, by name, with its languages and whether it's installed, out of date, or why it can't be installed here. A language a server only backs second to another is marked `(secondary)`. Many entries are listed so you can point HUME at a copy you install yourself, with [`register-lsp-server!`](#registering-a-language-server).
+Opens a read-only `[lsp-catalog]` buffer listing every server HUME knows about, by name. Each entry shows its languages and whether it's installed, out of date, or why it can't be installed here. A language a server only backs second to another is marked `(secondary)`. Many entries are listed so you can point HUME at a copy you install yourself, with [`register-lsp-server!`](#registering-a-language-server).
 
 ### Manage installed servers
 
@@ -102,13 +109,15 @@ For the last three, install the server yourself and [register it by hand](#regis
 
 **A server is on disk but nothing attaches.** `core:lsp-install` is probably not loaded. Add `(load-plugin! "core:lsp-install")` to your `init.scm`.
 
-**A server on your `$PATH` isn't the one HUME runs.** `:lsp-install` always runs the managed copy, even when the same command name is also on your `$PATH`, and a note after installing says so. To run your `$PATH` copy instead, [register it by hand](#registering-a-language-server) under the same name.
+**A server on your `$PATH` isn't the one HUME runs.** `:lsp-install` always runs the managed copy, even when the same command name is also on your `$PATH`. A note after installing says so. To run your `$PATH` copy instead, [register it by hand](#registering-a-language-server) under the same name.
 
 ## Registering a language server
 
-Register a server by hand when you don't install it with [`:lsp-install`](#installing-servers): a locally built server, a version HUME's catalog doesn't carry, or a `$PATH` copy you want instead of a managed install. `register-lsp-server!` itself doesn't need `core:lsp`, but the [commands that inspect, stop or restart servers](#managing-servers) come from `core:lsp`.
+Register a server by hand when you don't install it with [`:lsp-install`](#installing-servers). That covers a locally built server, a version HUME's catalog doesn't carry, or a `$PATH` copy you want instead of a managed install.
 
-A registration says how to start a server; a language uses it once the language's [server list](#choosing-which-server-a-language-uses) names it. The project root comes from the language's own root markers (`Cargo.toml` for Rust, `go.mod` for Go, and so on), which the bundled languages already carry.
+`register-lsp-server!` itself doesn't need `core:lsp`, but the [commands that inspect, stop or restart servers](#managing-servers) come from `core:lsp`.
+
+A registration says how to start a server. A language uses it once the language's [server list](#choosing-which-server-a-language-uses) names it. The project root comes from the language's own root markers (`Cargo.toml` for Rust, `go.mod` for Go, and so on), which the bundled languages already carry.
 
 ```scheme
 (register-lsp-server! "pyright" #:command "pyright-langserver" #:args '("--stdio"))
@@ -126,7 +135,7 @@ A registration says how to start a server; a language uses it once the language'
 | `#:settings` | Server configuration, available to the server while it runs; see [Server configuration](#server-configuration-init-options-and-settings) |
 | `#:env` | Extra environment variables for the server process, as a list of `("NAME" . "value")` pairs, added to HUME's own environment |
 
-A server you register under the same name as one installed with `:lsp-install` takes its place, wherever the call sits in your `init.scm`: `core:lsp-install` registers only names nobody has registered. Running `:lsp-install` for that name replaces your registration until the next start, when yours applies again. To keep both, register yours under a name of its own.
+A server you register under the same name as one installed with `:lsp-install` takes its place, wherever the call sits in your `init.scm`. `core:lsp-install` registers only names nobody has registered. Running `:lsp-install` for that name replaces your registration until the next start, when yours applies again. To keep both, register yours under a name of its own.
 
 ### Choosing which server a language uses
 
@@ -180,7 +189,7 @@ Each language server has its own configuration options, named and shaped by its 
 
 `#:settings` is sent right after the server is ready, and HUME also answers from it when the server later asks for a piece of its configuration by name. A piece your hash doesn't have gets an empty answer. Some servers read only one of the two, so when your server's docs show a settings file, pass the same hash as both.
 
-Changing either and running `:reload-config` updates what HUME has stored, but a running server keeps the configuration it started with until it restarts, and HUME says so once in the message log. Run `:lsp-restart` (or reinstall the server) to apply the change.
+Changing either and running `:reload-config` updates what HUME has stored. A running server keeps the configuration it started with until it restarts, and HUME says so once in the message log. Run `:lsp-restart` (or reinstall the server) to apply the change.
 
 ## Commands and keys
 
@@ -204,7 +213,7 @@ Changing either and running `:reload-config` updates what HUME has stored, but a
 | — | `:toggle-inlay-hints` | Show or hide inlay hints in the current buffer |
 | `Ctrl-Space` (Insert) | `completion-trigger` | Show completions at the cursor |
 
-Jumping to a definition, declaration, type, implementation or reference in another file opens that file as a buffer; `Ctrl-o` jumps back. A goto with more than one match opens a list to pick from instead of jumping, and `z r` always opens the list, even for a single hit.
+Jumping to a definition, declaration, type, implementation or reference in another file opens that file as a buffer. `Ctrl-o` jumps back. A goto with more than one match opens a list to pick from instead of jumping, and `z r` always opens the list, even for a single hit.
 
 ### The list drawer
 
@@ -217,13 +226,24 @@ The goto and references list (the same one `:diagnostics` opens) is a drawer acr
 
 The drawer stays open while you edit, so you can browse a long references list and edit without losing your place in either.
 
-The list follows your edits. When the number of lines changes in the file you asked from or in a file it lists, or an edit touches or moves a listed line, HUME asks the language server again about the same symbol once you pause typing, and replaces the rows. If nothing is found any more, the drawer closes with a message.
+The list follows your edits. HUME asks the language server again about the same symbol once you pause typing, and replaces the rows, when:
+
+- the number of lines changes in the file you asked from or in a file it lists;
+- an edit touches or moves a listed line.
+
+If nothing is found any more, the drawer closes with a message.
 
 A column from a file that is not open is the language server's own count, which can differ from HUME's when non-ASCII text comes before it on the line. The list gives the rows from files that are not open the `markup.italic` scope, so a theme can set them apart from the others.
 
 ### Completion and hints
 
-Typing while a completion menu is open narrows it. `Tab` and `Down` move to the next entry, `Shift-Tab` and `Up` to the previous, `Enter` accepts the highlighted one, and `Esc` dismisses the menu. Signature help pops up as you type an argument list for a function the server knows about, and inlay hints appear inline once enabled.
+Typing while a completion menu is open narrows it. In the menu:
+
+- `Tab` and `Down` move to the next entry, `Shift-Tab` and `Up` to the previous.
+- `Enter` accepts the highlighted one.
+- `Esc` dismisses the menu.
+
+Signature help pops up as you type an argument list for a function the server knows about, and inlay hints appear inline once enabled.
 
 ### Diagnostics
 
@@ -261,7 +281,9 @@ Off by default. To format the whole buffer every time you save, before the file 
   (lambda (pane done) (call! "lsp/format-document" pane done)))
 ```
 
-The save waits for the language server's answer, and `:wa` also formats buffers that no pane is showing. If there is no server, or it fails or doesn't answer within `hook-before-save-timeout-ms` (see [Global options](settings.md#global-options)), the buffer is saved as it is. An answer that arrives later still formats the buffer, leaving it modified.
+The save waits for the language server's answer, and `:wa` also formats buffers that no pane is showing.
+
+If there is no server, or it fails or doesn't answer within `hook-before-save-timeout-ms` (see [Global options](settings.md#global-options)), the buffer is saved as it is. An answer that arrives later still formats the buffer, leaving it modified.
 
 `lsp/format-document` also takes an optional third argument: a list of LSP ranges to format instead of the whole buffer, such as the `"ranges"` list [`lsp-linewise-ranges-params`](lsp-api.md#language-servers) returns.
 
@@ -272,8 +294,10 @@ Commands for a server that's already running. To install, browse the catalog, or
 | Command | Effect |
 |---------|--------|
 | `:lsp-status` | Show every running server and its state, each buffer's servers, and the servers you stopped |
-| `:lsp-stop [name]` | Stop a server (default: every server on the focused buffer); with a name, every running copy of that server. It stays stopped, even for new buffers and server-list changes, until `:lsp-restart`, `:reload-config` or a new `register-lsp-server!` of its name |
+| `:lsp-stop [name]` | Stop a server (default: every server on the focused buffer). With a name, every running copy of that server |
 | `:lsp-restart [name]` | Stop and restart a server, or start one that was stopped (default: every server on the focused buffer) |
+
+A server you stop with `:lsp-stop` stays stopped, even for new buffers and server-list changes, until `:lsp-restart`, `:reload-config` or a new `register-lsp-server!` of its name.
 
 A server stops by itself once no open buffer uses it: after you close its last buffer, or when a change to a server list or a buffer's language leaves it out. Opening a matching file starts it again. A server that crashed stays down for its buffers until you run `:lsp-restart`.
 

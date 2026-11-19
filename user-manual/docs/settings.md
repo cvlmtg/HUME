@@ -4,7 +4,11 @@ Every option HUME has, how text wrap works, the statusline elements, and how a f
 
 An option's name starts with the area it belongs to: `indent-`, `insert-`, `gutter-`, `lsp-`, and so on. Type the area after `:set global ` and press `Tab` to list every option in it.
 
-`:get` shows an option's value as `<option>=<value>`, written the way `:set` takes it: `:get global <option>` for the global value, `:get buffer <option>` for the value in the current buffer, its override or else the global value, and `:get pane wrap-mode` for the current pane's.
+`:get` shows an option's value as `<option>=<value>`, written the way `:set` takes it:
+
+- `:get global <option>` for the global value;
+- `:get buffer <option>` for the value in the current buffer, its override or else the global value;
+- `:get pane wrap-mode` for the current pane's.
 
 ## Global options
 
@@ -12,12 +16,12 @@ Set with `:set global <option>=<value>` or `(set-option! "option" value)`. All o
 
 For a `bool` option, `:set` accepts `true`/`false`, `on`/`off`, `yes`/`no`, or `1`/`0`; from Scheme, pass `#t`/`#f`. The tables write defaults as `true`/`false`.
 
-The `lsp-` options apply to every language server. `core:lsp` takes its own options when you load it; see [Language Servers](lsp.md#settings) for those, and for setup and commands.
+The `lsp-` options apply to every language server. `core:lsp` takes its own options when you load it. See [Language Servers](lsp.md#settings) for those, and for setup and commands.
 
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `clipboard-joins-ring` | `always` \| `paste` \| `never` | `always` | When text copied in another application joins the kill ring. `always` adds it at your next `p`, `d`, `c` or `y`, `paste` only at your next `p`, and `never` leaves it on the clipboard, where `"cp` still pastes it. See [Smart paste](copy-and-paste.md#smart-paste) |
-| `command-completion` | `common-prefix` \| `first-candidate` | `common-prefix` | What the first `Tab` at the `:` or `\|` prompt does when several candidates match. `common-prefix` completes their longest shared text without picking one, so the next `Tab` picks the first; `first-candidate` fills in the first candidate at once |
+| `clipboard-joins-ring` | `always` \| `paste` \| `never` | `always` | When text copied in another application joins the kill ring. Values are listed under this table. See [Smart paste](copy-and-paste.md#smart-paste) |
+| `command-completion` | `common-prefix` \| `first-candidate` | `common-prefix` | What the first `Tab` at the `:` or `\|` prompt does when several candidates match. `common-prefix` completes their longest shared text without picking one, so the next `Tab` picks the first. `first-candidate` fills in the first candidate at once |
 | `completion-docs` | bool | `true` | Show the highlighted completion's details and documentation in a box beside the completion menu. When off, or when the box doesn't fit beside the menu, the details show in the menu instead. |
 | `hook-before-save-timeout-ms` | integer ≥ 1 | `1000` | How long a save waits for `on-before-buffer-save` handlers before writing the file anyway |
 | `hook-viewport-debounce-ms` | integer ≥ 1 | `80` | Delay after scrolling stops before plugins are told which lines are visible, e.g. to request inlay hints for them |
@@ -35,12 +39,12 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 | `pane-dividers` | bool | `true` | Draw a 1-cell divider between sibling panes |
 | `popup-border` | bool | `true` | Show borders on popups, menus, pickers and the bottom drawer |
 | `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?`/`\|` prompt history |
-| `scroll-jump-align` | `top` \| `center` \| `off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …); `top` still respects `scroll-margin` |
+| `scroll-jump-align` | `top` \| `center` \| `off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …). `top` still respects `scroll-margin` |
 | `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor. Above the cursor, scope header rows at the top of a pane count on top of it |
 | `session-directory` | path | `""` | Where saved sessions are kept (see [Saved sessions](files-and-buffers.md#saved-sessions)). Empty means `sessions` in HUME's state directory. Otherwise an absolute path, which may start with `~` |
 | `session-persist` | bool | `false` | Starting HUME with no files brings back the session last saved for `session-root`, and quitting saves it. See [Saved sessions](files-and-buffers.md#saved-sessions) |
 | `session-root` | path | the directory HUME started in | The directory a session belongs to; `:cd` doesn't change it. An absolute path, which may start with `~`. See [Saved sessions](files-and-buffers.md#saved-sessions) |
-| `shell` | word list | `sh -c` | The program and leading arguments that run a shell command typed after `\|`, which is passed as the last argument. With `:set`, separate words with spaces and double-quote a word that contains spaces. From Scheme, pass a list of strings: `(set-option! "shell" '("fish" "-c"))`. `Tab` on the `\|` prompt follows this shell's quoting (see [Shell commands](editing.md#shell-commands)) |
+| `shell` | word list | `sh -c` | The program and leading arguments that run a shell command typed after `\|`, which is passed as the last argument. How to set it is listed under this table |
 | `statusline` | `left` \| `center` \| `right` | see [Statusline](#statusline) | Three `\|`-separated sections of comma-separated element names. Set it with `configure-statusline!`. From Scheme, `get-option` returns it as `(hash 'left 'center 'right)`, each a list of element names, and `set-option!` takes that hash |
 | `statusline-mode-colors` | bool | `true` | Tint the whole statusline with the current mode's color; off shows the [theme](themes.md)'s base `ui.statusline` color in every mode |
 | `steel-command-budget-ms` | integer ≥ 1 | `1000` | Max time (ms) a script command, hook or callback may spend running Scheme before it is stopped. Time spent waiting on the system for it, such as for a program it runs, doesn't count. A stopped script runs none of its error handlers |
@@ -50,6 +54,19 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 | `theme` | string | `sand` | Active color [theme](themes.md) name. Empty selects the built-in fallback theme |
 | `undo-directory` | path | `""` | Where saved undo history is kept (see [Saved undo history](files-and-buffers.md#saved-undo-history)). Empty means `undo` in HUME's state directory. Otherwise an absolute path, which may start with `~` |
 | `undo-levels` | integer | `0` | Max undo states kept per buffer; `0` means unlimited. Past the limit, new edits drop the oldest states, including whole abandoned branches |
+
+::: details `clipboard-joins-ring` values
+- `always`: copied text joins the kill ring at your next `p`, `d`, `c` or `y`.
+- `paste`: only at your next `p`.
+- `never`: it stays on the clipboard, where `"cp` still pastes it.
+:::
+
+::: details Setting `shell`
+- With `:set`, separate words with spaces and double-quote a word that contains spaces.
+- From Scheme, pass a list of strings: `(set-option! "shell" '("fish" "-c"))`.
+
+`Tab` on the `|` prompt follows this shell's quoting (see [Shell commands](editing.md#shell-commands)).
+:::
 
 ## Buffer options
 
@@ -73,7 +90,7 @@ A buffer option you set, with `:set buffer` or from a hook in your `init.scm`, b
 | `file-reload-prompt` | bool | `true` | Prompt to reload when the current buffer's file changes on disk. `false` only warns; reload manually with `:e!` |
 | `gutter-folds` | bool | `true` | Show a caret beside each line a fold starts on, `▾` while open and `▸` while closed, for languages whose grammar has foldable regions. See [Folding](syntax-highlighting.md#folding) |
 | `gutter-line-numbers` | `absolute` \| `relative` \| `hybrid` | `hybrid` | Line number display in the gutter |
-| `gutter-signs` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Bare `always`/`auto` gives one column per registered sign source. A source claims its column when the plugin registers it, so the width doesn't change as signs come and go. `:N` fixes the width at N columns (1–127) instead, hiding lower-priority sources that don't fit. `auto` also collapses to zero width when no signs are visible |
+| `gutter-signs` | `always[:N]` \| `auto[:N]` | `always` | Gutter column for plugin-supplied signs (diagnostics, git changes, etc). Values are listed under this table |
 | `indent-guides` | bool | `true` | Draw vertical guides at each indentation level |
 | `indent-smart` | bool | `true` | Enter, `o` and `O` indent a new line from the language's syntax, or copy the current line's indent when the language has no grammar. A closing token such as `}` typed on that new line moves it back to its block's indent. `false`: new lines start at the left margin, and nothing moves back as you type |
 | `indent-style` | `hard` \| `soft` | `hard` | What `Tab` inserts: `hard` = literal `\t`; `soft` = spaces to next tab stop |
@@ -89,6 +106,12 @@ A buffer option you set, with `:set buffer` or from a hook in your `init.scm`, b
 | `word-chars` | string | `""` | Extra characters counted as part of a word, e.g. `-` makes `foo-bar` one word instead of three. Set it per language from an `on-language-set` hook (see [From `init.scm`](configuration.md#from-init-scm)). Everything it affects is listed under this table |
 | `word-selects-whitespace` | `off` \| `before` \| `after` | `before` | Which whitespace `w`/`W`/`b`/`B`, `m m`/`M M` and `m a w`/`m a W` add to the word they select. Listed under this table |
 | `wrap-mode` | `none` \| `soft[:N]` \| `word[:N]` \| `indent[:N]` | `indent` | Line wrapping. `N` is the wrap column (`0` or omitted = pane content width). `:set pane wrap-mode=<value>` also pins one pane above the buffer/global setting; see [Text wrap](#text-wrap) |
+
+::: details `gutter-signs` values
+- Bare `always`/`auto` gives one column per registered sign source. A source claims its column when the plugin registers it, so the width doesn't change as signs come and go.
+- `:N` fixes the width at N columns (1–127) instead, hiding lower-priority sources that don't fit.
+- `auto` also collapses to zero width when no signs are visible.
+:::
 
 ::: details What `word-selects-whitespace` selects
 - `before`: the whitespace before the word, or after it when none precedes it (the first word of a line, or a word right after punctuation).
@@ -110,7 +133,7 @@ The characters count as part of a word for `w`/`b`, `m m`, `m i w`/`m a w`, the 
 They don't affect `W`/`B`/`M M`, which already treat punctuation as part of an uppercase word. Whitespace and newline characters are rejected.
 :::
 
-Characters the terminal cannot show (control characters, and invisible ones such as a zero-width space or a bidirectional override) always display as their codepoint (`<200b>`), styled with the [theme](themes.md#scopes-hume-adds)'s `ui.virtual.invisible` scope, whatever the options above say. You can't hide them as you can whitespace.
+Characters the terminal cannot show (control characters, and invisible ones such as a zero-width space or a bidirectional override) always display as their codepoint (`<200b>`), whatever the options above say. They are styled with the [theme](themes.md#scopes-hume-adds)'s `ui.virtual.invisible` scope. You can't hide them as you can whitespace.
 
 ## Text wrap
 
@@ -123,7 +146,9 @@ Three layers control text wrap: a global default, a per-buffer override and a pe
 ::: details How pins and `:wrap` work together
 Switching a pinned pane to a different buffer uses the new buffer's own setting; switching back returns the pin. No command makes a pinned pane follow the buffer/global setting again. To move on from a pin, pin a different value or close the buffer.
 
-Turning wrapping off with `:wrap` pins the pane to no wrap. Turning it back on restores what the pane did before: the buffer/global setting if the pane wasn't pinned, or the style you pinned with `:set pane wrap-mode=…`. If that setting doesn't wrap, `:wrap` pins the configured global style instead (or `indent`, if the global itself is `none`), so turning it on always visibly wraps.
+Turning wrapping off with `:wrap` pins the pane to no wrap.
+
+Turning it back on restores what the pane did before: the buffer/global setting if the pane wasn't pinned, or the style you pinned with `:set pane wrap-mode=…`. If that setting doesn't wrap, `:wrap` pins the configured global style instead (or `indent`, if the global itself is `none`). So turning it on always visibly wraps.
 
 Two panes showing the same buffer wrap independently once one of them is pinned with `:set pane` or `:wrap`.
 :::
@@ -199,4 +224,4 @@ Placing the element and pushing its text are independent: either can come first,
 
 ## Language detection
 
-HUME detects a file's language from its extension, a glob pattern, or its shebang line. See [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language) for defining custom languages with `define-language!`, setting their project roots and language-server identifier with `configure-language!` and, for grammars HUME doesn't ship, `register-grammar!`.
+HUME detects a file's language from its extension, a glob pattern, or its shebang line. See [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language) for defining custom languages with `define-language!`, and for setting their project roots and language-server identifier with `configure-language!`. It also covers `register-grammar!`, for grammars HUME doesn't ship.

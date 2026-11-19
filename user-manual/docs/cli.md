@@ -26,20 +26,27 @@ You can paste a `file:line:col` from a compiler, linter or `grep` straight onto 
 |------|-------------|
 | `--keys <STREAM>` | Headless mode: replays the key `STREAM` against a single `FILE` on an 80×25 screen, with no terminal, and writes the result to `--output`. See [Headless mode](#headless-mode). |
 | `--output <PATH>` | Where headless mode writes the result. Required by and requires `--keys`. A relative `PATH` is resolved against the shell's working directory at startup, so a `:cd` in the key stream does not move it. |
-| `--config <FILE>` | Load configuration from `FILE` instead of the default `init.scm`. Themes and the data directory still resolve from the standard directories (see [Configuration](configuration.md#file-locations)). `FILE` must exist and be readable. A relative `FILE` is resolved at startup, and `:reload-config` re-reads that same path, even after a `:cd`. Not valid with `--no-config`. |
-| `--no-config` | Skip `init.scm`: no plugins, no keybindings or settings from your config. Language detection and syntax highlighting still work. Useful to rule out your config while tracking down a bug. `:reload-config` refuses to run for the rest of the session. Not valid with `--config`. |
+| `--config <FILE>` | Load configuration from `FILE` instead of the default `init.scm`. Not valid with `--no-config`. |
+| `--no-config` | Skip `init.scm`: no plugins, no keybindings or settings from your config. Not valid with `--config`. |
 | `-h`, `--help` | Print help and exit. |
 | `-V`, `--version` | Print the HUME version (e.g. `hume x.y.z`) and exit. `:version` shows the same string inside the editor. |
 
+- `--config`: themes and the data directory still resolve from the standard directories (see [Configuration](configuration.md#file-locations)). `FILE` must exist and be readable. A relative `FILE` is resolved at startup, and `:reload-config` re-reads that same path, even after a `:cd`.
+- `--no-config`: language detection and syntax highlighting still work. Useful to rule out your config while tracking down a bug. `:reload-config` refuses to run for the rest of the session.
+
 ## Headless mode
 
-`--keys` runs HUME without a terminal: it opens `FILE` (which can carry `:LINE` or `:LINE:COLUMN`), types the key stream into it, and writes the resulting text to `--output`. It loads your `init.scm` and plugins as an interactive session does; add `--no-config` for a run that doesn't depend on your config. Every message HUME logs goes to stderr, trace detail included, and any error makes `hume` exit with status 1. If your config or a plugin fails to load, no keys are replayed and `--output` is not written. The run has a clipboard of its own: what it yanks never reaches the system clipboard, and `p` never pastes from it.
+`--keys` runs HUME without a terminal. It opens `FILE` (which can carry `:LINE` or `:LINE:COLUMN`), types the key stream into it, and writes the resulting text to `--output`.
 
-In the key stream every character is one keystroke, a space included. Other keys go in angle brackets: `<esc>`, `<ret>` (or `<enter>`), `<tab>`, `<backspace>`, `<up>`, `<pageup>`, `<f1>` and so on, with modifiers as `<c-x>` (Ctrl), `<a-x>` (Alt) and `<s-tab>` (Shift). `<lt>` types a literal `<`.
+- **Config:** it loads your `init.scm` and plugins as an interactive session does. Add `--no-config` for a run that doesn't depend on your config. If your config or a plugin fails to load, no keys are replayed and `--output` is not written.
+- **Messages:** every message HUME logs goes to stderr, trace detail included, and any error makes `hume` exit with status 1.
+- **Clipboard:** the run has a clipboard of its own. What it yanks never reaches the system clipboard, and `p` never pastes from it.
+
+In the key stream every character is one keystroke, a space included. Other keys go in angle brackets: `<esc>`, `<ret>` (or `<enter>`), `<tab>`, `<backspace>`, `<up>`, `<pageup>`, `<f1>` and so on. Modifiers are written `<c-x>` (Ctrl), `<a-x>` (Alt) and `<s-tab>` (Shift). `<lt>` types a literal `<`.
 
 ## Environment
 
-`HUME_RUNTIME` points HUME at a different runtime directory (see [Configuration](configuration.md#file-locations)). HUME has no flags for the log level or the theme. Logging is in memory only; read it with `:messages` (see [Files & Buffers](files-and-buffers.md#persistence-and-safety)).
+`HUME_RUNTIME` points HUME at a different runtime directory (see [Configuration](configuration.md#file-locations)). HUME has no flags for the log level or the theme. Logging is in memory only. Read it with `:messages` (see [Files & Buffers](files-and-buffers.md#persistence-and-safety)).
 
 ## Examples
 

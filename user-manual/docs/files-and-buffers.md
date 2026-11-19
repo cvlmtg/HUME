@@ -8,11 +8,15 @@ Open a file with `:e <path>`; `Tab` completes file paths. `:e` with no argument 
 
 ### Opening at a position
 
-Append a line, or a line and column, to jump straight there: `:e file.txt:42` or `:e file.txt:42:5`. Both numbers are 1-based, as in a `file:line:col` diagnostic from a compiler, linter or `grep`, so you can paste one straight after `:e`. A path that exists as typed, on disk or already open, always wins over splitting: a file named `notes:2024` still opens as itself.
+Append a line, or a line and column, to jump straight there: `:e file.txt:42` or `:e file.txt:42:5`. Both numbers are 1-based, as in a `file:line:col` diagnostic from a compiler, linter or `grep`, so you can paste one straight after `:e`.
+
+A path that exists as typed, on disk or already open, always wins over splitting: a file named `notes:2024` still opens as itself.
 
 ### New files
 
-`:e filename` on a path that doesn't exist yet opens an empty buffer bound to it instead of failing. `:w` creates the file the first time you save, and `:wa` saves it along with any other modified buffer. Until then, `:e` with no argument does nothing on that buffer. If something else creates a file at that path before you save, `:w` refuses to overwrite it; `:w!` saves anyway.
+`:e filename` on a path that doesn't exist yet opens an empty buffer bound to it instead of failing. `:w` creates the file the first time you save, and `:wa` saves it along with any other modified buffer. Until then, `:e` with no argument does nothing on that buffer.
+
+If something else creates a file at that path before you save, `:w` refuses to overwrite it. `:w!` saves anyway.
 
 ### External changes
 
@@ -24,7 +28,9 @@ If something else changes a file you have open (another program, a formatter, `g
 
 The prompt only appears when it can't interrupt something else. While you're typing at a prompt, or in Insert mode, HUME warns instead and asks the next time you land on the buffer.
 
-Turn the prompt off with `:set global file-reload-prompt=false` (or `:set buffer file-reload-prompt=false` for the current buffer only). HUME still warns you, without asking. Either way, `:w` refuses to overwrite a file that changed since you last read or saved it; `:w!` saves anyway.
+Turn the prompt off with `:set global file-reload-prompt=false` (or `:set buffer file-reload-prompt=false` for the current buffer only). HUME still warns you, without asking.
+
+Either way, `:w` refuses to overwrite a file that changed since you last read or saved it. `:w!` saves anyway.
 
 ## The buffer list
 
@@ -50,13 +56,19 @@ A **pane** is a viewport onto a buffer. The buffer is the open file; a pane is w
 
 `:sp` and `:vsp` split the focused pane (see [Panes](command-mode.md#panes)); without a path, the new pane views the same buffer as the focused one. The keys for splitting, focusing, closing and rotating panes are listed under [Pane prefix](default-keys.md#pane-prefix-ctrl-p) in Default Keys.
 
-HUME refuses to split, with a message, when a pane would end up too small. Until you resize one of them, panes sharing a split axis stay the same size: three `:vsplit`s in a row give three equal columns, not one half and two quarters, and closing a pane shares its space equally among the rest.
+HUME refuses to split, with a message, when a pane would end up too small. Until you resize one of them, panes sharing a split axis stay the same size. Three `:vsplit`s in a row give three equal columns, not one half and two quarters, and closing a pane shares its space equally among the rest.
 
-`Ctrl-p >` and `Ctrl-p <` widen and narrow the focused pane, and `Ctrl-p +` and `Ctrl-p -` make it taller and shorter: by one column or row, or by a count typed first (`5 Ctrl-p >`). The space comes from the next pane in the innermost row or column the focused pane belongs to, or from the one before when it is the last there. Panes further out keep their size. No pane shrinks below its minimum size. With `pane-dividers` on, you can also drag the divider between two panes.
+`Ctrl-p >` and `Ctrl-p <` widen and narrow the focused pane, and `Ctrl-p +` and `Ctrl-p -` make it taller and shorter. Each step is one column or row, or a count typed first (`5 Ctrl-p >`).
+
+The space comes from the next pane in the innermost row or column the focused pane belongs to, or from the one before when it is the last there. Panes further out keep their size. No pane shrinks below its minimum size.
+
+With `pane-dividers` on, you can also drag the divider between two panes.
 
 Once a row or column has been resized, a split there halves the focused pane and leaves the other panes as they are, and closing a pane gives its space to the pane beside it. `Ctrl-p =` makes every row and column of the tab even again.
 
-A divider is drawn between panes (the `pane-dividers` option, on by default), and panes without focus are dimmed. Wrap follows the buffer/global setting unless you pin it for a pane: `:wrap` toggles it for the focused pane, and `:set pane wrap-mode=<value>` pins its style directly. Two panes on the same buffer then wrap independently. See [Text wrap](settings.md#text-wrap).
+A divider is drawn between panes (the `pane-dividers` option, on by default), and panes without focus are dimmed.
+
+Wrap follows the buffer/global setting unless you pin it for a pane: `:wrap` toggles it for the focused pane, and `:set pane wrap-mode=<value>` pins its style directly. Two panes on the same buffer then wrap independently. See [Text wrap](settings.md#text-wrap).
 
 ## Tabs
 
@@ -82,7 +94,7 @@ HUME has one working directory, which `:pwd` shows and `:cd` changes. Relative p
 - On a tab's last pane, with other tabs open, it closes the tab. Its buffers stay open.
 - On the last pane of the last tab, it closes the buffer and shows another one. When no other file, and no other buffer with unsaved changes, is open, it quits HUME instead.
 
-Unsaved changes block closing a buffer or quitting, and so does a running shell command (started with `|`) that closing would stop; `:q!` discards the changes and stops the command. `:qa` quits everything at once. See [Quitting and saving](command-mode.md#quitting-and-saving).
+Unsaved changes block closing a buffer or quitting. So does a running shell command (started with `|`) that closing would stop. `:q!` discards the changes and stops the command. `:qa` quits everything at once. See [Quitting and saving](command-mode.md#quitting-and-saving).
 
 ## Scratch buffers
 
@@ -104,7 +116,9 @@ The statusline shows `[RO]` for them, and editing commands are refused with a wa
 
 In `[messages]`, each entry's `[warning]`/`[error]`/`[trace]` tag and message text are colored by severity, and themes can restyle these independently of everything else.
 
-`[messages]` stays up to date while it is open: new messages appear at the end, and changing `messages-min-severity` shows or hides entries. Your cursor stays on its entry. If that entry is hidden or dropped from the log, the cursor moves to the next entry, or to the one before when it was the last. Messages count as read once the end of `[messages]` is on screen, and the statusline stops counting them.
+`[messages]` stays up to date while it is open: new messages appear at the end, and changing `messages-min-severity` shows or hides entries. Your cursor stays on its entry. If that entry is hidden or dropped from the log, the cursor moves to the next entry, or to the one before when it was the last.
+
+Messages count as read once the end of `[messages]` is on screen, and the statusline stops counting them.
 
 Files you open are always editable, whatever their permissions on disk. A write you aren't allowed to make fails at `:w` rather than being blocked up front.
 
@@ -116,8 +130,14 @@ Files you open are always editable, whatever their permissions on disk. A write 
 - **Unsaved changes survive a crash.** If HUME itself panics, it writes them to disk and offers them back the next time you open the file; see [Crash recovery](#crash-recovery).
 - **A background crash doesn't stop HUME.** If a background task crashes (syntax highlighting, a language server connection), HUME keeps running. The crash appears as an error in `:messages` and is printed on the terminal after you quit. The feature that task ran can stop working until you restart.
 - **UTF-8 only.** Invalid bytes are rejected with an error (no lossy fallback). A byte-order mark isn't stripped; it appears as a character at the top of the buffer.
-- **CRLF detected and preserved.** A CRLF file is normalized to LF in the buffer and re-expanded to CRLF on save; the statusline shows `CRLF` or `LF`. To convert a file, run `:set buffer line-ending=lf` or `:set buffer line-ending=crlf` and save. Text arriving from anywhere else (a paste, a register, an edit from a language server) is normalized the same way, so a buffer's lines always end in LF. A file with bare CR line endings (pre-OS X Mac) reads correctly, but HUME doesn't preserve that convention: it loads and saves as LF.
-- **No on-disk log file.** `:messages` is the whole logging surface: an in-memory ring capped at 1000 entries, discarded on exit. When it is full, the oldest trace entry goes first, then the oldest warning, then the oldest error. `:messages` shows warnings and errors; set `messages-min-severity` to `trace` to also show the detail useful for debugging, or to `error` to show errors only. The setting changes only what is shown, so lowering it also shows messages reported before. To keep warnings or errors, copy them out of `:messages` before quitting.
+- **CRLF detected and preserved.** A CRLF file is normalized to LF in the buffer and re-expanded to CRLF on save. The statusline shows `CRLF` or `LF`.
+  - To convert a file, run `:set buffer line-ending=lf` or `:set buffer line-ending=crlf` and save.
+  - Text arriving from anywhere else (a paste, a register, an edit from a language server) is normalized the same way, so a buffer's lines always end in LF.
+  - A file with bare CR line endings (pre-OS X Mac) reads correctly, but HUME doesn't preserve that convention: it loads and saves as LF.
+- **No on-disk log file.** `:messages` is the whole logging surface: an in-memory ring capped at 1000 entries, discarded on exit. To keep warnings or errors, copy them out of `:messages` before quitting.
+  - When the ring is full, the oldest trace entry goes first, then the oldest warning, then the oldest error.
+  - `:messages` shows warnings and errors. Set `messages-min-severity` to `trace` to also show the detail useful for debugging, or to `error` to show errors only.
+  - The setting changes only what is shown, so lowering it also shows messages reported before.
 
 ### Saved undo history
 
@@ -125,16 +145,23 @@ With `undo-persist` on, every save of a file, and every reload of it from disk, 
 
 - Turn it on everywhere with `(set-option! "undo-persist" #t)` in `init.scm`, or for one buffer with `:set buffer undo-persist=true`. To keep some files out, such as files holding secrets, set it to `false` for them from an `on-language-set` hook.
 - Opening a file brings its saved history back whatever `undo-persist` says. Turning the option off stops saving new history but deletes nothing.
-- The history comes back only when the file still holds the text it was saved with: a file changed elsewhere since the save opens with fresh history. So does a file whose history file is damaged, can't be read, or isn't a HUME history file, with a warning.
+- The history comes back only when the file still holds the text it was saved with. A file changed elsewhere since the save opens with fresh history. So does a file whose history file is damaged, can't be read, or isn't a HUME history file, with a warning.
 - When two HUME instances save the same file, the last save's history wins.
 
-Saved history lives in HUME's state directory: `~/.local/state/hume/undo` (or `$XDG_STATE_HOME/hume/undo`), `%LOCALAPPDATA%\hume\undo` on Windows. Set `undo-directory` to keep it elsewhere. Inside it, each file's history sits at the file's own full path with `.undo` added, so the history of `/home/me/notes.txt` is `undo/home/me/notes.txt.undo` (on Windows the drive letter comes first, as in `undo/C/Users/me/notes.txt.undo`). A file opened through a symlink shares its history with the file it points to. Saved history keeps text you deleted, so on Linux and macOS its files and the folders HUME creates for them are readable only by you.
+Saved history lives in HUME's state directory. Set `undo-directory` to keep it elsewhere.
 
-Nothing removes old history files. To forget a file's history, delete its `.undo` file; to forget a whole project's, delete its folder.
+- Linux and macOS: `~/.local/state/hume/undo` (or `$XDG_STATE_HOME/hume/undo`).
+- Windows: `%LOCALAPPDATA%\hume\undo`.
+
+Inside it, each file's history sits at the file's own full path with `.undo` added. The history of `/home/me/notes.txt` is `undo/home/me/notes.txt.undo`. On Windows the drive letter comes first, as in `undo/C/Users/me/notes.txt.undo`. A file opened through a symlink shares its history with the file it points to.
+
+Saved history keeps text you deleted, so on Linux and macOS its files and the folders HUME creates for them are readable only by you.
+
+Nothing removes old history files. To forget a file's history, delete its `.undo` file. To forget a whole project's, delete its folder.
 
 ### Saved sessions
 
-With `session-persist` on, quitting HUME saves the session of its session root, by default the directory HUME started in, and starting `hume` with no files and the same root brings it back:
+With `session-persist` on, quitting HUME saves the session of its session root, by default the directory HUME started in. Starting `hume` with no files and the same root brings it back:
 
 - the files shown in a pane of any tab, and the last file you saw before the current one, so `:b#` still goes back to it;
 - your tabs and splits, their sizes, and which pane had focus;
@@ -142,10 +169,11 @@ With `session-persist` on, quitting HUME saves the session of its session root, 
 - the registers `q` and `0`–`9`, recorded macros included;
 - what you typed at the `:`, `/`, `?` and `|` prompts, and the last search, so `n` works at once.
 
-Other open files, scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill ring `k` and the clipboard `c` are not kept: a session records which files to reopen, not their text, so save your changes to keep them.
+Other open files, scratch buffers, read-only views such as `[messages]`, unsaved changes, the kill ring `k` and the clipboard `c` are not kept. A session records which files to reopen, not their text, so save your changes to keep them.
 
 - Turn it on with `(set-option! "session-persist" #t)` in `init.scm`. Turning it off stops both saving and restoring, and deletes nothing.
-- Starting HUME with files, as in `hume notes.txt`, opens just those files and leaves the saved session alone: quitting that run doesn't save over it. Run `:save-session` to make it a session after all: it saves the session at once, replacing the saved one, and quitting saves it again. In any session, `:save-session` saves it right away.
+- Starting HUME with files, as in `hume notes.txt`, opens just those files and leaves the saved session alone. Quitting that run doesn't save over it.
+- In such a run, `:save-session` makes it a session after all. It saves the session at once, replacing the saved one, and quitting saves it again. In any session, `:save-session` saves it right away.
 - `:cd` doesn't move the session: it stays with the session root, and restoring one leaves you in the directory you started in.
 - To share one session across a project, set `session-root` from `init.scm`. With `core:stdlib` loaded, this keys sessions by git repository, and by the starting directory outside one:
 
@@ -153,13 +181,22 @@ Other open files, scratch buffers, read-only views such as `[messages]`, unsaved
   (set-option! "session-root" (or (call! "stdlib/git-toplevel") (cwd)))
   ```
 
-  Only the value `init.scm` sets decides which session comes back. `:reload-config` runs `init.scm` again, so a root worked out from the current directory, as this one is, follows a `:cd` made before the reload. A session root that isn't a directory is reported at startup, and nothing is saved to it.
+  Only the value `init.scm` sets decides which session comes back. `:reload-config` runs `init.scm` again, so a root worked out from the current directory, as this one is, follows a `:cd` made before the reload.
+
+  A session root that isn't a directory is reported at startup, and nothing is saved to it.
 - HUME saves it however it ends, including when you close the terminal window, but not when HUME itself crashes.
 - A file changed since the session was saved comes back in its place in the layout, at its top. A file that has been deleted since is left out. A damaged session file is ignored, with a warning.
 - A pane that would be too small in the current terminal is left out, with a warning, and its space stays with the pane it was split from.
 - When two HUME instances with the same session root quit, the last one's session wins, wherever under the root each was started.
 
-Saved sessions live in HUME's state directory: `~/.local/state/hume/sessions` (or `$XDG_STATE_HOME/hume/sessions`), `%LOCALAPPDATA%\hume\sessions` on Windows. Set `session-directory` to keep them elsewhere. Each session sits at its root's own full path with `.session` added, so the session of `/home/me/project` is `sessions/home/me/project.session`. A root reached through a symlink shares its session with the directory it points to. On Linux and macOS its files and the folders HUME creates for them are readable only by you.
+Saved sessions live in HUME's state directory. Set `session-directory` to keep them elsewhere.
+
+- Linux and macOS: `~/.local/state/hume/sessions` (or `$XDG_STATE_HOME/hume/sessions`).
+- Windows: `%LOCALAPPDATA%\hume\sessions`.
+
+Each session sits at its root's own full path with `.session` added, so the session of `/home/me/project` is `sessions/home/me/project.session`. A root reached through a symlink shares its session with the directory it points to.
+
+On Linux and macOS its files and the folders HUME creates for them are readable only by you.
 
 Nothing removes old sessions. To forget one, delete its `.session` file.
 
@@ -170,7 +207,9 @@ If HUME panics, receives a signal such as `SIGTERM` or `SIGHUP`, or loses its te
 Where the dump goes:
 
 - A buffer for `foo.txt` is dumped next to it as `foo.txt.dump`, with its line endings intact.
-- An unsaved scratch buffer, or a file whose folder can't be written to, has nowhere to put a dump beside the file. These go to the `dumps` folder of HUME's data directory (`~/.local/share/hume/dumps`, or `$XDG_DATA_HOME/hume/dumps`; `%LOCALAPPDATA%\hume\dumps` on Windows) as `scratch-<pid>-<n>.dump` (`<file>-<pid>-<n>.dump` for a file). HUME doesn't offer those dumps back; open the file and copy what you need out of it.
+- An unsaved scratch buffer, or a file whose folder can't be written to, has nowhere to put a dump beside the file. These go to the `dumps` folder of HUME's data directory as `scratch-<pid>-<n>.dump` (`<file>-<pid>-<n>.dump` for a file). HUME doesn't offer those dumps back: open the file and copy what you need out of it. That folder is:
+  - Linux and macOS: `~/.local/share/hume/dumps` (or `$XDG_DATA_HOME/hume/dumps`).
+  - Windows: `%LOCALAPPDATA%\hume\dumps`.
 
 On Linux and macOS a dump is readable only by you; on Windows it gets the folder's permissions, like any new file there.
 
@@ -189,7 +228,7 @@ The next time you open `foo.txt` and `foo.txt.dump` exists, HUME asks what to do
 | `d` | Discard: the dump is deleted and the buffer stays as the file is on disk. |
 | `k` or `Esc` | Keep: the dump stays on disk and HUME doesn't ask again this session. It asks again the next time you open the file. |
 
-Any other key dismisses the prompt and still does its usual job; HUME asks again the next time you switch to the buffer. The prompt also appears for a file that doesn't exist yet but has a dump, and restoring fills the new buffer.
+Any other key dismisses the prompt and still does its usual job. HUME asks again the next time you switch to the buffer. The prompt also appears for a file that doesn't exist yet but has a dump, and restoring fills the new buffer.
 
 A dump that is a link, or that belongs to another user, is ignored with a warning and no prompt.
 

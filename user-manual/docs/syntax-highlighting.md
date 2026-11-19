@@ -11,11 +11,11 @@ Installing, listing, and cleaning up grammars need [PLUM](core-plugins.md#core-p
 (load-plugin! "core:plum")
 ```
 
-Once a grammar is installed, PLUM is out of the picture: HUME registers every installed grammar itself at startup, so highlighting keeps working even if you later remove PLUM from `init.scm`. Each grammar loads the first time a file or an embedded block needs it, so installed grammars you don't use cost nothing at startup.
+Once a grammar is installed, PLUM is out of the picture. HUME registers every installed grammar itself at startup, so highlighting keeps working even if you later remove PLUM from `init.scm`. Each grammar loads the first time a file or an embedded block needs it, so installed grammars you don't use cost nothing at startup.
 
 ## Prerequisites
 
-Installing a grammar downloads it with `curl` and unpacks it with `tar`. Both come with macOS, with Windows 10 and later, and with most Linux distributions; if one is missing, the install fails with an error naming it.
+Installing a grammar downloads it with `curl` and unpacks it with `tar`. Both come with macOS, with Windows 10 and later, and with most Linux distributions. If one is missing, the install fails with an error naming it.
 
 Prebuilt grammars exist for Linux on x86-64, macOS on Apple silicon, and Windows on x86-64. On any other platform, [install them from a local folder](#install-from-a-local-folder).
 
@@ -49,7 +49,7 @@ To install several grammars at startup, skipping any already installed, add this
 
 ## Install from a local folder
 
-On a platform with no prebuilt grammars, or to install without a network connection, build the grammars yourself with `hume-grammar-build`, from [treesitter.hume](https://github.com/cvlmtg/treesitter.hume) (its README explains how to get it and what it needs):
+On a platform with no prebuilt grammars, or to install without a network connection, build the grammars yourself with `hume-grammar-build`. It comes from [treesitter.hume](https://github.com/cvlmtg/treesitter.hume), whose README explains how to get it and what it needs:
 
 ```sh
 hume-grammar-build build --out /path/to/hume-grammars rust python markdown markdown.inline
@@ -63,7 +63,9 @@ It writes one archive per grammar into the folder, and `--all` builds every gram
 
 The path must be absolute, and `~` is not expanded. It can't be inside the `plum-staging` or `grammars` folders of HUME's data directory, which PLUM clears.
 
-`:plum-install-grammar` and `plum/ensure-grammars` then install each grammar the folder holds from it, and download the others as usual, so the folder needs only the grammars you built yourself. A grammar from a folder built by a different version of `hume-grammar-build` than the one your HUME expects still installs, with a warning in `:messages`.
+`:plum-install-grammar` and `plum/ensure-grammars` then install each grammar the folder holds from it, and download the others as usual. The folder needs only the grammars you built yourself.
+
+A grammar from a folder built by a different version of `hume-grammar-build` than the one your HUME expects still installs, with a warning in `:messages`.
 
 ## Embedded languages
 
@@ -75,11 +77,14 @@ For Markdown, `:plum-install-grammar` installs Markdown itself and the grammar i
 
 While the top of a pane is inside a function, class, or Markdown section whose first line has scrolled off, that line stays at the top of the pane, painted over the text beneath it. Outer scopes come first, up to three rows: inside a method in a class, you see the class line, then the method line.
 
-- A header row shows its line's own number and starts at the pane's left edge, whatever the horizontal scroll. A line too long for the pane is cut at its right edge, whatever the wrap mode. A header row shows the line's text in its syntax colors, with search matches, diagnostics and plugin highlights on it, and plugins can draw it differently, as the [Markdown preview](core-plugins.md#core-markdown) does for a heading. It has no cursor or selection, inlay hints, end-of-line messages, gutter signs, virtual lines or line backgrounds.
+- A header row shows its line's own number and starts at the pane's left edge, whatever the horizontal scroll. A line too long for the pane is cut at its right edge, whatever the wrap mode.
+  - It shows the line's text in its syntax colors, with search matches, diagnostics and plugin highlights on it.
+  - Plugins can draw it differently, as the [Markdown preview](core-plugins.md#core-markdown) does for a heading.
+  - It has no cursor or selection, inlay hints, end-of-line messages, gutter signs, virtual lines or line backgrounds.
 - Scrolling keeps the cursor below the headers.
 - Clicking a header row puts the cursor on its line, at the column you clicked. With `mouse-select` on, dragging over one extends the selection to that line the same way.
 - The headers come from the grammar's `context.scm` query. A grammar without one falls back to its function and class text objects. A buffer with no grammar shows none.
-- `:set buffer context-enabled=false` turns the headers off. `context-outer-level` (off by default) keeps the outermost scope's line when a line is inside more scopes than there are rows; otherwise the innermost ones stay. See [Buffer options](settings.md#buffer-options).
+- `:set buffer context-enabled=false` turns the headers off. `context-outer-level` (off by default) keeps the outermost scope's line when a line is inside more scopes than there are rows. Otherwise the innermost ones stay. See [Buffer options](settings.md#buffer-options).
 
 ## Folding
 
@@ -113,14 +118,22 @@ Add it to your `init.scm`:
 The arguments, in order, are:
 - the language name
 - a list of file extensions, written **without** a leading dot (`"myl"`, not `".myl"`). An extension can have several parts, such as `"js.map"`; when several match, the longest wins. A leading or trailing dot, or a `/`, raises an error
-- a list of glob patterns, matched against the end of the file's path: `"Makefile"` matches a file with that name in any directory, and `".github/workflows/*.yaml"` matches a file in such a directory. A pattern that starts with `/` matches the whole path. A file opened through a symbolic link is matched by the path you opened, then by the path the link leads to
+- a list of glob patterns, matched against the end of the file's path:
+  - `"Makefile"` matches a file with that name in any directory, and `".github/workflows/*.yaml"` matches a file in such a directory
+  - a pattern that starts with `/` matches the whole path
+  - a file opened through a symbolic link is matched by the path you opened, then by the path the link leads to
 - a list of interpreter names, matched against the program a file's first line runs: `"python"` matches `#!/usr/bin/python3` and `#!/usr/bin/env python3.12`. A version after the name is ignored, unless a language names that version itself. A name with a space or a `/` raises an error.
 
 You can drop trailing arguments you don't need: `(define-language! "my-lang" '("myl"))` is fine. Now `my-lang` is detected like any built-in.
 
-Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its [settings](#language-settings) stay. A definition in your `init.scm` beats a plugin's, whichever runs first, and a second one in your `init.scm` is ignored with a note in `:messages`.
+Redefining a language with `define-language!` replaces only its extensions, globs and shebangs; its [settings](#language-settings) stay. A definition in your `init.scm` beats a plugin's, whichever runs first. A second one in your `init.scm` is ignored with a note in `:messages`.
 
-Several languages can list the same extension or interpreter, or have globs that match the same file. A language you define in your `init.scm` gets the file over a plugin's, and a plugin's over HUME's own, so defining one there is how you choose. This only decides between languages listing the same extension or interpreter name: a longer extension, or an interpreter name with a version, wins over a shorter one whoever defined it. Between languages of the same rank, a glob or an interpreter goes to the one defined last, and a file with a shared extension is one its first line's interpreter is listed for, when there is one; otherwise which of them it is isn't specified.
+Several languages can list the same extension or interpreter, or have globs that match the same file. When they do:
+
+- A language you define in your `init.scm` gets the file over a plugin's, and a plugin's over HUME's own, so defining one there is how you choose.
+- That ranking only decides between languages listing the same extension or interpreter name. A longer extension, or an interpreter name with a version, wins over a shorter one whoever defined it.
+- Between languages of the same rank, a glob or an interpreter goes to the one defined last.
+- Between languages of the same rank, a file with a shared extension is one its first line's interpreter is listed for, when there is one. Otherwise which of them it is isn't specified.
 
 ### Language settings
 
@@ -140,7 +153,7 @@ If the language server you'll connect expects a different identifier than `"my-l
 
 A language with no roots uses the directory HUME was started in.
 
-`#:comment-tokens` and `#:block-comment-tokens` set what `G G` writes and recognises. `G G` writes the first entry of each list; any entry counts as a comment when removing one:
+`#:comment-tokens` and `#:block-comment-tokens` set what `G G` writes and recognises. `G G` writes the first entry of each list. Any entry counts as a comment when removing one:
 
 ```scheme
 (configure-language! "my-lang"
@@ -154,7 +167,9 @@ A setting from your `init.scm` beats one from a plugin, whichever runs first. Se
 
 ### Registering a grammar by hand
 
-`:plum-install-grammar` installs grammars only for the languages HUME ships with. For your own language, or a private or experimental tree-sitter grammar, point HUME at the grammar's library and a highlight query file by hand. To build the library from the grammar's source, run `hume-grammar-build compile <grammar-dir> <library>` (see [Install from a local folder](#install-from-a-local-folder) for where to get it):
+`:plum-install-grammar` installs grammars only for the languages HUME ships with. For your own language, or a private or experimental tree-sitter grammar, point HUME at the grammar's library and a highlight query file by hand.
+
+To build the library from the grammar's source, run `hume-grammar-build compile <grammar-dir> <library>` (see [Install from a local folder](#install-from-a-local-folder) for where to get it):
 
 ```scheme
 (register-grammar! "my-lang"
@@ -185,13 +200,33 @@ Six optional keyword arguments can follow, in any order, each the path to one mo
 ```
 
 - `#:injections`: the language embeds other languages, like Markdown's fenced code blocks. Its patterns capture the embedded text as `@injection.content` and name its language with `#set! injection.language` or an `@injection.language` capture.
-- `#:textobjects`: structural text objects and navigation (functions, classes, arguments, …), each object captured as `@<object>.inside`, `@<object>.around` or `@<object>.movement`, such as `@function.inside`. `(#make-range! "parameter.around" @start @end)` makes an object running from the start of one capture through the end of another, or through the end of `@start` when `@end` captures nothing. `(#offset! @capture 0 start 0 end)` moves an object's start and end that many bytes along their lines (`0 1 0 -1` leaves out a block's braces), and drops the object when a bound would leave its line or nothing would be left.
+- `#:textobjects`: structural text objects and navigation (functions, classes, arguments, …).
+  - Each object is captured as `@<object>.inside`, `@<object>.around` or `@<object>.movement`, such as `@function.inside`.
+  - `(#make-range! "parameter.around" @start @end)` makes an object running from the start of one capture through the end of another, or through the end of `@start` when `@end` captures nothing.
+  - `(#offset! @capture 0 start 0 end)` moves an object's start and end that many bytes along their lines (`0 1 0 -1` leaves out a block's braces). It drops the object when a bound would leave its line or nothing would be left.
 - `#:indents`: how new lines are indented, using Helix's `indents.scm` captures and predicates; see [Indentation](editing.md#indentation) for what it drives.
-- `#:context`: the scopes whose first line stays at the top of the pane while you scroll inside them, each captured as `@context` or made with `(#make-range! "context" @start @end)` from the start of one capture through the end of another. A `@context.start` capture in the same pattern names the node whose first line heads the scope instead. See [Scope headers](#scope-headers).
-- `#:folds`: the regions you can fold, each captured as `@fold`. `(#trim! @fold)` leaves a region's trailing blank lines out of it, and `(#not-has-parent? @capture kind…)` skips a match whose captured node sits directly inside a node of one of those kinds. See [Folding](#folding).
-- `#:locals`: the language's local names. A scope is captured as `@local.scope`, a definition as `@local.definition.<scope>` and a use as `@local.reference`. A use of a name takes the color its definition names, so a parameter captured as `@local.definition.variable.parameter` keeps `variable.parameter` wherever it is used. A bare `@local.definition` makes a name's uses local without giving them a color. A use sees the definitions before it in its own scope and the scopes around it, the nearest one winning; a scope with `(#set! local.scope-inherits false)` doesn't see the scopes around it. A node any pattern captures under another name, such as `@_`, is never a use, so `(lifetime (identifier) @_)` keeps a lifetime from taking a variable's color.
+- `#:context`: the scopes whose first line stays at the top of the pane while you scroll inside them. See [Scope headers](#scope-headers).
+  - Each scope is captured as `@context`, or made with `(#make-range! "context" @start @end)` from the start of one capture through the end of another.
+  - A `@context.start` capture in the same pattern names the node whose first line heads the scope instead.
+- `#:folds`: the regions you can fold, each captured as `@fold`. See [Folding](#folding).
+  - `(#trim! @fold)` leaves a region's trailing blank lines out of it.
+  - `(#not-has-parent? @capture kind…)` skips a match whose captured node sits directly inside a node of one of those kinds.
+- `#:locals`: the language's local names.
+  - A scope is captured as `@local.scope`, a definition as `@local.definition.<scope>` and a use as `@local.reference`.
+  - A use of a name takes the color its definition names, so a parameter captured as `@local.definition.variable.parameter` keeps `variable.parameter` wherever it is used. A bare `@local.definition` makes a name's uses local without giving them a color.
+  - A use sees the definitions before it in its own scope and the scopes around it, the nearest one winning. A scope with `(#set! local.scope-inherits false)` doesn't see the scopes around it.
+  - A node any pattern captures under another name, such as `@_`, is never a use, so `(lifetime (identifier) @_)` keeps a lifetime from taking a variable's color.
 
-Every query file can use `#eq?`, `#match?`, `#any-of?` and their `#not-` and `#any-` forms, and each optional one also what its entry above names. `highlights.scm` can also use `(#is? local)` and `(#is-not? local)`: a node is local when `locals.scm` captures it as a definition, or as a use of a definition it sees. Without a `locals.scm`, no node is local. A pattern using any other predicate or directive is left out, and so is an optional query file that can't be read, doesn't compile or captures nothing its entry above reads. The rest of the grammar still loads, and `:messages` warns, naming the file and the line of the pattern. Only a `highlights.scm` that can't be read or doesn't compile keeps the grammar from loading.
+Every query file can use `#eq?`, `#match?`, `#any-of?` and their `#not-` and `#any-` forms. Each optional one can also use what its entry above names.
+
+`highlights.scm` can also use `(#is? local)` and `(#is-not? local)`. A node is local when `locals.scm` captures it as a definition, or as a use of a definition it sees. Without a `locals.scm`, no node is local.
+
+These are left out:
+
+- a pattern using any other predicate or directive;
+- an optional query file that can't be read, doesn't compile or captures nothing its entry above reads.
+
+The rest of the grammar still loads, and `:messages` warns, naming the file and the line of the pattern. Only a `highlights.scm` that can't be read or doesn't compile keeps the grammar from loading.
 
 Registered from `init.scm`, a grammar loads the first time a file or an embedded block needs it, and `:messages` reports then if it can't be loaded or left part of its queries out. Registered from a command, it loads right away, and the command fails with the reason.
 
@@ -227,7 +262,7 @@ See [Settings](settings.md) for the full settings reference.
 
 If the install says there is no grammar for the language, HUME has none to install for it. Check the language name on the statusline and fix a wrong detection with `:set buffer language=<name>`. For a language HUME ships no grammar for, [register one by hand](#registering-a-grammar-by-hand).
 
-**`:plum-install-grammar` fails.** The message names the cause, usually no network connection or a tool missing from your `PATH`; check the [prerequisites](#prerequisites). On a platform with no prebuilt grammars, [install from a local folder](#install-from-a-local-folder). A failed install leaves the installed copy of the grammar, if any, working.
+**`:plum-install-grammar` fails.** The message names the cause, usually no network connection or a tool missing from your `PATH`. Check the [prerequisites](#prerequisites). On a platform with no prebuilt grammars, [install from a local folder](#install-from-a-local-folder). A failed install leaves the installed copy of the grammar, if any, working.
 
 **Detection picks the wrong language.** Override with `:set buffer language=<name>`, or add the file pattern to your `init.scm` with `define-language!`.
 

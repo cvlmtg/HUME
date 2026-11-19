@@ -13,7 +13,12 @@ Pass `--config <FILE>` (see [Command-line Flags](cli.md)) to load a different fi
 
 ## Example init.scm
 
-HUME ships a starter config as `init.scm.example` in its runtime directory: `share/hume/runtime/init.scm.example` in the macOS/Linux release archive, `runtime/init.scm.example` on Windows or in a source checkout (see [File locations](#file-locations)). Copy it to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) and edit it:
+HUME ships a starter config as `init.scm.example` in its runtime directory (see [File locations](#file-locations)):
+
+- `share/hume/runtime/init.scm.example` in the macOS/Linux release archive;
+- `runtime/init.scm.example` on Windows or in a source checkout.
+
+Copy it to `~/.config/hume/init.scm` (`%APPDATA%\hume\init.scm` on Windows) and edit it:
 
 <<< @/../../runtime/init.scm.example{scheme}
 
@@ -34,21 +39,21 @@ The functions this page uses, such as `bind-keys!`, `define-language!` and `conf
 
 ## Errors and reloading
 
-If the file does not exist, HUME starts with defaults. If it fails partway through, `:messages` reports the error and everything before it stays applied: a broken line late in the file leaves you half-configured, not back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
+If the file does not exist, HUME starts with defaults. If it fails partway through, `:messages` reports the error and everything before it stays applied. A broken line late in the file leaves you half-configured, not back at defaults. Fix it and run `:reload-config` to re-run the file without restarting.
 
 A plugin that fails to load doesn't stop the rest of `init.scm`; see [Recovering from a failed plugin](plugins.md#recovering-from-a-failed-plugin).
 
 ::: details What `:reload-config` resets
-`:reload-config` starts from a clean slate: every option, key binding, hook, command, and plugin goes back to its default, then the file runs again. So removing a line from `init.scm` and reloading undoes what it did. Any `:set global`/`:set buffer`/[`:theme`](themes.md) change you made during the session is discarded too, with two exceptions:
+`:reload-config` starts from a clean slate. Every option, key binding, hook, command, and plugin goes back to its default, then the file runs again. So removing a line from `init.scm` and reloading undoes what it did. Any `:set global`/`:set buffer`/[`:theme`](themes.md) change you made during the session is discarded too, with two exceptions:
 
 - A `:set pane` override stays as you left it.
 - An explicit `:set buffer language=<name>` is restored after the reload.
 
 If the file fails partway through this time, you're left with defaults plus whatever ran before the error, as at startup.
 
-Buffers stay open and language servers stay attached across a reload: it behaves as if every open file were closed and reopened. Completion triggers, inline diagnostics, and any per-language setup your config applies (e.g. from `on-language-set`) come back too, without restarting the language server or losing your place in the file.
+Buffers stay open and language servers stay attached across a reload. It behaves as if every open file were closed and reopened. Completion triggers, inline diagnostics, and any per-language setup your config applies (e.g. from `on-language-set`) come back too, without restarting the language server or losing your place in the file.
 
-A file named with `--config` must exist: if it is missing at startup or when you reload, HUME reports an error instead of falling back to defaults.
+A file named with `--config` must exist. If it is missing at startup or when you reload, HUME reports an error instead of falling back to defaults.
 :::
 
 ## Setting options
@@ -94,7 +99,7 @@ When you and a plugin set the same option:
 (set-option! "indent-width" 2)
 ```
 
-`init.scm` can also react to what's being opened. The most common case is an option per file type: register an `on-language-set` handler that calls `(set-buffer-option! pane "option" value)` to override the option for that buffer (see [Hooks](writing-plugins.md#hooks) for the full hook API):
+`init.scm` can also react to what's being opened. The most common case is an option per file type. Register an `on-language-set` handler that calls `(set-buffer-option! pane "option" value)` to override the option for that buffer (see [Hooks](writing-plugins.md#hooks) for the full hook API):
 
 ```scheme
 ; 2-space indentation and word wrap for Markdown, source code unwrapped
@@ -122,7 +127,7 @@ The same hook can give a file type keys of its own; see [Keys for one buffer](#k
 (unbind-key! 'normal "ctrl-j")
 ```
 
-`bind-key!` takes an editor command's name (as listed in [Editor Commands](editor-commands.md)), never a typed command: there's no way to bind a typed command to a key.
+`bind-key!` takes an editor command's name (as listed in [Editor Commands](editor-commands.md)), never a typed command. There's no way to bind a typed command to a key.
 
 - `bind-key!` binds a key in the given mode (`'normal`, `'insert`, `'extend`, `'command`). An `'insert` or `'command` binding is a single key.
 - `unbind-key!` unbinds a key.
@@ -153,7 +158,9 @@ Each plural form batches its singular one, taking one or more `(key cmd)` pairs 
 
 ### Keys for one buffer
 
-Add `#:keymap` and a name to put a binding in a keymap of its own instead of the global bindings. The first binding into a name creates that keymap. A keymap does nothing until you attach it to a buffer with `attach-keymap!`; `detach-keymap!` turns it off again. This makes `Ctrl-j` and `Ctrl-k` jump between paragraphs in Markdown buffers only:
+Add `#:keymap` and a name to put a binding in a keymap of its own instead of the global bindings. The first binding into a name creates that keymap.
+
+A keymap does nothing until you attach it to a buffer with `attach-keymap!`. `detach-keymap!` turns it off again. This makes `Ctrl-j` and `Ctrl-k` jump between paragraphs in Markdown buffers only:
 
 ```scheme
 (bind-keys! 'normal #:keymap "markdown-keys"
@@ -188,7 +195,7 @@ Other rules:
 
 Binding an Insert-mode key replaces its behaviour outright. `insert-key!` (see [Plugin API](plugin-api.md#editing-navigation), which also has a worked example) lets a command decide, per keypress, whether to override the key or fall back to what it would otherwise do.
 
-`.` runs an Insert-mode key's binding again at the new cursor; see [Dot-repeat](writing-plugins.md#dot-repeat) for how it treats a binding that asks you for something.
+`.` runs an Insert-mode key's binding again at the new cursor. See [Dot-repeat](writing-plugins.md#dot-repeat) for how it treats a binding that asks you for something.
 
 ### Keys in the command line
 
@@ -224,7 +231,7 @@ A key string is a whitespace-separated list of tokens. Each token is `[modifier-
 |-----------|--------|
 | Modifiers | `ctrl-`/`c-`, `shift-`/`s-`, `alt-`/`a-` (case-insensitive, repeatable, any order, short and long forms may be mixed) |
 | Named keys | `space`, `tab`, `enter` / `return` / `cr` / `ret`, `esc` / `escape`, `lt` (`<`), `backspace` / `bs`, `delete` / `del`, `insert` / `ins`, `home`, `end`, `pageup`, `pagedown`, `up`, `down`, `left`, `right`, `f1`–`f12` |
-| Single char | Any single Unicode character; case is preserved (`"G"` and `"g"` are distinct); an uppercase letter and an explicit `shift-` are equivalent (`"ctrl-X"` and `"ctrl-shift-x"` bind the same key) |
+| Single char | Any single Unicode character. Case is preserved (`"G"` and `"g"` are distinct). An uppercase letter and an explicit `shift-` are equivalent (`"ctrl-X"` and `"ctrl-shift-x"` bind the same key) |
 
 Examples: `"ctrl-j"`, `"shift-tab"`, `"ctrl-shift-left"`, and multi-key sequences such as `"g e"`, `"m i w"`, `"ctrl-p h"`.
 
@@ -259,7 +266,11 @@ Without `$HUME_RUNTIME`, HUME takes the first of the others that exists.
 
 A relative value in `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$HUME_RUNTIME` or `$TMPDIR` is resolved once, at startup, against the directory HUME was started in. A later `:cd` does not change where these point.
 
-Notable subpaths inside the data dir: `plugins/` (PLUM-managed plugin clones), `grammars/` (installed tree-sitter grammars, one folder each), `themes/` (installed third-party themes).
+Notable subpaths inside the data dir:
+
+- `plugins/`: PLUM-managed plugin clones
+- `grammars/`: installed tree-sitter grammars, one folder each
+- `themes/`: installed third-party themes
 
 ::: warning Plugins are trusted code
 Plugins run with the same privileges as HUME itself: they can read and write any file your user account can, and run other programs. There is no sandbox. Install third-party plugins only from sources you trust.
