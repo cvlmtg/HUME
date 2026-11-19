@@ -714,11 +714,11 @@ fn buffer_viewport_ranges_join_header_lines_across_panes() {
     );
 }
 
-/// With `fn b` as the top line, header row 1 draws that line itself:
-/// `viewport-range` starts at the line on the first row below the header
-/// rows, so it holds neither header line.
+/// With `fn b` as the top line, the two header rows cover it and the line
+/// after it. Those lines decide which line the first body row shows, so
+/// `viewport-range` starts at the top line and a plugin decorates them too.
 #[test]
-fn viewport_range_starts_on_the_first_body_row() {
+fn viewport_range_starts_on_the_line_under_the_first_header_row() {
     let tmp = tempfile::tempdir().unwrap();
     let source = two_fn_impl();
     let mut ed = rust_context_editor(&source);
@@ -737,7 +737,7 @@ fn viewport_range_starts_on_the_first_body_row() {
             tmp.path(),
             r#"(number->string (hash-ref (viewport-range bid) 'start-line))"#
         ),
-        drawn[2].to_string()
+        top_line(&ed, pid).to_string()
     );
 }
 

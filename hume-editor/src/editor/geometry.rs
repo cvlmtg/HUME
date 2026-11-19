@@ -281,14 +281,14 @@ impl EditorState {
 /// What a pane shows: the lines of its body and of its scope header rows.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(in crate::editor) struct ShownLines {
-    /// The body's lines, end-exclusive, what `(viewport-range pane)`
-    /// returns: from the line on the first row below the header rows to the
-    /// last line with a row on screen, one cut off at the bottom edge or
+    /// The lines the pane lays out, end-exclusive, what `(viewport-range
+    /// pane)` returns: from the line on its top row, under any header row, to
+    /// the last line with a row on screen, one cut off at the bottom edge or
     /// shown only by its virtual lines included, and the lines a fold hides
-    /// under a shown fold head. A plugin provides a line's virtual lines
-    /// while the line is in range, so a line still showing one must stay in
-    /// it. Each header line sits above the line its row would show, so no
-    /// header line is in this pane's range.
+    /// under a shown fold head. A plugin provides a line's decorations while
+    /// the line is in range. The lines under the header rows are in it
+    /// because their layout decides which line the first body row shows, and
+    /// a line still showing a virtual line must stay in it.
     ///
     /// Never points past the buffer's last *content* line (not ropey's
     /// phantom line past the structural trailing `\n`). A `height == 0` pane
@@ -307,8 +307,8 @@ impl ShownLines {
         content_lines: hume_rope::line::ContentLineCount,
         rows: Option<&PaneRows>,
     ) -> Self {
-        let (body_top, bottom, headers) = match rows {
-            Some(rows) => (rows.body_top(dlm), rows.bottom(dlm), *rows.headers()),
+        let (top, bottom, headers) = match rows {
+            Some(rows) => (rows.top(), rows.bottom(dlm), *rows.headers()),
             None => {
                 let top = viewport.top_at(dlm);
                 (top, top, HeaderLines::default())
@@ -319,7 +319,7 @@ impl ShownLines {
             .line_after_shown(bottom.line, 1)
             .min(content_lines.end_exclusive());
         Self {
-            visible: ExclusiveRange::new(body_top.line, end_line),
+            visible: ExclusiveRange::new(top.line, end_line),
             headers,
         }
     }

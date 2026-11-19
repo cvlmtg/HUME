@@ -83,7 +83,8 @@ The choices the plugin and the Rust surface under it are built on:
   `hook-viewport-debounce-ms` after the scrolling stops. The plugin adds no delay setting
   of its own.
 - A table or fenced block larger than the viewport is fetched and drawn whole by every
-  render that shows one of its rows, so such a render costs as much as the block is long.
+  render whose ranges reach one of its rows, so such a render costs as much as the block is
+  long.
 
 ## How it works
 
@@ -137,16 +138,20 @@ pane shows is not drawn.
 
 Each render replaces the plugin's three sources (`"markdown-preview"` for conceals, line
 backgrounds and extra highlights) as a whole, for every pane on the buffer. So it covers
-the lines `(buffer-viewport-ranges pane)` gives at once: each of its `'ranges`, starting
-one line above the first line it names, and each of its `'headers`, the lines of the
-panes' scope header rows, as given. Both queries take the list as `#:ranges`, and
-`syntax-captures` returns a match once even when several ranges reach it, such as a table
-or a code block two panes both show part of. The lines between two panes far apart are not
-fetched, and lines outside every range are drawn raw until a render covers them. The line
-above a range is in it so that a table ending just above a pane's first shown line comes
-back: the empty line after it, on the pane's first row below its scope headers, carries
-that table's bottom border (see [Tables](#tables)). A header line opens a scope, so it is
-never the empty line a border is drawn on, and the line above it is not fetched.
+the lines `(buffer-viewport-ranges pane)` gives at once: each of its `'ranges`, widened by
+one line above the first line it names and one line below the last, and each of its
+`'headers`, the lines of the panes' scope header rows, as given. Both queries take the list
+as `#:ranges`, and `syntax-captures` returns a match once even when several ranges reach
+it, such as a table or a code block two panes both show part of. The lines between two
+panes far apart are not fetched, and lines outside every range are drawn raw until a render
+covers them. The line above a range is in it so that a table ending just above a pane's
+top line comes back: the empty line after it, the pane's top line, carries that table's
+bottom border (see [Tables](#tables)). The line below is in it so that a table starting
+just below a pane's last shown line comes back: the empty line before it carries that
+table's top border. Under wrapping, a border wider than the pane takes a second row and
+pushes the table's first row off screen, so the border must not depend on that row being
+shown. A header line opens a scope, so it is never the empty line a border is drawn on,
+and the line above it is not fetched.
 
 The per-buffer state, a render's line memo and the tables the block elements fill grow
 through `md-preview/box-insert!`, which empties the box before its `hash-insert`. Steel
