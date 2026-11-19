@@ -39,7 +39,9 @@
 | `stdlib/list-subdirs` | `(call! "stdlib/list-subdirs" dir)`{.sig} Sorted basenames of `dir`'s subdirectories |
 | `stdlib/path-absolute?` | `(call! "stdlib/path-absolute?" path)`{.sig} Whether `path` names the same place from any working directory |
 
-Unlike `remove-dir!` and Steel's own `delete-file!`, `stdlib/delete-dir!` and `stdlib/delete-file!` treat a missing target as no error. `list-subdirs` skips stray non-directory entries such as `.DS_Store`. `list-entries` and `list-subdirs` raise when `dir` can't be read, a missing one included; check it with `path-exists?` first when a missing directory means there is nothing to list.
+- Unlike `remove-dir!` and Steel's own `delete-file!`, `stdlib/delete-dir!` and `stdlib/delete-file!` treat a missing target as no error.
+- `list-subdirs` skips stray non-directory entries such as `.DS_Store`.
+- `list-entries` and `list-subdirs` raise when `dir` can't be read, a missing one included. Check it with `path-exists?` first when a missing directory means there is nothing to list.
 
 `path-absolute?` is `#t` for a path starting with `/` on macOS and Linux. On Windows it is `#t` for a drive path (`C:\x` or `C:/x`) or a network path (`\\server\share`), and `/x` is not absolute there.
 
@@ -52,7 +54,7 @@ Unlike `remove-dir!` and Steel's own `delete-file!`, `stdlib/delete-dir!` and `s
 | `stdlib/find-extractor` | `(call! "stdlib/find-extractor" format)`{.sig} The program `stdlib/extract-archive!` runs for `format`, `"tar"` or `"zip"`, or `#f` when none is installed. Raises for any other format |
 | `stdlib/extract-archive!` | `(call! "stdlib/extract-archive!" format archive dir)`{.sig} Extract `archive`, a `"tar"` or `"zip"` archive, into `dir` (created if missing), and return the extracted regular files. Raises if the archive holds a symlink pointing outside `dir` |
 
-`stdlib/download!` and `stdlib/extract-archive!` run their program in the terminal, so call them only from a command defined with `#:inline-output #t` (see [Commands](plugin-api.md#commands)); anywhere else they raise. `verify-sha256!` and `find-extractor` work anywhere.
+`stdlib/download!` and `stdlib/extract-archive!` run their program in the terminal, so call them only from a command defined with `#:inline-output #t` (see [Commands](plugin-api.md#commands)). Anywhere else they raise. `verify-sha256!` and `find-extractor` work anywhere.
 
 The digest and the archives use the platform's own tools: `shasum` on macOS, `sha256sum` on Linux and `certutil` on Windows, and `tar` or `unzip`. `tar` reads gzip-compressed archives too. On Windows, both kinds of archive are extracted with Windows' own `tar`.
 
@@ -88,7 +90,9 @@ Use these for a typed command that lists things, since a list longer than one li
 |------|--------|
 | `stdlib/split-words` | `(call! "stdlib/split-words" pane str)`{.sig} Every word in `str`, split by `pane`'s buffer's own `word-chars` setting |
 
-This is `(split-words str (get-buffer-option pane "word-chars"))`, so a word here is what the `w`/`b` motions and word text objects would select in that buffer. Use it when `str` is that buffer's own content, typically one of its lines. Call `split-words` directly for text not tied to a buffer, or to split words differently from that buffer's setting.
+This is `(split-words str (get-buffer-option pane "word-chars"))`, so a word here is what the `w`/`b` motions and word text objects would select in that buffer.
+
+Use it when `str` is that buffer's own content, typically one of its lines. Call `split-words` directly for text not tied to a buffer, or to split words differently from that buffer's setting.
 
 ## Plugin configuration
 

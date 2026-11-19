@@ -19,9 +19,9 @@ The editor functions a plugin uses to register, configure and talk to language s
 | `lsp-cancel!` |  | `(lsp-cancel! pane key)`{.sig} Cancel the pending request filed under `key` for `pane`'s buffer, as a new request under `key` would, without sending one. Does nothing when none is pending |
 | `lsp-notify!` |  | `(lsp-notify! pane method params [#:feature f] [#:to server])`{.sig} Send a notification, with no callback, to every running server attached to `pane`'s buffer that the method (a standard one is tied to its feature), `#:feature` and `#:to` allow |
 | `lsp-servers` |  | `(lsp-servers pane)`{.sig} Every server attached to `pane`'s buffer, as server values, running or not, in order |
-| `lsp-route` |  | `(lsp-route pane [#:feature f] [#:method m])`{.sig} Where a request of that feature or method would go now, as `(hash 'servers s 'err e)`: the servers it would reach, with `e` `#f`, or no servers and the `'unavailable` error the request would get. Give at least one keyword. Like a request, it raises when `#:feature` comes with a standard method |
+| `lsp-route` |  | `(lsp-route pane [#:feature f] [#:method m])`{.sig} Where a request of that feature or method would go now, as `(hash 'servers s 'err e)`. That is either the servers it would reach, with `e` `#f`, or no servers and the `'unavailable` error the request would get. Give at least one keyword. Like a request, it raises when `#:feature` comes with a standard method |
 | `lsp-server-name` |  | `(lsp-server-name server)`{.sig} The name `server` was registered under |
-| `register-lsp-notification-hook!` |  | `(register-lsp-notification-hook! methods proc)`{.sig} Call `proc` as `(lambda (server method params) ...)` for server notifications whose method is `methods` (a string) or one of `methods` (a list of strings). Other methods are logged as unhandled unless a plain `register-hook!` handler takes them. As with `register-hook!`, call it at init or plugin load only; it is removed if your plugin fails to load |
+| `register-lsp-notification-hook!` |  | `(register-lsp-notification-hook! methods proc)`{.sig} Call `proc` as `(lambda (server method params) ...)` for server notifications whose method is `methods` (a string) or one of `methods` (a list of strings). Other methods are logged as unhandled unless a plain `register-hook!` handler takes them. As with `register-hook!`, call it at init or plugin load only. It is removed if your plugin fails to load |
 | `lsp-capabilities` |  | `(lsp-capabilities server)`{.sig} A JSON handle onto `server`'s `ServerCapabilities`, or `#f` while it is starting or after `lsp-stop!`. A crashed server keeps its last capabilities |
 | `lsp-capability` |  | `(lsp-capability server #:feature f)`{.sig} `(lsp-capability server #:method m)`{.sig} What `server` advertises for the feature, or for the capability the method needs: `#t`, a JSON handle onto the provider's options (its `"triggerCharacters"`, say), or `#f`, under the same conditions as `lsp-capabilities`. Give one of the two keywords |
 | `lsp-server-status` |  | `(lsp-server-status)`{.sig} A list with one hash per server instance, in any state, with keys `'name`, `'languages`, `'root`, `'state` (`'starting`, `'running`, `'crashed` or `'dead`) and `'pending` |
@@ -45,7 +45,10 @@ The editor functions a plugin uses to register, configure and talk to language s
 
 ### Registrations and server lists
 
-A registration only says how to start a server: a language uses it once that language's server list names it. The later registration of a name wins, except that a plugin's own code (its body and hooks) never replaces or removes one made in `init.scm` or by a command you run, whatever the order. Registering a name again after unregistering it in the same run of your code starts a fresh server.
+A registration only says how to start a server: a language uses it once that language's server list names it.
+
+- The later registration of a name wins, with one exception: a plugin's own code (its body and hooks) never replaces or removes one made in `init.scm` or by a command you run, whatever the order.
+- Registering a name again after unregistering it in the same run of your code starts a fresh server.
 
 A server list's `entries` are server names or `(hash 'name n 'only-features '(...))` / `(hash 'name n 'except-features '(...))`, with the feature names [Language Servers](lsp.md#choosing-which-server-a-language-uses) lists. Both calls raise on an unknown feature, on both filters in one entry, or on a name listed twice.
 
@@ -62,18 +65,26 @@ Registrations and lists apply once the code that made them finishes, but `lsp-se
 Servers count columns in different units, so a position in a server's answer means something only to the server that sent it. HUME keeps track of which server sent each position:
 
 - To send a position, take it from `lsp-position-params`, `tracked-position-params`, `lsp-primary-range-params` or `lsp-linewise-ranges-params`. Each server receives it in its own units. Add your own keys to the params hash, but don't build positions yourself.
-- The `"uri"` in these params is a value of its own, not a string: each server receives the URI it opened the buffer under. A buffer with no file has params too; no server takes a request for it, so the request gets an `'unavailable` error.
+- The `"uri"` in these params is a value of its own, not a string: each server receives the URI it opened the buffer under. A buffer with no file has params too. No server takes a request for it, so the request gets an `'unavailable` error.
 - To use a position from an answer, convert it with `lsp-position->char-offset`, `lsp-range->char-range`, `lsp-label-offsets->text` or `lsp-location`. They take positions from a server's answer only: `lsp-position->char-offset`, `lsp-range->char-range` and `lsp-location` raise for anything else, such as a range you built yourself.
 
 ### Locations
 
-Each `lsp-locations->places` entry is `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b 'location loc)`. `'buffer` is the open buffer the location is in, or `#f` when the file is not open; `'location` is the location itself, for `goto-location!`. When the file is open, the column is a grapheme column; otherwise it is the column the server sent, in its own units. An entry is `#f` for a location HUME cannot jump to: a URI that is not a `file://` one, or a line past the end of the file's open buffer.
+Each `lsp-locations->places` entry is `(hash 'path p 'line l 'grapheme-col-or-wire c 'buffer b 'location loc)`:
+
+- `'buffer` is the open buffer the location is in, or `#f` when the file is not open.
+- `'location` is the location itself, for `goto-location!`.
+- When the file is open, the column is a grapheme column. Otherwise it is the column the server sent, in its own units.
+
+An entry is `#f` for a location HUME cannot jump to: a URI that is not a `file://` one, or a line past the end of the file's open buffer.
 
 Two servers naming one place give two entries. `lsp-locations->merged-places` keeps only the first entry for each path, line and column, leaves out the `#f` entries and counts them in `'skipped`. Use it for places to show or jump to when several servers answered.
 
 ### Workspace edits
 
-`apply-workspace-edit!` takes a JSON handle onto a `WorkspaceEdit`, such as an `lsp-request!` response. The edit for `pane`'s buffer maps through `pane`'s selections, and every other buffer is edited for no pane. A file with no edits is left alone, not opened. The number of buffers changed also shows on the statusline unless none did. `#:expect-generation` works as for [`apply-text-edits!`](plugin-api.md#editing-navigation).
+`apply-workspace-edit!` takes a JSON handle onto a `WorkspaceEdit`, such as an `lsp-request!` response. The edit for `pane`'s buffer maps through `pane`'s selections, and every other buffer is edited for no pane. A file with no edits is left alone, not opened.
+
+The number of buffers changed also shows on the statusline unless none did. `#:expect-generation` works as for [`apply-text-edits!`](plugin-api.md#editing-navigation).
 
 ### Attachment triggers
 
@@ -152,9 +163,13 @@ To reach one server in particular, such as the one an earlier answer came from, 
 
 `#:unavailable 'empty` (default `'error`) is for a request the user did not ask for, such as completion or inlay hints. A request no server can take then calls back with no error instead of an `'unavailable` error: a void result for `lsp-request!`, an empty `results` list for `lsp-request-all!`.
 
-`#:supersede key` cancels the pending request filed under the same key for the same buffer, even when no server can take the new one: every server it went to gets `$/cancelRequest`, and its callback never fires, even when its answer had already arrived. A request for another buffer under the same key is left alone. Each `(lsp-supersede-key)` call returns a new key that no other plugin's request, nor any of HUME's own, can share. Make one at your plugin's top level and pass it to every request it should replace. `(lsp-cancel! pane key)` cancels the pending request under `key` the same way, without sending a new one.
+`#:supersede key` cancels the pending request filed under the same key for the same buffer, even when no server can take the new one. Every server it went to gets `$/cancelRequest`, and its callback never fires, even when its answer had already arrived. A request for another buffer under the same key is left alone.
 
-`#:allow-stale #t` runs the callback even if the buffer changed after the request was sent; by default that answer is dropped. Its positions describe the text the request was sent for, but `lsp-position->char-offset`/`lsp-range->char-range` read the buffer as it is now, so after an edit they may land on different text. Before using one, compare `buffer-generation` (with `equal?`) against the value you read when sending, and resend if it moved.
+Each `(lsp-supersede-key)` call returns a new key that no other plugin's request, nor any of HUME's own, can share. Make one at your plugin's top level and pass it to every request it should replace. `(lsp-cancel! pane key)` cancels the pending request under `key` the same way, without sending a new one.
+
+`#:allow-stale #t` runs the callback even if the buffer changed after the request was sent. By default that answer is dropped.
+
+Such an answer's positions describe the text the request was sent for, but `lsp-position->char-offset`/`lsp-range->char-range` read the buffer as it is now. After an edit they may land on different text. Before using one, compare `buffer-generation` (with `equal?`) against the value you read when sending, and resend if it moved.
 
 `#:require-focus #t` drops the callback unless `pane` is still the pane you're looking at, showing the same buffer, when the answer arrives. `pane` must carry a pane, not only a buffer.
 

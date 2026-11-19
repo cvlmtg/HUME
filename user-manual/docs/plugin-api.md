@@ -18,7 +18,9 @@ A script can run three kinds of things:
 | **Typed command** | `:write`, one defined with `define-typed-command!` | The `:` prompt | No | No | [Command mode](command-mode.md), a plugin's own docs |
 | **Editor function** | `buffer-text`, `edit-text!`, `bind-key!` | A script | No | No | This page and the [Language Server API](lsp-api.md) |
 
-An editor command takes what a key press supplies: the pane, then an optional count and extend flag. Call a built-in one by name: `(move-left pane)` is the same as `(call! "move-left" pane)`. A few built-in commands also act with a character or pattern that the key press asks for, and a script passes it as an argument: `(call! "search-forward" pane "foo")` searches as if you had typed `foo` at the `/` prompt. [Calling other commands](writing-plugins.md#calling-other-commands) lists them. To search without moving anything, use [`buffer-search`](#buffers-panes-selections).
+An editor command takes what a key press supplies: the pane, then an optional count and extend flag. Call a built-in one by name: `(move-left pane)` is the same as `(call! "move-left" pane)`.
+
+A few built-in commands also act with a character or pattern that the key press asks for. A script passes it as an argument: `(call! "search-forward" pane "foo")` searches as if you had typed `foo` at the `/` prompt. [Calling other commands](writing-plugins.md#calling-other-commands) lists them. To search without moving anything, use [`buffer-search`](#buffers-panes-selections).
 
 An editor function takes the arguments its entry lists. Something is an editor function rather than a command when it needs arguments a key press can't supply, or only makes sense as a step inside your own command.
 
@@ -30,19 +32,26 @@ Steel's library functions and your own `define`s are plain Scheme functions, not
 - A call on a pane takes the pane first; one on a whole language takes the language first, then what it names there: `(set-signs! pane source signs)`, `(set-hook-triggers! language source chars)`.
 - Lines, columns, and char offsets are 0-based everywhere. Add 1 only to show a line number to the user.
 - `'start-char`/`'end-char` are char offsets into a whole text: the buffer, or a text you passed in, such as the new side of a `diff-lines` word span. `'start-char-col`/`'end-char-col` are char columns within one line, such as a virtual line's `'segments`.
-- A char offset runs from 0 to the length of the text. The length is where a range ends, and a jump to it lands on the last character; something attached to a character, like an inlay hint, needs an offset below it.
-- One character can span several char offsets: a letter with its combining marks, an emoji sequence. An offset inside one moves to the whole character: a jump or a `'before` inlay hint lands on its start, an `'after` inlay hint after it, and a range widens to cover it.
-- A position your plugin computes for a buffer raises when out of range. A position from outside, such as a language server's answer or a file on disk, may be out of date: a column past the end of its line moves to the line's end, and a line past the end of the text gives `#f` (`lsp-position->char-offset`, `lsp-range->char-range`, `goto-location!`) or makes the whole call raise (`apply-text-edits!`, `apply-workspace-edit!`).
-- In a signature, `[#:kw value]` is an optional keyword argument, and its entry gives the default; a keyword shown without brackets is required. Optional values are keywords, never a positional `#f` placeholder. The exception is `define-language!`, whose extensions, globs, and shebangs are positional lists you can drop from the end.
+- A char offset runs from 0 to the length of the text. The length is where a range ends, and a jump to it lands on the last character. Something attached to a character, like an inlay hint, needs an offset below it.
+- One character can span several char offsets: a letter with its combining marks, an emoji sequence. An offset inside one moves to the whole character:
+  - a jump or a `'before` inlay hint lands on its start;
+  - an `'after` inlay hint lands after it;
+  - a range widens to cover it.
+- A position your plugin computes for a buffer raises when out of range. A position from outside, such as a language server's answer or a file on disk, may be out of date:
+  - a column past the end of its line moves to the line's end;
+  - a line past the end of the text gives `#f` (`lsp-position->char-offset`, `lsp-range->char-range`, `goto-location!`) or makes the whole call raise (`apply-text-edits!`, `apply-workspace-edit!`).
+- In a signature, `[#:kw value]` is an optional keyword argument, and its entry gives the default. A keyword shown without brackets is required. Optional values are keywords, never a positional `#f` placeholder. The exception is `define-language!`, whose extensions, globs, and shebangs are positional lists you can drop from the end.
 - A structured value you pass in or get back (a decoration entry, a diagnostic, a request error, a plugin's `#:config`) is a hash with symbol keys: `(hash 'line 0 'text "!" 'scope "error")`, read with `(hash-ref d 'message)`. The exceptions:
   - Values decoded from a language server's JSON are JSON handles (see [JSON handles](lsp-api.md#json-handles)).
   - The `lsp-*-params` results (`(hash-ref (lsp-position-params pane) "position")`) and the items `completion-top` returns (source: `(hash-ref item "source")`) have string keys, as in the server's JSON.
   - Picker items `(display . payload)` and `register-lsp-server!`'s `#:env` `("KEY" . "VALUE")` are pairs, not records. A picker's keymap is a hash with key-spec string keys.
   - A selection from `buffer-selections` is not a record either: read it with the `selection-*` calls.
-- Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, which every call that closes or changes that widget takes. A stale token (the widget already closed or was replaced) makes the call a no-op, or makes it return `#f` where its entry says so, so a late callback can never touch someone else's widget. An opener returns `#f` when the open was dropped before it could happen, and `#f` is a stale token too.
+- Every UI opener (`show-popup!`, `show-menu!`, `show-drawer-list!`, `picker!`, `live-picker!`) returns a token, which every call that closes or changes that widget takes.
+  - A stale token (the widget already closed or was replaced) makes the call a no-op, or makes it return `#f` where its entry says so. A late callback can never touch someone else's widget.
+  - An opener returns `#f` when the open was dropped before it could happen, and `#f` is a stale token too.
 - Where a call may run depends on what it touches:
   - Calls that read or change a live buffer, pane, selection, or widget raise at the top level of `init.scm` and in a plugin body loaded at startup, since nothing is on screen yet. So do calls that start background work that calls you back later (`after!`, `spawn-async!`, `path-programs`) and the calls that stop it (`cancel-timer!`, `cancel-async!`). Call them from a command, hook, timer, or callback.
-  - Registrations (`bind-key!` and its variants without `#:keymap`, `define-command!`, `define-typed-command!`, `register-hook!`, `register-lsp-notification-hook!`, `register-completion-source!`, `define-language!`, `configure-language!`) raise inside a command, hook, timer, or callback. Call them at the top level of `init.scm` or in a plugin body.
+  - Registrations raise inside a command, hook, timer, or callback. Call them at the top level of `init.scm` or in a plugin body. They are `bind-key!` and its variants without `#:keymap`, `define-command!`, `define-typed-command!`, `register-hook!`, `register-lsp-notification-hook!`, `register-completion-source!`, `define-language!` and `configure-language!`.
   - `load-plugin!` works only at the top level of `init.scm`. `declare-plugin!` works there and in a plugin's own `manifest.scm`.
 - A procedure you hand over to be called later (a hook handler, a callback, a `#:render`) must take the arguments its call's entry lists, and the call that takes it raises at once when it can't.
   - A lambda with a fitting rest parameter is accepted, as is an editor function.
@@ -62,9 +71,16 @@ Steel's library functions and your own `define`s are plain Scheme functions, not
 | `set-buffer-option!` | `(set-buffer-option! pane key value)`{.sig} Set an option on `pane`'s buffer only, ranked against the buffer's own overrides as `set-option!` is against the global value. Raises for a global-only option |
 | `get-option` | `(get-option key)`{.sig} Read an option's global value, ignoring any buffer override. Raises for the per-buffer `language` and `line-ending` |
 | `get-buffer-option` | `(get-buffer-option pane key)`{.sig} Read `pane`'s buffer's effective value: its own override if set, else the global default (`language` and `line-ending` have no global default). Raises for a global-only option |
-| `set-scope-styles!` | `(set-scope-styles! styles)`{.sig} Style scopes on top of every theme. `styles`: a list of `(hash 'scope name 'fg color 'bg color 'underline (hash 'style sym 'color color) 'modifiers (sym ...))`, every key but `'scope` optional. From `init.scm` a style wins over the theme's entry for its scope; from a plugin it applies only where the theme has no entry of that name. Of two styles from the same rank, the later wins. Raises for a malformed entry, a scope named twice, a malformed hex color, or an unknown modifier or underline name, and applies none of the entries |
+| `set-scope-styles!` | `(set-scope-styles! styles)`{.sig} Style scopes on top of every theme. `styles`: a list of `(hash 'scope name 'fg color 'bg color 'underline (hash 'style sym 'color color) 'modifiers (sym ...))`, every key but `'scope` optional. See below |
 | `configure-statusline!` | `(configure-statusline! left center right)`{.sig} Set the three statusline sections, each a list of element name strings; `(get-option "statusline")` reads them back as `(hash 'left 'center 'right)` |
 | `set-statusline-text!` | `(set-statusline-text! pane source text)`{.sig} Push `text` for a `"steel:<source>"` statusline element, scoped to `pane`'s buffer; an empty string clears it |
+
+How `set-scope-styles!` ranks and fails:
+
+- From `init.scm`, a style wins over the theme's entry for its scope.
+- From a plugin, a style applies only where the theme has no entry of that name.
+- Of two styles from the same rank, the later wins.
+- The call raises for a malformed entry, a scope named twice, a malformed hex color, or an unknown modifier or underline name, and applies none of the entries.
 
 See [Reading options from Scheme](writing-plugins.md#reading-options-from-scheme) for the two option readers' fallback rules, [Styling scopes from your config](themes.md#styling-scopes-from-your-config) for scope styles and their colors, [Statusline](settings.md#statusline) for the built-in element names, and [Custom elements](settings.md#custom-elements) for the two statusline calls together.
 
@@ -91,7 +107,14 @@ See [Key bindings](configuration.md#key-bindings) for the key-string grammar and
 | `call!` | `(call! name args ...)`{.sig} Run an editor command (built-in or Scheme-defined), activating its plugin on demand. A built-in command takes `pane`, an optional count and extend flag, then the character or pattern for the few that need one; see [Calling other commands](writing-plugins.md#calling-other-commands). Raises for a command that runs only from a key, such as `pipe` |
 | `on-next-char!` | `(on-next-char! callback)`{.sig} Call `callback` with the next key typed as a character, or with `#f` when that key isn't one |
 | `command-plugin` | `(command-plugin name)`{.sig} The id string of the plugin that registered command `name`: `"user"` for a top-level `init.scm` definition, `"hume"` for a built-in, one HUME's runtime files define, or a name that isn't a command |
-| `command-exists?` | `(command-exists? name)`{.sig} `#t` if your code can use `name`: a command `call!` reaches (built-in, Scheme-defined, or a not-yet-loaded plugin's, but not a key-only command such as `pipe`), or a procedure bound at the top level (an editor function, a Steel library function, or a `define` at the top level of `init.scm`). `#f` otherwise, including for a plugin's own `define`s and for macros such as `call!` |
+| `command-exists?` | `(command-exists? name)`{.sig} `#t` if your code can use `name`, `#f` otherwise. See below |
+
+`command-exists?` is `#t` for:
+
+- a command `call!` reaches: built-in, Scheme-defined, or a not-yet-loaded plugin's, but not a key-only command such as `pipe`;
+- a procedure bound at the top level: an editor function, a Steel library function, or a `define` at the top level of `init.scm`.
+
+It is `#f` otherwise, including for a plugin's own `define`s and for macros such as `call!`.
 
 [Defining commands](writing-plugins.md#defining-commands), [Calling other commands](writing-plugins.md#calling-other-commands), and [Reading characters](writing-plugins.md#reading-characters) show `define-command!`, `define-typed-command!`, `call!`, and `on-next-char!` with examples.
 
@@ -118,14 +141,19 @@ Don't compare `'commit` values: hashes have no order.
 
 | Call | Effect |
 |------|--------|
-| `declare-plugin!` | `(declare-plugin! name [#:entry file] [#:commands names] [#:typed-commands names] [#:events events] [#:languages languages])`{.sig} Declare the triggers that load a plugin lazily: in its own `manifest.scm`, or in `init.scm` for a local `./file.scm` or to give an installed plugin custom triggers. `#:entry` names another file of the plugin to load on its own triggers. `#:languages` also limits the buffers that file's hooks, `'buffer` completion sources, `(buffers)` and `(panes)` reach to those languages; `"*"` limits nothing. Raise cases are listed below the table |
-| `load-plugin!` | `(load-plugin! name [#:config hash] [#:ref ref])`{.sig} Bring in an installed or core plugin: lazily when it ships a `manifest.scm`, at startup otherwise. `#:config`, a hash with symbol keys, is the only way to pass configuration; `#:ref` pins an installed plugin to a tag, branch or commit (see [Pinning a version](plugins.md#pinning-a-version)). Raise cases are listed below the table |
+| `declare-plugin!` | `(declare-plugin! name [#:entry file] [#:commands names] [#:typed-commands names] [#:events events] [#:languages languages])`{.sig} Declare the triggers that load a plugin lazily: in its own `manifest.scm`, or in `init.scm` for a local `./file.scm` or to give an installed plugin custom triggers. Keywords and raise cases are listed below the table |
+| `load-plugin!` | `(load-plugin! name [#:config hash] [#:ref ref])`{.sig} Bring in an installed or core plugin: lazily when it ships a `manifest.scm`, at startup otherwise. `#:config`, a hash with symbol keys, is the only way to pass configuration. `#:ref` pins an installed plugin to a tag, branch or commit (see [Pinning a version](plugins.md#pinning-a-version)). Raise cases are listed below the table |
 | `resolve-plugin-path` | `(resolve-plugin-path name)`{.sig} The path of an installed plugin's `plugin.scm` if it exists on disk, else `#f`; raises for a malformed name and for a local `./file.scm` name |
 | `loaded-plugins` | `(loaded-plugins)`{.sig} A list of the names of the plugins whose `plugin.scm` has finished loading, local files included; a plugin with only another `#:entry` file loaded is not listed |
 | `declared-plugins` | `(declared-plugins)`{.sig} A list of the names of the plugins `load-plugin!` or `declare-plugin!` named, `core:*` included, installed or not; local `./file.scm` entries are not listed |
 | `declared-plugin-ref` | `(declared-plugin-ref name)`{.sig} The `#:ref` the last `load-plugin!` of `name` passed, or `#f` |
 | `plugin-config` | `(plugin-config)`{.sig} The `#:config` hash the user passed to `load-plugin!`, or an empty hash. Works in the plugin's body and in every command, hook and callback it defines; raises anywhere else |
 | `plugin-dir` | `(plugin-dir)`{.sig} The directory holding the calling plugin's own files, or `#f` when HUME has no directory for that kind of plugin (a user plugin with no home directory set). Works where `(plugin-config)` does; raises anywhere else |
+
+`declare-plugin!`'s `#:entry` and `#:languages`:
+
+- `#:entry` names another file of the plugin to load on its own triggers.
+- `#:languages` also limits the buffers that file's hooks, `'buffer` completion sources, `(buffers)` and `(panes)` reach to those languages. `"*"` limits nothing.
 
 `declare-plugin!` raises and records nothing for:
 
@@ -188,7 +216,9 @@ The **Pane** column of the tables on this page and the [Language Server API](lsp
 
 A malformed argument is reported before either refusal. A call with no mark works with any pane value, including one that carries no pane.
 
-A command body receives the pane it was invoked through as its leading parameter (see [Defining commands](writing-plugins.md#defining-commands)). A debounced or async continuation can fire after focus has moved, so capture the pane it acts on up front: check `(equal? pane (focused-pane))` before acting on a response when `pane` was captured before the request went out. To pick a specific pane of a buffer shown in several, list them with `(buffer-panes pane)`.
+A command body receives the pane it was invoked through as its leading parameter (see [Defining commands](writing-plugins.md#defining-commands)). To pick a specific pane of a buffer shown in several, list them with `(buffer-panes pane)`.
+
+A debounced or async continuation can fire after focus has moved, so capture the pane it acts on up front. When `pane` was captured before the request went out, check `(equal? pane (focused-pane))` before acting on a response.
 
 A value naming a closed buffer raises for almost every call:
 
@@ -212,8 +242,8 @@ Only `buffer-key`, `buffer-live?`, `pane-live?`, `diagnostic-counts`, and `diagn
 | `buffer-name` |  | `(buffer-name pane)`{.sig} The display name: a view buffer's label (such as `[messages]`), else the filename, else the scratch buffer's name (`"*scratch*"`, `"*scratch-2*"`, …) |
 | `buffer-dirty?` |  | `(buffer-dirty? pane)`{.sig} `#t` if the buffer has unsaved edits |
 | `buffer-read-only?` |  | `(buffer-read-only? pane)`{.sig} `#t` for a read-only view: `[messages]`, `[plugin-status]`, `[lsp-status]`, or one `show-read-only-buffer!` shows. A buffer where a `\|` is running is busy, not read-only |
-| `buffer-text` |  | `(buffer-text pane [#:range range])`{.sig} The buffer's live content as a string, unsaved edits included. It always ends with a line break, and its line endings are always `\n`, whatever the file uses.<br><br>`range` is `(hash 'start-char s 'end-char e)`, end-exclusive, and returns only those characters, line breaks inside it included; a range missing either end, ending past the buffer, or ending before it starts raises instead of being clamped |
-| `buffer-lines` |  | `(buffer-lines pane [#:range range])`{.sig} The content as a list of lines, each with its ending stripped. `range` is `(hash 'start-line s 'end-line e)`, end-exclusive, the shape `viewport-range` returns; a range missing either end, ending past the last line, or starting after it ends raises instead of being clamped |
+| `buffer-text` |  | `(buffer-text pane [#:range range])`{.sig} The buffer's live content as a string, unsaved edits included. It always ends with a line break, and its line endings are always `\n`, whatever the file uses. For `range`, see below |
+| `buffer-lines` |  | `(buffer-lines pane [#:range range])`{.sig} The content as a list of lines, each with its ending stripped. For `range`, see below |
 | `buffer-line-count` |  | `(buffer-line-count pane)`{.sig} The number of lines `buffer-lines` returns, without building the list |
 | `buffer-char-count` |  | `(buffer-char-count pane)`{.sig} The length in characters, the final line break included: the largest offset `char-offset->line` accepts |
 | `buffer-search` |  | `(buffer-search pane re)`{.sig} `(hash 'start-char s 'end-char e)` for the first match in the buffer of `re`, a pattern compiled with [`regex`](#text-strings), or `#f` when nothing matches. Moves no selection and leaves the current search as it was, unlike `(call! "search-forward" pane pattern)` |
@@ -225,18 +255,34 @@ Only `buffer-key`, `buffer-live?`, `pane-live?`, `diagnostic-counts`, and `diagn
 | `selection-primary?` |  | `(selection-primary? sel)`{.sig} `#t` if `sel` is the primary selection |
 | `char-offset->line` |  | `(char-offset->line pane idx)`{.sig} The line containing char offset `idx`; the offset at the end of the text is on the last line. Raises when `idx` is past the end of the text |
 | `line->char-offset` |  | `(line->char-offset pane line)`{.sig} The char offset where content line `line` starts; raises when `line` is at or past the line count |
-| `viewport-range` | shown | `(viewport-range pane)`{.sig} `(hash 'start-line first-line 'end-line end-line)` of the lines `pane`'s own pane shows, end-exclusive: from the line on the pane's top row, the lines under its scope headers included, to the last line with a row on screen, a line cut off at the bottom edge included |
-| `buffer-viewport-ranges` |  | `(buffer-viewport-ranges pane)`{.sig} The lines every pane showing `pane`'s buffer shows, as `(hash 'ranges ranges 'headers headers)`. `ranges` is a list of `viewport-range` values sorted by first line, with the ranges that overlap or touch joined into one. Two panes showing the same lines give one range, two panes far apart give two, and the lines between them are in neither. `headers` lists the lines the panes' scope headers show that no range already holds, as a list of the same shape, sorted and joined the same way. Scope headers draw conceals and highlights but no inlay text, virtual line or line background. Both lists are `'()` when no pane shows the buffer |
+| `viewport-range` | shown | `(viewport-range pane)`{.sig} `(hash 'start-line first-line 'end-line end-line)` of the lines `pane`'s own pane shows, end-exclusive. It runs from the line on the pane's top row, the lines under its scope headers included, to the last line with a row on screen, a line cut off at the bottom edge included |
+| `buffer-viewport-ranges` |  | `(buffer-viewport-ranges pane)`{.sig} The lines every pane showing `pane`'s buffer shows, as `(hash 'ranges ranges 'headers headers)`. See below |
 | `open-buffer!` |  | `(open-buffer! path)`{.sig} Open `path`, returning a pane-less pane value for it |
 | `close-buffer!` |  | `(close-buffer! pane [#:discard-unsaved bool])`{.sig} Close a buffer. Raises when it has unsaved changes, unless `#:discard-unsaved` is `#t` (default `#f`). Also raises while a `\|` runs in it: stop that first with `(call! "cancel-pipe" pane)`, which returns whether one was running |
 | `switch-to-buffer!` | shown | `(switch-to-buffer! pane target)`{.sig} Redirect `pane`'s own pane to `target`'s buffer, and return the pane value now showing it; `pane` still names the buffer the pane left |
-| `show-read-only-buffer!` | shown | `(show-read-only-buffer! pane name text)`{.sig} Show `text` in `pane`'s own pane, in a read-only buffer named `[name]` with the cursor on the first line; a second call with the same `name` replaces its text. Returns the pane value now showing the view. Raises for an empty `name` and for `messages`, `plugin-status` and `lsp-status`, which HUME's own commands use |
+| `show-read-only-buffer!` | shown | `(show-read-only-buffer! pane name text)`{.sig} Show `text` in `pane`'s own pane, in a read-only buffer named `[name]` with the cursor on the first line. A second call with the same `name` replaces its text. Returns the pane value now showing the view. Raises for an empty `name` and for `messages`, `plugin-status` and `lsp-status`, which HUME's own commands use |
 | `buffer-generation` |  | `(buffer-generation pane)`{.sig} An opaque value naming the buffer's current text. Two compare unequal with `equal?` once the buffer changes. Pass it to `#:expect-generation` or `buffer-changes-since` |
-| `buffer-undo-tree` |  | `(buffer-undo-tree pane)`{.sig} The buffer's undo history, as a list with one `(hash 'id 'parent 'age-secs 'current? 'saved?)` per revision, in `'id` order, so a parent comes before its children. `'parent` is `#f` for the root, `'age-secs` is whole seconds since the revision was made, `'current?` marks the revision the buffer is on and `'saved?` the one last saved |
+| `buffer-undo-tree` |  | `(buffer-undo-tree pane)`{.sig} The buffer's undo history, as a list with one `(hash 'id 'parent 'age-secs 'current? 'saved?)` per revision, in `'id` order, so a parent comes before its children. See below |
 | `selections-linewise?` | shown | `(selections-linewise? pane)`{.sig} `#t` if every selection in `pane`'s own pane covers whole lines. A cursor on an empty line doesn't count either way: it neither satisfies this nor breaks it when a real whole-line selection is also present. `#f` if every selection is such a cursor |
 | `selections-charwise?` | shown | `(selections-charwise? pane)`{.sig} `#t` if no selection in `pane`'s own pane covers whole lines, with the same empty-line exception; `#t` if every selection is a cursor on an empty line |
 | `symbol-under-cursor` | shown | `(symbol-under-cursor pane)`{.sig} The identifier under the primary cursor in `pane`'s own pane, as a string; `""` when the cursor is not on a word character |
 | `pane?` |  | `(pane? v)`{.sig} `#t` if `v` is an opaque pane value |
+
+The `range` of `buffer-text` and `buffer-lines` is end-exclusive, and raises instead of being clamped:
+
+- `buffer-text` takes `(hash 'start-char s 'end-char e)` and returns only those characters, line breaks inside it included. A range missing either end, ending past the buffer, or ending before it starts raises.
+- `buffer-lines` takes `(hash 'start-line s 'end-line e)`, the shape `viewport-range` returns. A range missing either end, ending past the last line, or starting after it ends raises.
+
+`buffer-viewport-ranges` returns two lists, both `'()` when no pane shows the buffer:
+
+- `'ranges` is a list of `viewport-range` values sorted by first line, with the ranges that overlap or touch joined into one. Two panes showing the same lines give one range, two panes far apart give two, and the lines between them are in neither.
+- `'headers` lists the lines the panes' scope headers show that no range already holds, as a list of the same shape, sorted and joined the same way. Scope headers draw conceals and highlights but no inlay text, virtual line or line background.
+
+In each `buffer-undo-tree` entry:
+
+- `'parent` is `#f` for the root.
+- `'age-secs` is whole seconds since the revision was made.
+- `'current?` marks the revision the buffer is on, and `'saved?` the one last saved.
 
 [Reading selections](writing-plugins.md#reading-selections) and [Reading buffer text](writing-plugins.md#reading-buffer-text) show these calls with examples.
 
@@ -246,20 +292,26 @@ Only `buffer-key`, `buffer-live?`, `pane-live?`, `diagnostic-counts`, and `diagn
 |------|------|--------|
 | `apply-text-edits!` |  | `(apply-text-edits! pane edits [#:expect-generation gen])`{.sig} Apply a list of LSP `TextEdit`s, as JSON handles from a server's response (such as a `textDocument/formatting` result), to `pane`'s buffer as one edit. See below |
 | `edit-text!` |  | `(edit-text! pane edits [#:expect-generation gen])`{.sig} Replace char ranges of `pane`'s buffer as one edit, each entry a `(hash 'start-char s 'end-char e 'text t)`: an empty range inserts, empty text deletes. See below |
-| `goto-location!` | shown | `(goto-location! pane loc)`{.sig} Move `pane`'s own pane to `loc`, one of: an LSP `Location`/`LocationLink` JSON handle from a server's response; `(hash 'target path 'line l 'char-col c)`, with `path` a file path (never a URI such as `file://…`; write a relative path whose first part holds a colon as `./part:x`) and `l`/`c` char-indexed; or `(hash 'target buffer 'char-offset o)`, with `buffer` a pane value.<br><br>Returns the pane value now showing the buffer it jumped into, or `#f`, moving nothing, when the line `loc` names is past the end of its file. A `'char-offset` past the end of the buffer raises |
+| `goto-location!` | shown | `(goto-location! pane loc)`{.sig} Move `pane`'s own pane to `loc`. Returns the pane value now showing the buffer it jumped into. See [Going to a location](#going-to-a-location) |
 | `goto-revision!` | shown | `(goto-revision! pane id)`{.sig} Move `pane`'s buffer to revision `id` of its undo history (a number from `buffer-undo-tree`), across branches, carrying `pane`'s selections with it. Raises when the buffer has no such revision (never made, or dropped by the `undo-levels` limit) and when the buffer is read-only. Redo then follows the branch it entered |
 | `insert-key!` | focused | `(insert-key! pane key)`{.sig} Run `key`'s normal Insert-mode behaviour (indent-style-aware Tab, auto-pairs, auto-indented Enter, …) on `pane`, as if it had no Insert-mode binding; `key` is one chord in `bind-key!`'s syntax. Raises for a sequence of more than one key, and for a key with no default Insert-mode behaviour |
 | `paste-text!` | focused | `(paste-text! pane text)`{.sig} Paste `text`, a string or a list of strings, where you're typing, as a terminal paste would. See below |
 
 ### Text edits
 
-`edit-text!` makes a change that differs from one selection to the next, which commands and `paste-text!` can't, since they do the same thing at every selection (see [Example: Markdown headings](writing-plugins.md#example-markdown-headings)). Every range refers to the text before the call, the entries can come in any order, and two insertions at the same offset go in list order. One `u` undoes the whole list.
+`edit-text!` makes a change that differs from one selection to the next. Commands and `paste-text!` can't, since they do the same thing at every selection (see [Example: Markdown headings](writing-plugins.md#example-markdown-headings)).
 
-`apply-text-edits!` does the same with edits a language server sent. It decodes their positions with the encoding of the server that sent them, as [`apply-workspace-edit!`](lsp-api.md#language-servers) does, so a hash you build by hand (not pulled from a response through `json-ref`/`json-list`) has no encoding and is rejected.
+- Every range refers to the text before the call.
+- The entries can come in any order, and two insertions at the same offset go in list order.
+- One `u` undoes the whole list.
 
-Selections in every pane showing the buffer follow the text. A cursor where text is inserted moves past it; one on replaced or deleted text lands where the new text starts. A range edge inside a character made of several char offsets widens to cover the character, and an insertion inside one moves to its start. Text inserted at the very end of the buffer gets its own line break, and the buffer's last line break is never deleted.
+`apply-text-edits!` does the same with edits a language server sent. It decodes their positions with the encoding of the server that sent them, as [`apply-workspace-edit!`](lsp-api.md#language-servers) does. A hash you build by hand (not pulled from a response through `json-ref`/`json-list`) has no encoding, so it is rejected.
 
-Both edit through `pane` while that pane shows the buffer. When `pane` names no pane, or a pane that now shows another buffer, the buffer is edited for no pane: every pane's selections are carried through, and the call raises while you are typing in Insert mode or a paste is in progress in that buffer.
+Selections in every pane showing the buffer follow the text. A cursor where text is inserted moves past it. A cursor on replaced or deleted text lands where the new text starts.
+
+A range edge inside a character made of several char offsets widens to cover the character, and an insertion inside one moves to its start. Text inserted at the very end of the buffer gets its own line break, and the buffer's last line break is never deleted.
+
+Both edit through `pane` while that pane shows the buffer. When `pane` names no pane, or a pane that now shows another buffer, the buffer is edited for no pane. Every pane's selections are then carried through, and the call raises while you are typing in Insert mode or a paste is in progress in that buffer.
 
 Both raise and change nothing for:
 
@@ -268,7 +320,21 @@ Both raise and change nothing for:
 - a read-only buffer, or one where a `|` is running;
 - a buffer whose generation is not `#:expect-generation`.
 
-`#:expect-generation` guards against a stale edit: given a `buffer-generation` value, the call fails if the buffer has changed since, and raises if the value belongs to another buffer or is not a generation. With an empty list of edits, `apply-text-edits!`, `edit-text!` and `apply-workspace-edit!` change nothing and skip the changed-since check, but still raise for a value that is not this buffer's generation.
+`#:expect-generation` guards against a stale edit. Given a `buffer-generation` value, the call fails if the buffer has changed since. It raises if the value belongs to another buffer or is not a generation.
+
+With an empty list of edits, `apply-text-edits!`, `edit-text!` and `apply-workspace-edit!` change nothing and skip the changed-since check. They still raise for a value that is not this buffer's generation.
+
+### Going to a location
+
+`goto-location!` takes `loc` in one of three forms:
+
+- an LSP `Location`/`LocationLink` JSON handle from a server's response;
+- `(hash 'target path 'line l 'char-col c)`, with `l`/`c` char-indexed and `path` a file path:
+  - never a URI such as `file://…`;
+  - write a relative path whose first part holds a colon as `./part:x`;
+- `(hash 'target buffer 'char-offset o)`, with `buffer` a pane value.
+
+It returns `#f`, moving nothing, when the line `loc` names is past the end of its file. A `'char-offset` past the end of the buffer raises.
 
 ### Insert keys
 
@@ -297,7 +363,12 @@ A list of strings, such as `read-register`'s, is placed the way `p` places a reg
 
 Pasting into a buffer raises when the buffer is read-only or busy with a running `|`. The [`on-paste`](writing-plugins.md#rewriting-a-paste) handlers rewrite the text first, and it is in the buffer when `paste-text!` returns.
 
-`paste-text!` ends a pending `on-next-char!` read without a character, as a terminal paste does. When `paste-text!` runs from an Insert-mode key's binding, `.` repeats it by running the binding again; from a hook or a timer during Insert mode, `.` repeats the paste.
+`paste-text!` ends a pending `on-next-char!` read without a character, as a terminal paste does.
+
+What `.` repeats depends on where `paste-text!` ran:
+
+- From an Insert-mode key's binding, `.` repeats it by running the binding again.
+- From a hook or a timer during Insert mode, `.` repeats the paste.
 
 For example, a key that inserts the working directory, in Insert mode and on the `:` prompt:
 
@@ -318,21 +389,46 @@ For example, a key that inserts the working directory, in Insert mode and on the
 
 Both use the same list shape. A string a script writes pastes as whole lines when it ends in a newline, inline otherwise. So `(write-register! "3" (read-register "3"))` keeps the text but loses the shape of an entry that was yanked inline and happens to end in a newline.
 
-Valid names are `0`–`9`, `k` (kill-ring head), `c` (system clipboard), and `b` (black hole), the set the [`"` register prefix](copy-and-paste.md#register-prefix) accepts. Writing `k` acts like a yank to the kill ring; writing `b` discards the values, with no message. Reading an unwritten register, `b`, or a register holding a recorded macro answers `#f`.
+Valid names are `0`–`9`, `k` (kill-ring head), `c` (system clipboard), and `b` (black hole), the set the [`"` register prefix](copy-and-paste.md#register-prefix) accepts. Writing `k` acts like a yank to the kill ring. Writing `b` discards the values, with no message. Reading an unwritten register, `b`, or a register holding a recorded macro answers `#f`.
 
 ## Language & syntax
 
 | Call | Effect |
 |------|--------|
 | `define-language!` | `(define-language! name [exts] [globs] [shebangs])`{.sig} Define a language, or replace how an existing one is detected. `exts`, `globs`, and `shebangs` are lists and default to `'()`. Of two definitions from the same rank, the first wins and the later is ignored with a warning |
-| `configure-language!` | `(configure-language! name [#:roots files] [#:language-id id] [#:comment-tokens tokens] [#:block-comment-tokens pairs])`{.sig} Set a defined language's project root markers (a list of file names), the identifier language servers know it by when that differs from `name`, its line comment tokens (a list of strings) and its block comment pairs (a list of `(start . end)` string pairs). A keyword left out leaves its setting as it is. Values rank as `define-language!`'s definitions do. A `name` no language defines logs an error and changes nothing |
+| `configure-language!` | `(configure-language! name [#:roots files] [#:language-id id] [#:comment-tokens tokens] [#:block-comment-tokens pairs])`{.sig} Set a defined language's project root markers, language server identifier and comment tokens. See below |
 | `bundled-languages` | `(bundled-languages)`{.sig} Every language HUME ships language data for, sorted |
-| `register-grammar!` | `(register-grammar! name grammar-path symbol highlights-path [#:injections path] [#:textobjects path] [#:indents path] [#:context path] [#:folds path] [#:locals path])`{.sig} Register an already-compiled tree-sitter grammar. During startup (`init.scm` and the plugins it loads at startup) the grammar loads the first time a file or an embedded block needs it; at any other time it loads at once and raises if it can't. Of two grammars from the same rank, the later replaces the earlier |
+| `register-grammar!` | `(register-grammar! name grammar-path symbol highlights-path [#:injections path] [#:textobjects path] [#:indents path] [#:context path] [#:folds path] [#:locals path])`{.sig} Register an already-compiled tree-sitter grammar. During startup (`init.scm` and the plugins it loads at startup) the grammar loads the first time a file or an embedded block needs it. At any other time it loads at once and raises if it can't. Of two grammars from the same rank, the later replaces the earlier |
 | `language-has-grammar?` | `(language-has-grammar? name)`{.sig} `#t` if `name` has a registered grammar that hasn't failed to load |
-| `syntax-captures` | `(syntax-captures pane language query [#:ranges ranges])`{.sig} The nodes a tree-sitter `query` captures in the buffer's syntax tree, as a list of `(name start-char end-char)` entries, one per captured node, `name` being the capture's name without its `@`. `language` is the buffer's own language or one embedded in it, and the query runs over every part of the buffer parsed as it. The tree is first brought up to date with the text, which parses on the spot when the text changed since the last parse. The list is empty for a buffer with no parsed syntax tree yet (one just opened) or larger than `syntax-highlight-max-bytes`. With `ranges`, a list of line ranges (each the shape `viewport-range` returns), a match comes back when the node its pattern is rooted at overlaps the lines of any of them, with all of its captures, inside the ranges or not, and only once when several ranges reach it. `(buffer-viewport-ranges pane)` gives the lines every pane on the buffer shows. Raises if `language` has no grammar, the query doesn't compile or uses a predicate or directive other than `#eq?`, `#match?`, `#any-of?` and their `#not-` and `#any-` forms, or `ranges` is not a list or holds a range that is malformed or past the end of the buffer |
-| `parsed-text-captures` | `(parsed-text-captures parsed language query)`{.sig} The nodes `query` captures in the text a [text formatter](#formatting-popup-text) is drawing, as `syntax-captures` returns them for a buffer, over every line: `parsed` is the formatter's second argument, and names that text only while the formatter runs. Raises if `parsed` names no text, `language` has no grammar, or the query doesn't compile or uses a predicate or directive other than `#eq?`, `#match?`, `#any-of?` and their `#not-` and `#any-` forms |
+| `syntax-captures` | `(syntax-captures pane language query [#:ranges ranges])`{.sig} The nodes a tree-sitter `query` captures in the buffer's syntax tree, as a list of `(name start-char end-char)` entries, one per captured node, `name` being the capture's name without its `@`. See [Syntax captures](#syntax-captures) |
+| `parsed-text-captures` | `(parsed-text-captures parsed language query)`{.sig} The nodes `query` captures in the text a [text formatter](#formatting-popup-text) is drawing, as `syntax-captures` returns them for a buffer, over every line. `parsed` is the formatter's second argument, and names that text only while the formatter runs. See [Syntax captures](#syntax-captures) |
+
+`configure-language!` takes:
+
+- `#:roots`: the project root markers, a list of file names;
+- `#:language-id`: the identifier language servers know the language by, when that differs from `name`;
+- `#:comment-tokens`: its line comment tokens, a list of strings;
+- `#:block-comment-tokens`: its block comment pairs, a list of `(start . end)` string pairs.
+
+A keyword left out leaves its setting as it is. Values rank as `define-language!`'s definitions do. A `name` no language defines logs an error and changes nothing.
 
 [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language) shows `define-language!`, `configure-language!` and `register-grammar!` with examples.
+
+### Syntax captures
+
+For `syntax-captures`, `language` is the buffer's own language or one embedded in it, and the query runs over every part of the buffer parsed as it. The tree is first brought up to date with the text, which parses on the spot when the text changed since the last parse.
+
+The list is empty for a buffer with no parsed syntax tree yet (one just opened) or larger than `syntax-highlight-max-bytes`.
+
+`ranges` is a list of line ranges, each the shape `viewport-range` returns. With it, a match comes back when the node its pattern is rooted at overlaps the lines of any of them. The match comes with all of its captures, inside the ranges or not, and only once when several ranges reach it. `(buffer-viewport-ranges pane)` gives the lines every pane on the buffer shows.
+
+`syntax-captures` raises if:
+
+- `language` has no grammar;
+- the query doesn't compile, or uses a predicate or directive other than `#eq?`, `#match?`, `#any-of?` and their `#not-` and `#any-` forms;
+- `ranges` is not a list, or holds a range that is malformed or past the end of the buffer.
+
+`parsed-text-captures` raises if `parsed` names no text, `language` has no grammar, or the query doesn't compile or uses a predicate or directive other than those `syntax-captures` accepts.
 
 ## Diagnostics & decorations
 
@@ -340,18 +436,20 @@ Any plugin can populate these, though LSP diagnostics and inlay hints are the he
 
 | Call | Effect |
 |------|--------|
-| `diagnostics-for-buffer` | `(diagnostics-for-buffer pane [#:severity floor] [#:range range])`{.sig} The buffer's first 1000 diagnostics by position, at or above `floor` (default: the `lsp-diagnostics-min-severity` option). `range` restricts them to a `(hash 'start-char s 'end-char e)` char range, and raises if it ends before it starts or past the end of the buffer. It may also be the `"range"` of `lsp-primary-range-params`, which raises once the buffer has changed since it was taken. Entry keys are listed below the table |
+| `diagnostics-for-buffer` | `(diagnostics-for-buffer pane [#:severity floor] [#:range range])`{.sig} The buffer's first 1000 diagnostics by position, at or above `floor` (default: the `lsp-diagnostics-min-severity` option). `range` restricts them to a `(hash 'start-char s 'end-char e)` char range. More on `range` and the entry keys below the table |
 | `diagnostic-counts` | `(diagnostic-counts pane [#:severity floor])`{.sig} `(hash 'error n 'warning n 'info n 'hint n)` for the buffer; a severity below `floor` (default: `lsp-diagnostics-min-severity`) counts 0 |
 | `diagnostic-glyph` | `(diagnostic-glyph severity)`{.sig} The mark the status line shows for a severity symbol: `"✘"` for `'error`, `"⚠"` for `'warning`, `"ℹ"` for `'info`, `"·"` for `'hint`. Raises on any other symbol |
 | `set-inlay-hints!` | `(set-inlay-hints! pane source hints)`{.sig} Replace `source`'s inlay hints for the buffer. `hints`: a list of `(hash 'char-offset o 'text t 'side 'before)`, `'side` `'before` or `'after`. An offset inside a character puts a `'before` hint before the whole character and an `'after` hint after it |
 | `register-sign-source!` | `(register-sign-source! pane source priority)`{.sig} Reserve a gutter sign slot for `source` on the buffer, ordered among every source registered for it by priority, higher first, ties broken by source name |
 | `unregister-sign-source!` | `(unregister-sign-source! pane source)`{.sig} Give back `source`'s gutter sign slot on the buffer and remove its signs there; the sources after it move up a slot. Does nothing for a source not registered on the buffer |
 | `set-signs!` | `(set-signs! pane source signs)`{.sig} Replace `source`'s gutter signs for the buffer. `signs`: a list of `(hash 'line l 'text t 'scope s)`; add `'end-line e` to put the sign on every line from `l` up to, not including, `e`. When two entries cover the same line, the first one in the list wins it. `source` must already be registered, and a control character in `'text` raises |
-| `set-virtual-lines!` | `(set-virtual-lines! pane source lines)`{.sig} Replace `source`'s virtual (ghost) lines for the buffer. `lines`: a list of hashes with `'line` and `'text` required, and optional `'side` (`'before` or `'after`, default `'after`), `'scope` and `'segments`. A line break in `'text` raises. `'segments` is a list of `(hash 'start-char-col 'end-char-col 'scope)` char-column ranges in `'text`; an edge inside a character widens the segment to the whole character, and two segments sharing a character raise |
+| `set-virtual-lines!` | `(set-virtual-lines! pane source lines)`{.sig} Replace `source`'s virtual (ghost) lines for the buffer. `lines`: a list of hashes with `'line` and `'text` required, and optional `'side` (`'before` or `'after`, default `'after`), `'scope` and `'segments` (see below). A line break in `'text` raises |
 | `set-eol-text!` | `(set-eol-text! pane source lines [#:hide-on-insert-line bool])`{.sig} Replace `source`'s end-of-line text for the buffer. `lines`: a list of `(hash 'line l 'text t 'scope s)`. When two entries name the same line, the first one in the list wins it. With `#:hide-on-insert-line #t` (default `#f`), the text hides on the cursor's line while you type in Insert mode |
 | `set-extra-highlights!` | `(set-extra-highlights! pane source spans)`{.sig} Replace `source`'s extra syntax highlights for the buffer. `spans`: a list of `(hash 'start-char s 'end-char e 'scope sc)` char ranges; an edge inside a character widens the span to the whole character, and the call raises for an empty or reversed span or one past the end of the buffer |
 | `set-line-backgrounds!` | `(set-line-backgrounds! pane source entries)`{.sig} Replace `source`'s full-line background tints for the buffer. `entries`: a list of `(hash 'line l 'scope s)`; add `'end-line e` to tint every line from `l` up to, not including, `e`. When two entries cover the same line, the first one in the list wins it |
-| `set-conceals!` | `(set-conceals! pane source entries [#:overlaps 'error])`{.sig} Replace `source`'s conceals for the buffer. A conceal draws part of a line as something else. `entries`: a list of `(hash 'start-char s 'end-char e)` ranges to hide, each with an optional `'text` drawn in their place, an optional `'scope` coloring that text (which needs `'text`), and an optional `'reveal` `(hash 'start-line l 'end-line e)`, end-exclusive, naming further lines that show this entry's source too. A selection touching the entry's own line or any of those lines shows the source instead of the conceal. An empty range needs `'text` and draws it before that char, hiding nothing. An edge inside a character widens the range to the whole character. The call raises for an entry out of range, ending before it starts, crossing a line break, covering a line's break, an empty `'text`, a `'text` with a line break or other control character, an empty range at the very end of the text, or overlapping an earlier entry of the same `source`. With `#:overlaps 'drop`, an entry overlapping an earlier one is left out instead, so the earlier entry in `entries` wins: two hidden ranges overlap when they share a character, an empty range when it lies strictly inside a hidden one, and two empty ranges at one position |
+| `set-conceals!` | `(set-conceals! pane source entries [#:overlaps 'error])`{.sig} Replace `source`'s conceals for the buffer. A conceal draws part of a line as something else. `entries`: a list of `(hash 'start-char s 'end-char e)` ranges to hide. See [Conceals](#conceals) |
+
+A `diagnostics-for-buffer` `range` raises if it ends before it starts or past the end of the buffer. It may also be the `"range"` of `lsp-primary-range-params`, which raises once the buffer has changed since it was taken.
 
 Each `diagnostics-for-buffer` entry is a hash with:
 
@@ -364,13 +462,40 @@ Each `diagnostics-for-buffer` entry is a hash with:
 
 [Hooks](writing-plugins.md#hooks) shows `diagnostics-for-buffer` and the hook that feeds it.
 
+A `set-virtual-lines!` `'segments` is a list of `(hash 'start-char-col 'end-char-col 'scope)` char-column ranges in `'text`. An edge inside a character widens the segment to the whole character, and two segments sharing a character raise.
+
 A decoration whose `'scope` names a scope new to the session raises, naming its entry, once the session holds the most distinct scope names it can (65 280).
 
 A sign source's gutter slot is reserved the first time it registers for a buffer, before it places any sign, so the gutter's width stays stable as signs come and go. The slot stays reserved across `:e!` until the buffer closes or `unregister-sign-source!` gives it back, and re-registering the same `source` for the same buffer only replaces its priority.
 
-Line backgrounds have no priority: same-line entries from different sources break ties by source name. Conceals from different sources are taken in source-name order, and a conceal overlapping one already taken on its line is left out.
+Line backgrounds have no priority: same-line entries from different sources break ties by source name.
 
 Signs, virtual lines, end-of-line text and line backgrounds stay on their line while you edit it, and move with it when lines are added or removed above. They go away when their line is deleted, or joined onto the line above or below. On a join, only the decorations of the line whose end survives stay, on the joined line.
+
+### Conceals
+
+Each `set-conceals!` entry is a `(hash 'start-char s 'end-char e)` range to hide, with optional keys:
+
+- `'text`, drawn in its place;
+- `'scope`, coloring that text (it needs `'text`);
+- `'reveal`, a `(hash 'start-line l 'end-line e)`, end-exclusive, naming further lines that show this entry's source too.
+
+A selection touching the entry's own line or any of its `'reveal` lines shows the source instead of the conceal. An empty range needs `'text` and draws it before that char, hiding nothing. An edge inside a character widens the range to the whole character.
+
+The call raises for an entry:
+
+- out of range, ending before it starts, crossing a line break, or covering a line's break;
+- with an empty `'text`, or a `'text` with a line break or other control character;
+- with an empty range at the very end of the text;
+- overlapping an earlier entry of the same `source`.
+
+With `#:overlaps 'drop`, an entry overlapping an earlier one is left out instead, so the earlier entry in `entries` wins. Entries overlap when:
+
+- two hidden ranges share a character;
+- an empty range lies strictly inside a hidden one;
+- two empty ranges sit at one position.
+
+Conceals from different sources are taken in source-name order, and a conceal overlapping one already taken on its line is left out.
 
 A conceal's hidden range follows the text it covers, and text typed at either edge lands outside it. It goes away when that text is deleted or an edit leaves it across a line break. A conceal that draws text in an empty range stays before the character it was drawn before, and stays even when that character is deleted.
 
@@ -385,7 +510,9 @@ A plugin registers a completion *source*; the editor drives it. A request goes t
 
 All answers are ranked together in one menu, each against its own source's token; no source renders its own UI.
 
-[Completion sources](writing-plugins.md#completion-sources) has the full walkthrough (a static source, richer items, trigger characters, an asynchronous typed-command argument source) and every option `register-completion-source!` takes. `#:complete` on `define-typed-command!` also accepts a built-in source such as `"path"`. The per-server variants of the two trigger calls are on the [Language Server API](lsp-api.md#language-servers) page, and [Hooks](writing-plugins.md#hooks) has the `on-trigger-char` and `on-completion-accept` lambda signatures.
+[Completion sources](writing-plugins.md#completion-sources) has the full walkthrough (a static source, richer items, trigger characters, an asynchronous typed-command argument source) and every option `register-completion-source!` takes. [Hooks](writing-plugins.md#hooks) has the `on-trigger-char` and `on-completion-accept` lambda signatures. The per-server variants of the two trigger calls are on the [Language Server API](lsp-api.md#language-servers) page.
+
+`#:complete` on `define-typed-command!` also accepts a built-in source such as `"path"`.
 
 | Call | Effect |
 |------|--------|
@@ -404,7 +531,7 @@ Any plugin can drive a picker with these editor functions, opening one and pushi
 
 | Call | Pane | Effect |
 |------|------|--------|
-| `picker!` | focused | `(picker! pane items keymap [#:prompt text] [#:pending bool] [#:query text] [#:truncate side] [#:render proc] [#:on-close thunk])`{.sig} Open a fuzzy-finder panel over a fixed `items` list of `(display . payload)` pairs. `keymap` maps each key the picker answers to a `(lambda (item token) ...)`; an unbound plain character types into the query and an unbound `Backspace` deletes from it.<br><br>`#:pending #t` marks the panel as "results still arriving" until the first `picker-push!` or `picker-replace!`. `#:truncate` is `'head` (default) or `'tail`, the end of an over-long row that is cut. `#:render` styles or rewrites each row as it is shown; see [Custom pickers](writing-plugins.md#custom-pickers). `#:on-close` is called once when the picker closes.<br><br>Returns a token, or `#f` when a `#:repeatable` command's `.` answers the picker without opening it |
+| `picker!` | focused | `(picker! pane items keymap [#:prompt text] [#:pending bool] [#:query text] [#:truncate side] [#:render proc] [#:on-close thunk])`{.sig} Open a fuzzy-finder panel over a fixed `items` list of `(display . payload)` pairs. `keymap` maps each key the picker answers to a `(lambda (item token) ...)`. An unbound plain character types into the query and an unbound `Backspace` deletes from it. Returns a token, or `#f` when a `#:repeatable` command's `.` answers the picker without opening it. Keywords below the table |
 | `live-picker!` | focused | `(live-picker! pane keymap #:source proc [#:prompt text] [#:query text] [#:debounce-ms ms] [#:truncate side] [#:render proc] [#:on-close thunk])`{.sig} Open a picker whose query runs `proc`, a function of the picker token and the query, on every keystroke, after `ms` milliseconds without typing (default 150). `keymap`, `#:truncate`, `#:render` and `#:on-close` as for `picker!`. Returns a token, or `#f` under `.` as `picker!` does |
 | `picker-command-source` |  | `(picker-command-source argv-for [#:cwd dir] [#:nul bool] [#:ok-exit-codes codes])`{.sig} A `#:source` for `live-picker!` that runs the subprocess `argv-for` names for the query |
 | `picker-push!` |  | `(picker-push! token items)`{.sig} Append a batch of `(display . payload)` items to an open picker. Returns `#t`, or `#f` for a stale token. A `live-picker!` source passes the token it was called with; once the user has typed on, that token stops feeding the picker |
@@ -414,19 +541,39 @@ Any plugin can drive a picker with these editor functions, opening one and pushi
 | `picker-move!` |  | `(picker-move! token count [#:by step])`{.sig} Move the selection of the picker `token` names by `count` rows, pages or half pages (`step`: `'row`, the default, `'page` or `'half-page`); a negative `count` moves up |
 | `picker-close!` |  | `(picker-close! token)`{.sig} Close the picker `token` names, calling its `#:on-close` |
 
+`picker!`'s keywords:
+
+- `#:pending #t` marks the panel as "results still arriving" until the first `picker-push!` or `picker-replace!`.
+- `#:truncate` is `'head` (default) or `'tail`, the end of an over-long row that is cut.
+- `#:render` styles or rewrites each row as it is shown; see [Custom pickers](writing-plugins.md#custom-pickers).
+- `#:on-close` is called once when the picker closes.
+
 ## Other UI widgets
 
 | Call | Pane | Effect |
 |------|------|--------|
 | `prompt!` | focused | `(prompt! pane label callback [#:prefill text])`{.sig} Open a text prompt; `callback` fires once, later, with the confirmed text, or `#f` on cancel. Raises when another `prompt!` prompt is already open. When a `#:repeatable` command opened it, `.` repeats the answer without opening it; see [Dot-repeat](writing-plugins.md#dot-repeat) |
-| `show-popup!` | focused | `(show-popup! pane text [#:anchor anchor] [#:kind kind] [#:lang language])`{.sig} Show a text popup, replacing any popup already showing. `#:anchor` is `'cursor` (default, floats near the cursor), `'bottom` (docks above the statusline) or `'fit` (floats near the cursor while all of the text fits there, docks otherwise, decided again whenever the screen changes); `#:lang` sets syntax highlighting, and the language's text formatter, when one is defined, draws the text; see [Formatting popup text](#formatting-popup-text).<br><br>`#:kind` sets how long it lives: `'sticky` (default) closes as soon as you leave the mode you opened it in; `'scrollable` stays open (`Ctrl-u`/`Ctrl-d` scroll it) until any other key, paste, or mouse input.<br><br>Returns a token for `close-popup!`, or `#f` if the popup didn't open |
+| `show-popup!` | focused | `(show-popup! pane text [#:anchor anchor] [#:kind kind] [#:lang language])`{.sig} Show a text popup, replacing any popup already showing. `#:lang` sets syntax highlighting, and the language's text formatter, when one is defined, draws the text; see [Formatting popup text](#formatting-popup-text). Returns a token for `close-popup!`, or `#f` if the popup didn't open. `#:anchor` and `#:kind` below the table |
 | `close-popup!` |  | `(close-popup! token)`{.sig} Close the popup `token` names |
-| `show-menu!` | focused | `(show-menu! pane items callback)`{.sig} Show a selection menu over `items`, a non-empty list of `(display . payload)` pairs, each display a [row display](#row-display) (raises on an empty list, on a row whose spans don't fit its text, and on a row naming a scope new to the session at the limit). `callback` gets the chosen row's payload, or `#f` when the menu is dismissed.<br><br>Returns a token for `close-menu!`, or `#f` if the menu didn't open: the editor is not in Normal or Extend mode, or moved on before the call landed.<br><br>When a `#:repeatable` command opened it, `.` repeats the choice without opening it; see [Dot-repeat](writing-plugins.md#dot-repeat) |
+| `show-menu!` | focused | `(show-menu! pane items callback)`{.sig} Show a selection menu over `items`, a non-empty list of `(display . payload)` pairs, each display a [row display](#row-display). `callback` gets the chosen row's payload, or `#f` when the menu is dismissed. Returns a token for `close-menu!`, or `#f` if the menu didn't open. See below |
 | `close-menu!` |  | `(close-menu! token)`{.sig} Close the menu `token` names without calling its `callback` |
 | `show-drawer-list!` | focused | `(show-drawer-list! pane items callback [#:selected row] [#:truncate side] [#:render proc])`{.sig} Show a list in the bottom drawer, replacing any drawer already open. Returns a token, or `#f`. See [The drawer](#the-drawer) |
 | `close-drawer!` |  | `(close-drawer! token)`{.sig} Close the drawer `token` names |
-| `update-drawer-list!` |  | `(update-drawer-list! token items callback selected [#:render proc])`{.sig} Replace the open drawer's rows in place (`#:render` as for `show-drawer-list!`; the drawer keeps the `#:truncate` it opened with), selecting row `selected` (clamped into `items`; pass `(cdr (drawer-selection token))` to keep the current row). Returns `#t` when applied, `#f` for a stale token. Raises on empty `items` (close the drawer instead of clearing it), on a row whose spans don't fit its text, and on a row naming a scope new to the session at the limit, as `show-drawer-list!` does |
+| `update-drawer-list!` |  | `(update-drawer-list! token items callback selected [#:render proc])`{.sig} Replace the open drawer's rows in place, selecting row `selected`. Returns `#t` when applied, `#f` for a stale token. See [The drawer](#the-drawer) |
 | `drawer-selection` |  | `(drawer-selection token)`{.sig} The open drawer's selected row as `(item . index)`, or `#f` for a stale token |
+
+`show-popup!`'s `#:anchor` places the popup:
+
+- `'cursor` (default) floats near the cursor.
+- `'bottom` docks above the statusline.
+- `'fit` floats near the cursor while all of the text fits there, and docks otherwise, decided again whenever the screen changes.
+
+Its `#:kind` sets how long it lives:
+
+- `'sticky` (default) closes as soon as you leave the mode you opened it in.
+- `'scrollable` stays open (`Ctrl-u`/`Ctrl-d` scroll it) until any other key, paste, or mouse input.
+
+`show-menu!` raises on an empty list, on a row whose spans don't fit its text, and on a row naming a scope new to the session at the limit. It returns `#f` when the editor is not in Normal or Extend mode, or moved on before the call landed. When a `#:repeatable` command opened it, `.` repeats the choice without opening it; see [Dot-repeat](writing-plugins.md#dot-repeat).
 
 ### Row display
 
@@ -447,25 +594,43 @@ A row naming a scope new to the session raises, naming the row, once the session
 
 ### The drawer
 
-`show-drawer-list!` lists `items`, a non-empty list of `(display . payload)` pairs, each display a [row display](#row-display), in the bottom drawer. It raises on empty `items`: close the drawer, or don't open it, instead. `#:selected` is the row to open on (default 0, clamped into `items`), scrolled into view. `callback` is called with `(payload token)`: the selected row's payload, and the token of the drawer that called it.
+`show-drawer-list!` lists `items`, a non-empty list of `(display . payload)` pairs, each display a [row display](#row-display), in the bottom drawer. It raises on empty `items`: close the drawer, or don't open it, instead.
+
+`#:selected` is the row to open on (default 0, clamped into `items`), scrolled into view. `callback` is called with `(payload token)`: the selected row's payload, and the token of the drawer that called it.
 
 A row too wide for the drawer is cut to fit, with `…` at the dropped end. `#:truncate` picks the end: `'tail` (default) drops the back and keeps the start, and `'head` drops the front and keeps the end.
 
-With `#:render`, `items` can be any values but `#f`, one per row, each its row's payload. Before showing rows it hasn't drawn at its current width, the drawer calls `(render rows budget)`: `rows` are the items of those rows, top to bottom, and `budget` is how many terminal cells one row gets. `render` returns one [row display](#row-display) for each.
+With `#:render`, `items` can be any values but `#f`, one per row, each its row's payload. Before showing rows it hasn't drawn at its current width, the drawer calls `(render rows budget)`. `rows` are the items of those rows, top to bottom, and `budget` is how many terminal cells one row gets. `render` returns one [row display](#row-display) for each.
 
-Each row is drawn once for a given width, so `render` runs again only for rows scrolled into view, every visible row after the drawer changes width, or after `update-drawer-list!`. A row still wider than `budget` is cut at the `#:truncate` end.
+Each row is drawn once for a given width, so `render` runs again only:
 
-`render` can read buffers, selections and settings but not change the editor; calls that need language servers, diagnostics, completion, timers or background processes raise. An attempt to change the editor, an error, or a result that isn't one row display per item (a row whose spans don't fit its text included) closes the drawer, calls `callback` with `#f`, and shows the error.
+- for rows scrolled into view;
+- for every visible row after the drawer changes width;
+- after `update-drawer-list!`.
+
+A row still wider than `budget` is cut at the `#:truncate` end.
+
+`render` can read buffers, selections and settings but not change the editor. Calls that need language servers, diagnostics, completion, timers or background processes raise. An attempt to change the editor, an error, or a result that isn't one row display per item (a row whose spans don't fit its text included) closes the drawer, calls `callback` with `#f`, and shows the error.
 
 A new drawer replaces the one already open. The outgoing drawer's `callback` fires with `#f` and its own token, so its owner knows that drawer is gone and can tell this from its new drawer closing.
 
 `show-drawer-list!` returns the token `close-drawer!`, `update-drawer-list!` and `drawer-selection` take. It returns `#f`, with a warning, when the editor is not in Normal or Extend mode, and `#f` when the editor moved on before the call landed. `.` never records a drawer pick; see [Dot-repeat](writing-plugins.md#dot-repeat).
 
+`update-drawer-list!` takes `#:render` as `show-drawer-list!` does, and the drawer keeps the `#:truncate` it opened with. `selected` is clamped into `items`. To keep the current row, pass `(cdr (drawer-selection token))`.
+
+`update-drawer-list!` raises, as `show-drawer-list!` does, on:
+
+- empty `items` (close the drawer instead of clearing it);
+- a row whose spans don't fit its text;
+- a row naming a scope new to the session at the limit.
+
 ### Formatting popup text
 
 A popup shown with `#:lang language` is drawn through the editor command `format-text/<language>` when one is defined and `language` has a grammar installed: `format-text/markdown` for a Markdown popup. The completion menu's documentation box calls `format-text/markdown` for Markdown documentation, under the same condition. A plugin whose manifest lists the command is loaded the first time such a popup opens.
 
-The command runs once per text, as `(format-text/<language> text parsed)`. `text` is the popup's text, ending with a line break, and `parsed` names its syntax tree for `parsed-text-captures`. Like a drawer's `#:render`, it can read the editor but not change it. It returns a hash, every key optional:
+The command runs once per text, as `(format-text/<language> text parsed)`. `text` is the popup's text, ending with a line break, and `parsed` names its syntax tree for `parsed-text-captures`.
+
+Like a drawer's `#:render`, it can read the editor but not change it. It returns a hash, every key optional:
 
 | Key | Value |
 |---|---|
@@ -529,13 +694,23 @@ Both texts are split into lines the way HUME reads a file: every line ending bec
 (hash 'old-start-line s 'old-end-line e 'new-start-line s 'new-end-line e 'old-lines texts 'new-lines texts 'words spans)
 ```
 
-- `'old-start-line`/`'new-start-line` are 0-based line numbers, and `'old-end-line`/`'new-end-line` the line after the hunk's last one on each side, so a side's lines are `[start, end)`. A pure insertion has an empty old range (`'old-start-line` equals `'old-end-line`); a pure deletion has an empty new range. The empty side's line number is where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!`.
+- `'old-start-line`/`'new-start-line` are 0-based line numbers, and `'old-end-line`/`'new-end-line` the line after the hunk's last one on each side, so a side's lines are `[start, end)`.
+  - A pure insertion has an empty old range (`'old-start-line` equals `'old-end-line`). A pure deletion has an empty new range.
+  - The empty side's line number is where the change happens, so it feeds straight into `set-signs!` or `set-virtual-lines!`.
 - `'old-lines`/`'new-lines` are the text of those lines, without line breaks.
-- `'words`, `(hash 'old spans 'new spans)`, marks the words that changed inside the hunk. An old-side span is `(hash 'line 'start-char-col 'end-char-col)`: a line of the old text and char columns in it. A new-side span is `(hash 'start-char 'end-char)`: char offsets into the new text, counting each line ending as one character, ready for `set-extra-highlights!`. Both are end-exclusive, and a span covering a whole line is left out. `'words` is `#f` for a hunk too large to compare word by word.
+- `'words`, `(hash 'old spans 'new spans)`, marks the words that changed inside the hunk. It is `#f` for a hunk too large to compare word by word.
+  - An old-side span is `(hash 'line 'start-char-col 'end-char-col)`: a line of the old text and char columns in it.
+  - A new-side span is `(hash 'start-char 'end-char)`: char offsets into the new text, counting each line ending as one character, ready for `set-extra-highlights!`.
+  - Both are end-exclusive, and a span covering a whole line is left out.
 
 ### Word hunks
 
-`diff-words` returns `(hash 'hunks hunks)`, each hunk `(hash 'old-start-char 'old-end-char 'new-start-char 'new-end-char 'old-text 'new-text)`: 0-based char offsets into `old-text` and `new-text`, with `'old-text`/`'new-text` holding the changed words. A pure insertion has an empty `'old-text`, and `'old-start-char` equal to `'old-end-char`; a pure deletion mirrors that on the new side. It is meant for short texts such as one changed line: for long ones, compare lines with `diff-lines` first.
+`diff-words` returns `(hash 'hunks hunks)`, each hunk `(hash 'old-start-char 'old-end-char 'new-start-char 'new-end-char 'old-text 'new-text)`. The offsets are 0-based char offsets into `old-text` and `new-text`, and `'old-text`/`'new-text` hold the changed words.
+
+- A pure insertion has an empty `'old-text`, and `'old-start-char` equal to `'old-end-char`.
+- A pure deletion mirrors that on the new side.
+
+It is meant for short texts such as one changed line. For long ones, compare lines with `diff-lines` first.
 
 [Comparing text](writing-plugins.md#comparing-text) has examples.
 
@@ -567,18 +742,28 @@ Everyday string work (trimming, splitting on a separator, case conversion, prefi
 | `safe-path-segment?` | `(safe-path-segment? name)`{.sig} `#t` if `name` is a string safe to use as one path component on every platform: not empty, not `.` or `..`, and free of `/`, `\`, `:`, `"` and NUL; `#f` for anything else. Use it before joining a user-typed or downloaded name onto a path |
 | `remove-dir!` | `(remove-dir! dir)`{.sig} Delete directory `dir` (relative to the working directory) and everything in it; raises when `dir` doesn't exist |
 | `find-program` | `(find-program name)`{.sig} The path of the program `name` runs as, looked up on the `PATH` HUME started with (the one every program it starts gets); `#f` when there is none |
-| `first-path-outside` | `(first-path-outside dir paths)`{.sig} The first of `paths` that lies outside directory `dir` once every symbolic link in both is resolved, returned as you wrote it; `#f` when every path is inside `dir` or is `dir` itself. All are relative to the working directory. A link to a missing file counts as the path it names. Raises when a path can't be resolved, such as a link that points back to itself |
-| `path-entries` | `(path-entries dir prefix)`{.sig} The names in directory `dir` (relative to the working directory) starting with `prefix` (ignoring letter case on Windows), sorted, as `:e` completes them: a directory's name ends in `/` (a link to a directory included), and hidden entries appear only when `prefix` starts with `.`. `'()` when `dir` can't be read |
-| `path-programs` | `(path-programs prefix extensions callback)`{.sig} List, in the background, the programs on `PATH` whose names start with `prefix`. `callback`, `(lambda (names done?) ...)`, is called as `PATH` is read with every name found so far, sorted, and a last time with `done?` `#t`. A `callback` that raises stops the listing. Returns a job for `cancel-async!`. On Windows a program is a file ending in one of `extensions` (`'(".exe")`), named without it |
+| `first-path-outside` | `(first-path-outside dir paths)`{.sig} The first of `paths` that lies outside directory `dir` once every symbolic link in both is resolved, returned as you wrote it. `#f` when every path is inside `dir` or is `dir` itself. All are relative to the working directory. A link to a missing file counts as the path it names. Raises when a path can't be resolved, such as a link that points back to itself |
+| `path-entries` | `(path-entries dir prefix)`{.sig} The names in directory `dir` (relative to the working directory) starting with `prefix` (ignoring letter case on Windows), sorted, as `:e` completes them. A directory's name ends in `/` (a link to a directory included), and hidden entries appear only when `prefix` starts with `.`. `'()` when `dir` can't be read |
+| `path-programs` | `(path-programs prefix extensions callback)`{.sig} List, in the background, the programs on `PATH` whose names start with `prefix`. Returns a job for `cancel-async!`. See below |
 | `home-dir` | `(home-dir)`{.sig} The user's home directory, or `#f` when the environment names none |
-| `path->display` | `(path->display path [#:relative dir])`{.sig} `path` as `buffer-display-path` shows a file: absolute with the home directory as `~`, or with `#:relative dir`, relative to `dir` when inside it. A relative `path` or `dir` is taken against the working directory, and a `..` in either is followed on disk, so it raises when the folder before it doesn't exist (on Windows a `..` just removes the folder before it). The paths are then compared as written, without following symbolic links |
-| `read-data-file` | `(read-data-file path)`{.sig} The one Scheme value written in the file at `path`, with `;` comments allowed around it. Raises, naming the file, when its text doesn't parse or holds more or fewer than one value, an empty file included. Use it instead of Steel's `read` for data files: `read` returns end-of-file instead of raising on bad syntax, and leaves the bad text for the next `read` |
+| `path->display` | `(path->display path [#:relative dir])`{.sig} `path` as `buffer-display-path` shows a file: absolute with the home directory as `~`, or with `#:relative dir`, relative to `dir` when inside it. See below |
+| `read-data-file` | `(read-data-file path)`{.sig} The one Scheme value written in the file at `path`, with `;` comments allowed around it. Raises, naming the file, when its text doesn't parse or holds more or fewer than one value, an empty file included. See below |
 | `data-file` | `(data-file dir name)`{.sig} The path of `name.scm` in `dir` when `dir` holds that file, else `#f`. Only a name spelled like one of `dir`'s files, letter case included, matches: `Rust` does not match `rust.scm` on any platform, and `../x` never reaches outside `dir` |
 | `data-file-names` | `(data-file-names dir)`{.sig} The names of `dir`'s `.scm` files without the suffix, sorted; `'()` when `dir` doesn't exist |
 
+`path-programs` calls `callback`, `(lambda (names done?) ...)`, as `PATH` is read, with every name found so far, sorted, and a last time with `done?` `#t`. A `callback` that raises stops the listing. On Windows a program is a file ending in one of `extensions` (`'(".exe")`), named without it.
+
+For `path->display`, a relative `path` or `dir` is taken against the working directory. A `..` in either is followed on disk, so it raises when the folder before it doesn't exist (on Windows a `..` just removes the folder before it). The paths are then compared as written, without following symbolic links.
+
+Use `read-data-file` instead of Steel's `read` for data files. `read` returns end-of-file instead of raising on bad syntax, and leaves the bad text for the next `read`.
+
 [Filesystem and processes](writing-plugins.md#filesystem-and-processes) shows how to read a plugin's own files.
 
-A lock from `try-lock-file!` lasts until `unlock-file!`, or until the run that took it ends, or until HUME exits, so no lock is left behind. A run is everything one event starts: the command a key or the `:` prompt runs, along with every command it `call!`s; one hook, timer or callback; or loading `init.scm` and its plugins at startup.
+A lock from `try-lock-file!` lasts until `unlock-file!`, or until the run that took it ends, or until HUME exits, so no lock is left behind. A run is everything one event starts:
+
+- the command a key or the `:` prompt runs, along with every command it `call!`s;
+- one hook, timer or callback;
+- loading `init.scm` and its plugins at startup.
 
 HUME has one working directory: `(cwd)` reads it, and `(set-cwd! path)` and `:cd` move it. A path given to a HUME call is taken as written:
 
