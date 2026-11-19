@@ -6,6 +6,10 @@
 - `core:markdown` turns a URL pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
 - The `on-paste` hook lets a plugin change the text a paste puts in a buffer.
 
+### Fixes
+- The Markdown preview no longer scrolls the bottom of a pane up and down without end when a table wider than the pane starts just below it.
+- The Markdown preview no longer shifts a pane's text up and down without end when a table row under the scope headers wraps. `viewport-range`, `buffer-viewport-ranges` and the `on-viewport-change` hook include the lines under the scope headers again.
+
 ## [0.22.1] - 2026-11-18
 
 ### Breaking changes

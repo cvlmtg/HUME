@@ -1341,9 +1341,9 @@ fn the_empty_line_between_two_tables_at_the_window_top_carries_the_upper_tables_
     let bid = p.open("a.md", &text);
     let pid = p.ed.view.focused_pane();
     // `z k` puts the cursor line on the first row below the pinned header
-    // row.
+    // row, which covers the line above it.
     run_set(&mut p.ed, "global scroll-margin=0").expect("the setting applies");
-    seek_to_line(&mut p.ed, SHARED);
+    seek_to_line(&mut p.ed, SHARED + 1);
     keys(&mut p.ed, "zk");
     p.render();
     assert_eq!(
@@ -1797,6 +1797,86 @@ fn a_wrapped_view_settles() {
     pin_wrap(&mut p.ed, WrapMode::Soft { width: 0 });
     let pid = p.ed.view.focused_pane();
     p.render();
+    let settled = (p.visible(pid), p.conceals(bid));
+
+    p.frame();
+    p.wait();
+
+    assert_eq!((p.visible(pid), p.conceals(bid)), settled);
+}
+
+/// A table whose first row would sit on the pane's last row, under the
+/// empty line its top border is drawn on. The border is wider than the pane,
+/// so its line takes a second row and pushes the row off screen: the border
+/// is drawn whether or not the row is on screen.
+#[test]
+fn a_wide_table_below_the_last_row_keeps_its_top_border() {
+    const BORDER: usize = 9;
+    let mut p = preview().sized(40, 12);
+    let rows = "| a long first cell of text | a second cell that is long |\n|---|---|\n| x | y |\n";
+    let text = format!("{}## Docs\n\n{rows}", "x\n".repeat(BORDER - 1));
+    let bid = p.open("a.md", &text);
+    let pid = p.ed.view.focused_pane();
+    p.render();
+    let settled = (p.visible(pid), p.conceals(bid));
+    assert_eq!(
+        settled.0,
+        0..BORDER + 1,
+        "premise: the border's line ends the view"
+    );
+    let at = line_starts(&text)[BORDER];
+    assert!(
+        settled.1.iter().any(|c| c.start == at),
+        "the top border is set"
+    );
+
+    p.frame();
+    p.wait();
+
+    assert_eq!((p.visible(pid), p.conceals(bid)), settled);
+}
+
+/// Two tables of long rows under `##` headings.
+const HEADED_TABLES: &str = r#"# core:lsp-install
+## Commands
+
+| Command | Effect |
+|---|---|
+| `:lsp-install [name\|lang]` | Install a seeded server by name, or a language's first server. No argument means the buffer's language. A server already at the seeded version is only registered |
+| `:lsp-uninstall <name>` | Unregister a server and delete its install directory. Completes every server on disk, orphans included |
+| `:lsp-catalog` | Show every seeded server with its languages and its install status or blocker |
+| `lsp-install/install-server` | Install `name` over its existing install. `:lsp-install` defers a reinstall to it so the running client has stopped first |
+
+## Documentation
+
+| Doc | Covers |
+|---|---|
+| [`docs/architecture.md`](docs/architecture.md) | File layout, the contract with `core:lsp`, install folders and receipts, the registration scan, the install lock |
+| [`docs/catalogs.md`](docs/catalogs.md) | The generated catalogs, their record formats, how they are generated, the Mason pin |
+| [`docs/install.md`](docs/install.md) | The install pipeline, blockers, verifying and unpacking, toolchain installs, the commands, the discovery hint |
+
+The wider rationale (why two pins, why receipts) is in `docs/LSP-INSTALL.md` in the
+repository.
+"#;
+
+/// The cursor on the last line puts the second table's last row on the top
+/// row, under the two header rows. Concealed, that row is padded to the
+/// table's width and wraps, so it decides which line the body starts at, and
+/// every render must draw it the same way.
+#[test]
+fn a_table_row_under_the_header_rows_settles() {
+    const UNDER_HEADERS: usize = 16;
+    let mut p = preview().sized(145, 9);
+    let bid = p.open("a.md", HEADED_TABLES);
+    let pid = p.ed.view.focused_pane();
+    p.render();
+    keys(&mut p.ed, "ge");
+    p.render();
+    assert_eq!(
+        p.ed.pane_viewport(pid).top().line.index(),
+        UNDER_HEADERS,
+        "premise: the table's last row is on the top row"
+    );
     let settled = (p.visible(pid), p.conceals(bid));
 
     p.frame();

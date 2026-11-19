@@ -16,9 +16,11 @@
   (set-extra-highlights! pane md-preview/source '()))
 
 (define (md-preview/render-ranges pane)
-  (let ([shown (buffer-viewport-ranges pane)])
+  (let ([shown (buffer-viewport-ranges pane)]
+        [line-count (buffer-line-count pane)])
     (append (map (lambda (range)
-                   (hash-insert range 'start-line (max 0 (- (hash-ref range 'start-line) 1))))
+                   (hash 'start-line (max 0 (- (hash-ref range 'start-line) 1))
+                         'end-line (min line-count (+ (hash-ref range 'end-line) 1))))
                  (hash-ref shown 'ranges))
             (hash-ref shown 'headers))))
 
