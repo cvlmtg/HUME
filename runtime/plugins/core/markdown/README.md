@@ -10,13 +10,11 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 ```
 
 - **Depends on:** `core:stdlib`, for config validation.
-- **Activates on:** the first buffer whose language is `markdown`, or any of its three
-  commands (`manifest.scm`), the first Markdown popup's `format-text/markdown` call
-  included. The manifest lists no events: a `#:languages` manifest may list no buffer
-  event, and the language is the trigger.
-- **Grammars:** `markdown` and `markdown.inline`. The first buffer opened without one of
-  them logs one warning per missing grammar per session, naming the
-  `:plum-install-grammar` command that installs it.
+- **Activates on:** the first `markdown` buffer, or any of its three commands
+  (`manifest.scm`), the first Markdown popup's `format-text/markdown` call included. The
+  manifest lists no events: a `#:languages` manifest may list no buffer event.
+- **Grammars:** `markdown` and `markdown.inline`. The first buffer opened without one
+  logs a warning per missing grammar, once a session, naming `:plum-install-grammar`.
 - **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-markdown).
 
 ## Configuration
@@ -32,7 +30,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 |---|---|
 | `:toggle-markdown-preview` | Turn the preview off for the current buffer, clearing everything it drew, or back on, rendering at once |
 | `markdown/toggle-preview` | The same function, bindable |
-| `format-text/markdown` | `(format-text/markdown text parsed)`: what the preview draws for a Markdown text, given the text and its parsed tree, as the hash a text formatter returns. The editor calls it for every Markdown popup and the completion documentation box, and `call!` reaches it |
+| `format-text/markdown` | `(format-text/markdown text parsed)`: what the preview draws for a text and its parsed tree, as the hash a text formatter returns. The editor calls it for every Markdown popup and the completion documentation box, and `call!` reaches it |
 
 ## Documentation
 

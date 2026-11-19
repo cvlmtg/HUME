@@ -2,51 +2,48 @@
 
 ## Decisions
 
-The choices the plugin and the Rust surface under it are built on:
-
-- **Reveal:** every line a selection touches shows its source, in every mode. A table or a
-  fenced block reveals as a whole while a selection is inside it. A revealed line keeps its
-  heading bold and band: only the hidden or replaced text comes back, and on the primary
-  cursor's line the cursorline background wins over a band.
-- **Layout:** `j` and `k` resolve their target line against its revealed layout, because
-  landing on a line reveals it. Mouse clicks use the drawn layout. Scrolling moves by drawn
-  rows, and the cursor lands on the text of its row at the column `j` and `k` would use.
-- **Inserts:** a conceal with an empty range is an insert that follows the reveal rule.
-  Table borders, the outer bars of a table written without outer pipes, and the bar of a
-  quote line with no `>` are inserts.
-- **Borders:** a table's top and bottom borders are drawn on the empty lines next to it, so
-  the table keeps its height when it reveals.
-- **Code blocks:** a background band over every line of the block. The fence characters
-  and the info string are hidden: the info string picks the block's highlighting language.
-- **Shortcut links** (`[text]`) stay raw, and so does Markdown inside a fenced code block.
-- **Header rows:** a pinned heading draws its level marker and bold text like the same line in the
-  body. Header rows draw conceals and the search, diagnostic and extra highlights, and no
-  inlay hints, virtual lines, line backgrounds or selections.
+- **Reveal:** every line a selection touches shows its source, in every mode; a table or
+  fenced block reveals whole while a selection is inside it. A revealed heading keeps its
+  bold and band, and on the primary cursor's line the cursorline background wins over a
+  band.
+- **Layout:** `j` and `k` aim at their target line's revealed layout, since landing reveals
+  it. Clicks use the drawn layout. Scrolling moves by drawn rows, and the cursor lands on
+  its row's text at the column `j` and `k` would use.
+- **Inserts:** a conceal with an empty range is an insert, and follows the reveal rule:
+  table borders, the outer bars of a table without outer pipes, and the bar of a quote line
+  with no `>`.
+- **Borders** go on the empty lines next to a table, so the table keeps its height when it
+  reveals.
+- **Code blocks** get a band over every line. The fences and the info string are hidden;
+  the info string picks the highlighting language.
+- **Raw:** shortcut links (`[text]`), and Markdown inside a fenced code block.
+- **Header rows:** a pinned heading draws like its body line: conceals and the search,
+  diagnostic and extra highlights, but no inlay hints, virtual lines, line backgrounds or
+  selections.
 - **Viewport:** a render covers the visible lines widened to whole syntax nodes (see
   [Widening by query roots](#widening-by-query-roots)), not the whole buffer.
-- **Popups:** a Markdown popup and the completion documentation box draw every element a
-  buffer does, tables included. A popup has no selection, so nothing in it reveals, and the
-  popup wraps the drawn text, so a table wider than the box breaks its grid.
+- **Popups** draw every element a buffer does, tables included. Nothing in a popup reveals,
+  and the popup wraps the drawn text, so a table wider than the box breaks its grid.
 - **Link paste:** any paste that replaces selected text with a URL makes a link, whichever
   key or command pasted it. The kill ring keeps the bare URL.
-- **Link paths:** completed relative to the Markdown file's own folder, the way a renderer
+- **Link paths** complete relative to the Markdown file's own folder, the way a renderer
   resolves them, never the working directory.
-- **Rust surface:** the editor functions `set-conceals!` and `syntax-captures` (with its
-  `#:ranges`), the `on-syntax-changed` hook, and for popups the `format-text/<lang>`
-  command the editor calls and `parsed-text-captures`. There is no query handle. Link
-  paste rests on the `on-paste` hook, which sees a paste before it lands.
+- **Rust surface:** `set-conceals!`, `syntax-captures` with `#:ranges`, the
+  `on-syntax-changed` hook, and for popups the `format-text/<lang>` command and
+  `parsed-text-captures`. There is no query handle. Link paste rests on the `on-paste`
+  hook, which sees a paste before it lands.
 
 ## Limitations
 
-- Replacement text does not wrap and has no break points. A rule wider than the pane is
+- Replacement text does not wrap and has no break points: a rule wider than the pane is
   cut, and a table row loses the break points its whitespace gave it.
-- A table wider than the pane draws a broken grid under soft wrap: borders and the delimiter
-  row are cut at the pane edge, and a row wraps inside its cells.
-- A border is drawn only while a row of its table is in one of a render's ranges, and only
-  on an empty line: a line with any text, blanks included, gets none. A top border whose
-  line lies just above a range is not drawn either.
-- A tab inside a table cell breaks the column alignment: `string-width` measures it at a
-  fixed tab width.
+- Under soft wrap, a table wider than the pane draws a broken grid: borders and the
+  delimiter row are cut at the pane edge, and rows wrap inside their cells.
+- A border is drawn only on an empty line (blanks count as text) and only while a row of
+  its table is in a render's ranges. A top border also needs the line above its own line
+  in them, or no such line.
+- A tab inside a table cell breaks the alignment: `string-width` measures it at a fixed
+  tab width.
 - Search, diagnostic and bracket highlights inside hidden text are not drawn on a line no
   selection touches.
 - Dragging the mouse across concealed lines reveals them as the selection grows, which
@@ -55,12 +52,10 @@ The choices the plugin and the Rust surface under it are built on:
   Markdown reads as text, not as a link.
 - The path menu also shows what the other completion sources offer for the word before
   the cursor, such as `core:buffer-words`'s words.
-- Lines scrolled into view draw raw until the render that covers them runs, which is
-  `hook-viewport-debounce-ms` after the scrolling stops. The plugin adds no delay setting
-  of its own.
-- A table or fenced block larger than the viewport is fetched and drawn whole by every
-  render whose ranges reach one of its rows, so such a render costs as much as the block is
-  long.
+- Lines scrolled into view draw raw until the next render, `hook-viewport-debounce-ms`
+  after scrolling stops. The plugin adds no delay of its own.
+- A table or fenced block is fetched and drawn whole by every render whose ranges reach
+  one of its rows, so a block longer than the viewport costs its full length each time.
 
 ## File layout
 
@@ -68,128 +63,132 @@ The choices the plugin and the Rust surface under it are built on:
 |---|---|
 | `manifest.scm` | Lazy activation on the language and the three commands |
 | `plugin.scm` | Config, the hooks, the commands, the `on-paste` handler and the `markdown:paths` completion source |
-| `lib/state.scm` | Per-buffer state, keyed by `(buffer-key pane)`: whether the preview is on, and the generation the buffer's last parsed tree was built from. The grammar names warned about this session, and `md-preview/box-insert!` |
-| `lib/queries.scm` | The block and inline queries, their capture names, the capture accessors, the grouping of captures by name, and the conceal constructor and order |
-| `lib/blocks.scm` | Block captures to conceals, line backgrounds and highlights. Calls no editor builtin: lines come in as procedures |
-| `lib/table.scm` | Table captures to conceals, and the line spans of the tables, which the inline query also covers. Reads no buffer either: lines come in as procedures, and cells are measured with `string-width` |
-| `lib/inline.scm` | Inline captures to conceals. Calls no editor builtin either |
-| `lib/entities.scm` | The named entities the plugin replaces, and the numeric references it accepts |
-| `lib/render.scm` | The render funnel: `md-preview/elements` (the fenced-block filter, the inline captures' ranges, the conceal order) over the captures and line procedures it is handed, and for a buffer the pane ranges, the two `syntax-captures` calls and the three setters |
-| `lib/text.scm` | `md-preview/elements` over a popup's text: its lines, the two `parsed-text-captures` calls, and the result `format-text/markdown` returns |
+| `lib/state.scm` | Per-buffer state keyed by `(buffer-key pane)` (preview on or off, the generation of the last parsed tree), the grammars warned about, and `md-preview/box-insert!` |
+| `lib/queries.scm` | The block and inline queries, capture names and accessors, grouping by name, the conceal constructor and order |
+| `lib/blocks.scm` | Block captures to conceals, line backgrounds and highlights |
+| `lib/table.scm` | Table captures to conceals, and each table's line span, which the inline query also covers. Cells are measured with `string-width` |
+| `lib/inline.scm` | Inline captures to conceals |
+| `lib/entities.scm` | The named entities replaced, and the numeric references accepted |
+| `lib/render.scm` | `md-preview/elements` (fenced-block filter, inline ranges, conceal order), and for a buffer the ranges, the two `syntax-captures` calls and the three setters |
+| `lib/text.scm` | `md-preview/elements` over a popup's text and the result `format-text/markdown` returns |
 | `lib/links.scm` | `md-links/paste-link`, the `on-paste` handler's text: see [`links.md`](links.md#link-paste) |
 | `lib/paths.scm` | `md-paths/items`, the completion source's answer: see [`links.md`](links.md#link-paths) |
 
+`blocks.scm`, `table.scm` and `inline.scm` call no editor function: lines come in as
+procedures.
+
 ## Rendering
 
-`render-buffer!` is the one path that draws a buffer. Three callers reach it:
+`render-buffer!` is the one path that draws a buffer. It is reached from:
 
-- `on-viewport-change`, with the pane in hand. Rust debounces it by
-  `hook-viewport-debounce-ms` (80 ms by default), and it fires when the lines a pane shows
-  change, its scope header rows included, as on a pane's first frame on a buffer, a buffer
-  switch, and a tab coming back.
-- `on-syntax-changed`, after `debounce-by 50` keyed by `buffer-key`. It fires after every
-  parse of the buffer, the first one included.
+- `on-viewport-change`, which Rust debounces by `hook-viewport-debounce-ms` (80 ms by
+  default). It fires when the lines a pane shows change, header rows included: a pane's
+  first frame on a buffer, a buffer switch, a tab coming back.
+- `on-syntax-changed`, after `debounce-by 50` keyed by `buffer-key`, after every parse,
+  the first one included.
 - The toggle command, when it turns the preview on.
 
-`on-buffer-open` renders nothing: the pane's first frame and the first parse both follow
-it. It only checks the grammars. `on-buffer-close` drops the buffer's state, so a render
-still waiting on its debounce does nothing, and clears the three sources when the buffer
-stays open, as it does when its language changes away from `markdown`.
+`on-buffer-open` only checks the grammars: the first frame and the first parse follow it.
+`on-buffer-close` drops the buffer's state, so a pending render does nothing, and clears
+the three sources if the buffer stays open (its language changed away from `markdown`).
 
-A render queries the `markdown` layers with the block query, then the `markdown.inline`
-layers with the inline query. The inline query covers the same ranges, plus every line of
-each table the block query returned, so the cells of a table crossing the window edge are
-measured with their inline conceals too. Without a `markdown.inline` grammar the
-render skips the inline query, which would raise, and draws the block elements alone.
+A render runs the block query over the `markdown` layers, then the inline query over the
+`markdown.inline` layers. The inline query covers the same ranges plus every line of each
+table found, so cells crossing the window edge are measured with their inline conceals.
+Without a `markdown.inline` grammar, the inline query is skipped and the block elements
+are drawn alone.
 
-A render runs only while the buffer's tree matches its text. The `on-syntax-changed`
-handler stores `(buffer-generation pane)` at once, before its debounce, and
-`render-buffer!` compares it with the buffer's current generation. When they differ, the
-text has changed since the last parse, and the render is skipped: the parse that is
-pending fires `on-syntax-changed` again. A render therefore does not make `syntax-captures`
-parse the buffer on the spot, with one exception: when a parse lands in the same wake as a
-key that edits the buffer, the handler runs after the edit and stores the edited text's
-generation, so a render before the next parse lands parses on the spot. A buffer that no
-pane shows is not drawn.
+### Stale trees
 
-Each render replaces the plugin's three sources (`"markdown-preview"` for conceals, line
-backgrounds and extra highlights) as a whole, for every pane on the buffer. So it covers
-the lines `(buffer-viewport-ranges pane)` gives at once: each of its `'ranges`, widened by
-one line above the first line it names and one line below the last, and each of its
-`'headers`, the lines of the panes' scope header rows, as given. Both queries take the list
-as `#:ranges`, and `syntax-captures` returns a match once even when several ranges reach
-it, such as a table or a code block two panes both show part of. The lines between two
-panes far apart are not fetched, and lines outside every range are drawn raw until a render
-covers them. The line above a range is in it so that a table ending just above a pane's
-top line comes back: the empty line after it, the pane's top line, carries that table's
-bottom border (see [Tables](elements.md#tables)). The line below is in it so that a table starting
-just below a pane's last shown line comes back: the empty line before it carries that
-table's top border. Under wrapping, a border wider than the pane takes a second row and
-pushes the table's first row off screen, so the border must not depend on that row being
-shown. A header line opens a scope, so it is never the empty line a border is drawn on,
-and the line above it is not fetched.
+A render runs only while the buffer's tree matches its text:
+
+- The `on-syntax-changed` handler stores `(buffer-generation pane)` at once, before its
+  debounce.
+- `render-buffer!` compares it with the current generation and skips the render when they
+  differ: the pending parse fires `on-syntax-changed` again.
+- So a render does not make `syntax-captures` parse on the spot, except when a parse lands
+  in the same wake as an edit: the handler then stores the edited text's generation, and a
+  render before the next parse parses on the spot.
+
+A buffer no pane shows is not drawn.
+
+### Ranges
+
+Each render replaces the three sources (`"markdown-preview"`: conceals, line backgrounds,
+extra highlights) whole, for every pane on the buffer, so it covers every line
+`(buffer-viewport-ranges pane)` gives:
+
+- each of its `'ranges`, widened by one line above and one line below;
+- each of its `'headers`, the lines of the scope header rows, as given.
+
+Both queries take that list as `#:ranges`; `syntax-captures` returns a match once even
+when several ranges reach it. Lines between two panes far apart are not fetched, and lines
+outside every range draw raw until a render covers them.
+
+The widening keeps borders stable at the view's edges (see [Tables](elements.md#tables)):
+
+- **Line above:** a table ending just above the pane's top line comes back, so the empty
+  top line carries its bottom border.
+- **Line below:** a table starting just below the last shown line comes back, so the empty
+  line before it carries its top border. Under wrapping, a border wider than the pane
+  takes a second row and pushes the table's first row off screen, so the border must not
+  depend on that row being shown.
+- A header line opens a scope, so it never carries a border, and the line above it is not
+  fetched.
+
+### Growing hashes
 
 The per-buffer state, a render's line memo and the tables the block elements fill grow
 through `md-preview/box-insert!`, which empties the box before its `hash-insert`. Steel
-changes a hash that nothing else holds in place. A hash still held by its box is copied
-instead, and dropping the version the box held then walks every entry, so each insert would
-cost the size of the table.
+changes a hash nothing else holds in place; one still held by its box is copied, and
+dropping the old version walks every entry, so each insert would cost the table's size.
 
 ## Popups
 
-The editor calls `format-text/markdown` once per popup text, with the text and its parsed
-tree, and draws what it returns. `text.scm` reads the lines from the string, queries the
-tree with `parsed-text-captures` over every line, and returns the elements a buffer render
-would set as its result's `'conceals`, `'line-backgrounds` and `'highlights`, with
-`'overlaps 'drop` (see [Overlapping conceals](#overlapping-conceals)). Nothing is stored
-and no hook runs: the call reads the editor and cannot change it. `'rule-width` applies,
-and `'preview` does not.
+The editor calls `format-text/markdown` once per popup text and draws what it returns.
+`text.scm` queries the tree with `parsed-text-captures` over every line and returns the
+elements a buffer render would set, as `'conceals`, `'line-backgrounds` and `'highlights`
+with `'overlaps 'drop` (see [Overlapping conceals](#overlapping-conceals)). Nothing is
+stored and no hook runs: the call cannot change the editor. `'rule-width` applies;
+`'preview` does not.
 
 ## Widening by query roots
 
-`syntax-captures` returns a match when the node its pattern is rooted at overlaps one of
-the ranges, with every capture of the match, inside the ranges or not. So each pattern's root
-decides how far past the visible lines an element is fetched:
+`syntax-captures` returns a match when its pattern's root node overlaps a range, with every
+capture of the match, inside the ranges or not. So the root decides how far past the
+visible lines an element is fetched:
 
-- ATX headings are rooted at `atx_heading` and setext headings at `setext_heading`, so
-  only the ones on the given lines come back. A heading drawn in a scope header row is one
-  of them, since its line is in the ranges.
-- Fences are rooted at `fenced_code_block`. A block one line of which is visible comes back
-  whole: both fence lines, and the line span its band and reveal need.
-- Tables are rooted at `pipe_table`, their rows and cells included. A table one row of
-  which is visible comes back whole, so every row is padded to the same widths and every
-  conceal reveals over the whole table.
-- Bullets, task boxes, quote markers, block continuations and rules are rooted at
-  themselves, so only the ones on the visible lines come back. The continuations a code
-  block's content holds are also captured rooted at `code_fence_content`, so they come
-  back with the whole block (see [Fenced blocks](#fenced-blocks)).
-- Inline delimiters are rooted at their construct: `(emphasis (emphasis_delimiter) @span-delimiter)`.
-  An emphasis that starts on the last visible line and ends below it returns both
-  delimiters. Links are rooted at the link, escapes, entities and autolinks at themselves.
+| Element | Root | Comes back |
+|---|---|---|
+| Headings | `atx_heading`, `setext_heading` | Only those on the given lines, a heading in a header row included |
+| Fences | `fenced_code_block` | Whole, when one line is visible: both fence lines and the span its band and reveal need |
+| Tables | `pipe_table` | Whole, when one row is visible: every row padded to the same widths, every conceal revealing over the table |
+| Bullets, task boxes, quote markers, continuations, rules | themselves | Only those on the visible lines. A code block's continuations are also rooted at `code_fence_content` and come back with the block (see [Fenced blocks](#fenced-blocks)) |
+| Inline delimiters | their construct, e.g. `(emphasis (emphasis_delimiter) @span-delimiter)` | An emphasis starting on the last visible line returns both delimiters |
+| Links; escapes, entities, autolinks | the link; themselves | Those overlapping the ranges |
 
 ## Overlapping conceals
 
-Inline conceals can overlap: an escape or an entity inside a link's destination or title
-lies inside the conceal hiding that part. `render.scm` sorts the conceals by start, the
-longer first at one start, and sets them with `#:overlaps 'drop`, so the setter keeps
-each one that overlaps no conceal before it in that order. The conceal hiding more wins,
-and the one it drops lay inside text that is hidden anyway.
+An escape or entity inside a link's destination or title lies inside the conceal hiding
+that part. `render.scm` sorts conceals by start, longer first at one start, and sets them
+with `#:overlaps 'drop`, so each one overlapping an earlier one is dropped. The conceal
+hiding more wins; the dropped one lay in hidden text anyway.
 
 ## Fenced blocks
 
-The block query also runs over the layers injected into code blocks: a fence whose info
-string names `markdown` is parsed as markdown, and its headings and lists come back with
-the rest. The filter in `render.scm` drops them. It walks the `code_fence_content`
-captures in order, keeps each one that does not lie inside an earlier kept one (the
-outermost blocks, nested fences inside them included), and drops every capture lying
-inside a kept content. The block's own captures lie outside its content and are kept.
-The inline captures go through the same filter, against the contents the block query
-found: an injected markdown layer brings its own `markdown.inline` layers.
+The block query also runs over layers injected into code blocks: a fence whose info
+string names `markdown` is parsed as Markdown, and its headings and lists come back too. The filter in
+`render.scm` drops them:
 
-One kind of capture inside a content is kept: a `block_continuation` that is a child of
-`code_fence_content`, captured as `fence-continuation`. In a code block inside a quote, the
-content holds the quote's markers of every line after the first content line, and these
-continuations carry them. A capture of the root layer lies inside the outermost content
-alone. An injected layer's continuation inside its own code block lies inside that
-block's content too, so a `fence-continuation` is kept only when the outermost content is
-the one `code_fence_content` capture containing it.
+- It walks the `code_fence_content` captures in order and keeps each one not inside an
+  earlier kept one: the outermost blocks.
+- It drops every capture inside a kept content. A block's own captures lie outside its
+  content and stay.
+- The inline captures go through the same filter against the block query's contents: an
+  injected Markdown layer brings its own `markdown.inline` layers.
+
+One capture inside a content is kept: a `block_continuation` child of
+`code_fence_content`, captured as `fence-continuation`. In a code block inside a quote,
+these carry the quote's markers on every line after the first. An injected layer's
+continuation also lies inside its own block's content, so a `fence-continuation` is kept
+only when the outermost content is the one `code_fence_content` containing it.
