@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.22.2] - 2026-11-19
+
 ### Fixes
 - The Markdown preview no longer scrolls the bottom of a pane up and down without end when a table wider than the pane starts just below it.
 - The Markdown preview no longer shifts a pane's text up and down without end when a table row under the scope headers wraps. `viewport-range`, `buffer-viewport-ranges` and the `on-viewport-change` hook include the lines under the scope headers again.
