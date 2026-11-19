@@ -2,7 +2,8 @@
 //! history (`benches/selection_history.rs`), a concealed Markdown buffer
 //! (`benches/conceal.rs`), and a file drawn by a real plugin: a Markdown
 //! buffer by `core:markdown` (`benches/markdown_preview.rs`) and color
-//! literals by `core:colorizer` (`benches/colorizer.rs`).
+//! literals by `core:colorizer` (`benches/colorizer.rs`); and a paste over
+//! many selections with `on-paste` handlers (`benches/on_paste.rs`).
 
 use std::path::Path;
 
@@ -762,5 +763,104 @@ impl PluginRenderBench {
     /// render names a scope the session has not seen.
     pub fn scope_count(&self) -> usize {
         self.editor.view.registry.len()
+    }
+}
+
+/// The `on-paste` handlers an [`OnPasteBench`] registers.
+#[derive(Clone, Copy, Debug)]
+pub enum PasteHandlers {
+    None,
+    /// This many handlers that change nothing.
+    Unchanged(usize),
+    /// `core:markdown`'s, which makes a pasted URL a link.
+    Markdown,
+}
+
+impl PasteHandlers {
+    fn init(self) -> String {
+        match self {
+            Self::None => String::new(),
+            Self::Unchanged(n) => {
+                "(register-hook! 'on-paste (lambda (pane pasted previous) #f))\n".repeat(n)
+            }
+            Self::Markdown => MARKDOWN_PREVIEW.init.to_owned(),
+        }
+    }
+}
+
+/// An editor on a Markdown file with a word selected on each of its first
+/// lines, and the `on-paste` handlers its `init.scm` registers.
+pub struct OnPasteBench {
+    editor: Editor,
+    undo: Keys,
+}
+
+impl OnPasteBench {
+    /// Writes a file of `selections` lines and the `init.scm` that registers
+    /// `handlers` under `root`, starts the editor on the file with the
+    /// `<root>/data/` data dir and the repo's `runtime/`, and selects the
+    /// first word of every line.
+    ///
+    /// # Panics
+    /// Panics if `selections` is zero, the editor cannot start, or the setup
+    /// logs an error.
+    pub fn new(root: &Path, handlers: PasteHandlers, selections: usize) -> Self {
+        assert!(selections > 0, "a paste needs a selection");
+        let config = root.join("config");
+        std::fs::create_dir_all(&config).expect("the config dir is made");
+        std::fs::write(config.join("init.scm"), handlers.init()).expect("init.scm is written");
+        let file = root.join("words.md");
+        let text: String = (0..selections)
+            .map(|n| format!("word{n} and the rest of line {n}\n"))
+            .collect();
+        std::fs::write(&file, text).expect("the bench file is written");
+        let dirs = Dirs {
+            config: Some(config),
+            data: Some(root.join("data")),
+            runtime: Some(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("hume-editor sits under the workspace root")
+                    .join("runtime"),
+            ),
+            ..Dirs::none()
+        };
+        let mut editor = headless_editor(&file, dirs, ConfigSource::Default);
+        editor.settle();
+        let copies = match selections {
+            1 => String::new(),
+            n => format!("{}C", n - 1),
+        };
+        Keys::parse(&format!("{UNDO_LEVELS}{copies}miw")).press(&mut editor);
+        assert_setup_clean(&editor);
+        Self {
+            editor,
+            undo: Keys::parse("u"),
+        }
+    }
+
+    /// How many selections the focused pane has.
+    pub fn selection_count(&self) -> usize {
+        self.editor.current_view().len()
+    }
+
+    /// The first line once `text` is pasted, before the paste is undone.
+    pub fn first_line_pasting(&mut self, text: &str) -> String {
+        self.paste(text);
+        let pasted = self.editor.doc().text().to_string();
+        self.undo.press(&mut self.editor);
+        pasted.lines().next().unwrap_or_default().to_owned()
+    }
+
+    /// A terminal paste of `text` over every selection, then its undo.
+    pub fn paste_then_undo(&mut self, text: &str) {
+        self.paste(text);
+        self.undo.press(&mut self.editor);
+    }
+
+    fn paste(&mut self, text: &str) {
+        self.editor
+            .handle_input(termina::event::Event::Paste(text.to_owned()));
+        self.editor.settle();
     }
 }

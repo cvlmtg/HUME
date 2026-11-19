@@ -93,3 +93,7 @@ harness = false
 [[bench]]
 name = "colorizer"
 harness = false
+
+[[bench]]
+name = "on_paste"
+harness = false
