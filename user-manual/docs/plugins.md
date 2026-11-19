@@ -50,7 +50,9 @@ After changing or removing a `#:ref`:
 2. Run `:plum-update-plugins`.
 3. Run `:reload-config` again to load the new version.
 
-A commit id can be the short form `git log --oneline` shows, as long as the commit is on one of the plugin's branches or tags. A full commit id also works for a commit on none of them, if the plugin's host still has it. If PLUM can't find the ref, installing or updating that plugin fails with a message naming it, and an installed plugin stays as it was.
+A commit id can be the short form `git log --oneline` shows, as long as the commit is on one of the plugin's branches or tags. A full commit id also works for a commit on none of them, if the plugin's host still has it.
+
+If PLUM can't find the ref, installing or updating that plugin fails with a message naming it, and an installed plugin stays as it was.
 
 ## Plugin status
 
@@ -58,11 +60,19 @@ A commit id can be the short form `git log --oneline` shows, as long as the comm
 :plugin-status
 ```
 
-Shows one row per plugin entry: whether it is declared (waiting), loaded or failed, for a declared entry the commands, events and languages still waiting to trigger it, and for a loaded entry the languages it works in. A plugin that loads in pieces has a row for each file, and a local file shows under its `./` path. A plugin named in `init.scm` but not installed shows as `absent`, so you can tell what `:plum-install-plugins` still has to fetch.
+Shows one row per plugin entry:
+
+- whether it is declared (waiting), loaded or failed;
+- for a declared entry, the commands, events and languages still waiting to trigger it;
+- for a loaded entry, the languages it works in.
+
+A plugin that loads in pieces has a row for each file, and a local file shows under its `./` path. A plugin named in `init.scm` but not installed shows as `absent`, so you can tell what `:plum-install-plugins` still has to fetch.
 
 ## Recovering from a failed plugin
 
-A plugin that fails to load doesn't stop the rest of [`init.scm`](configuration.md#errors-and-reloading): every plugin after it still loads, and every plugin before it is unaffected. A lazy plugin loads when its first trigger fires, so its failure shows up then, not at startup. `:messages` has the error, naming the plugin and the file and line the problem is in. `:plugin-status` shows the plugin as failed, including one whose `manifest.scm` failed before it declared anything.
+A plugin that fails to load doesn't stop the rest of [`init.scm`](configuration.md#errors-and-reloading): every plugin after it still loads, and every plugin before it is unaffected. A lazy plugin loads when its first trigger fires, so its failure shows up then, not at startup.
+
+`:messages` has the error, naming the plugin and the file and line the problem is in. `:plugin-status` shows the plugin as failed, including one whose `manifest.scm` failed before it declared anything.
 
 A failing plugin from a git repository (rather than one you're editing yourself) may already have a fix upstream. Run `:plum-update-plugins` to fetch the latest version of every installed plugin (or of its pinned branch), then `:reload-config` to try again.
 
@@ -100,8 +110,11 @@ A directory with neither `manifest.scm` nor `plugin.scm` is an error. A missing 
   (load-plugin! "cvlmtg/grep.hume")
   ; typing :grep the first time loads cvlmtg/grep.hume, then runs grep
   ```
-- **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`). Next to `#:languages` it takes only hooks that are about no buffer, such as `on-focus-gained`, unless the languages include `"*"`: a hook about a buffer raises an error, since setting the buffer's language loads the plugin first.
-- **`#:languages`**: buffer language names that trigger loading when a buffer's language is set to one of them. Once loaded, the plugin works only in buffers of those languages: in any other buffer its hooks and completions stay silent, as if the buffer were not open. Its commands still run anywhere. `'("*")` loads the plugin for any language and limits nothing. Detection only finds languages HUME already knows, so for a language a plugin defines itself, put the `define-language!` in your `init.scm` (see [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language)) and let the plugin load lazily on that name.
+- **`#:events`**: lifecycle hooks that trigger loading, as a list of symbols (e.g., `'(on-buffer-open)`). Next to `#:languages` it takes only hooks that are about no buffer, such as `on-focus-gained`, unless the languages include `"*"`. A hook about a buffer raises an error there, since setting the buffer's language loads the plugin first.
+- **`#:languages`**: buffer language names that trigger loading when a buffer's language is set to one of them.
+  - Once loaded, the plugin works only in buffers of those languages. In any other buffer its hooks and completions stay silent, as if the buffer were not open. Its commands still run anywhere.
+  - `'("*")` loads the plugin for any language and limits nothing.
+  - Detection only finds languages HUME already knows. For a language a plugin defines itself, put the `define-language!` in your `init.scm` (see [Teach HUME a new language](syntax-highlighting.md#teach-hume-a-new-language)) and let the plugin load lazily on that name.
 
 A plugin that already has a declared entry keeps those triggers when `load-plugin!` runs: the manifest is not read and the plugin stays lazy. Put `load-plugin!` right after the `declare-plugin!`, because a plugin that activates during startup before its `load-plugin!` line sees an empty config. A `declare-plugin!` placed after the plugin's `load-plugin!` raises an error.
 
@@ -126,7 +139,7 @@ Opening a file of another language still starts the servers its [server list](ls
 ::: warning
 `#:events '(on-lsp-attach)` by itself never activates the plugin: no server attaches before the plugin loads, so the event never fires. List the languages you want servers for in `#:languages`, or list the commands in `#:commands`/`#:typed-commands` (as above).
 
-Completions need `core:lsp` to be active already: `Ctrl-Space` and a server's trigger characters run the `completion-trigger` editor command, not one of `core:lsp`'s commands, so `#:commands`/`#:typed-commands` alone don't get completions working. List the languages you use in `#:languages` to get completions along with everything else.
+Completions need `core:lsp` to be active already. `Ctrl-Space` and a server's trigger characters run the `completion-trigger` editor command, not one of `core:lsp`'s commands, so `#:commands`/`#:typed-commands` alone don't get completions working. List the languages you use in `#:languages` to get completions along with everything else.
 :::
 
 ### Lazy local files

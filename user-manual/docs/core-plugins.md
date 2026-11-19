@@ -1,6 +1,20 @@
 # Core Plugins
 
-HUME ships these plugins under the `core:` namespace: a plugin and grammar manager, language server support and an installer for the servers, a language server for your Scheme config, fuzzy pickers, live git diff, an undo-history graph, Markdown drawn without its syntax, color literals painted with their color, completion from the words in a buffer, a few keymap alternatives, and the standard library the others build on. None of them load automatically: nothing runs until you ask for it in your [`init.scm`](configuration.md).
+HUME ships these plugins under the `core:` namespace:
+
+- a plugin and grammar manager
+- language server support and an installer for the servers
+- a language server for your Scheme config
+- fuzzy pickers
+- live git diff
+- an undo-history graph
+- Markdown drawn without its syntax
+- color literals painted with their color
+- completion from the words in a buffer
+- a few keymap alternatives
+- the standard library the others build on
+
+None of them load automatically: nothing runs until you ask for it in your [`init.scm`](configuration.md).
 
 Bring a plugin in with `load-plugin!`:
 
@@ -97,7 +111,11 @@ Installing requires `cargo`; install Rust from [rustup.rs](https://rustup.rs) fi
 
 <img src="/core_pickers.png" alt="core:pickers in action with a custom picker" />
 
-Fuzzy file, buffer, and modified-file finders: `z f` opens a file picker (inside a git repository it lists the repository's files, elsewhere it needs `fd`), `z b` a buffer switcher, and `z m` a picker over files with staged or unstaged git changes.
+Fuzzy file, buffer, and modified-file finders:
+
+- `z f` opens a file picker. Inside a git repository it lists the repository's files; elsewhere it needs `fd`.
+- `z b` opens a buffer switcher.
+- `z m` opens a picker over files with staged or unstaged git changes.
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -201,7 +219,9 @@ The plugin ships no key. Bind one in your `init.scm`:
 (bind-key! 'normal "z u" "undotree/toggle")
 ```
 
-Each row is one revision: the graph, a marker column, and how long ago it was made. Newer revisions are on top, a branch is a column of its own, and `o-'` is a branch joining the revision it grew from. In the marker column, `@` is the revision the buffer is on and `S` the revision your file was last saved at:
+Each row is one revision: the graph, a marker column, and how long ago it was made. Newer revisions are on top, a branch is a column of its own, and `o-'` is a branch joining the revision it grew from.
+
+In the marker column, `@` is the revision the buffer is on and `S` the revision your file was last saved at:
 
 ```
  o          2m
@@ -221,7 +241,9 @@ A theme styles the drawer with these scopes:
 | `S` | `diagnostic.info.message-text` | `diagnostic.info.message` |
 | The whole row | | `diagnostic.warning.message` when it has `@`, or `diagnostic.info.message` when it has only `S` |
 
-The drawer opens with the highlight on the current revision. `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md#the-list-drawer). `Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time; `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.
+The drawer opens with the highlight on the current revision. `Down`/`Up` move the highlight and `Ctrl-d`/`Ctrl-u` page it, as in the [language server lists](lsp.md#the-list-drawer).
+
+`Enter` moves the buffer to the highlighted revision and leaves the drawer open, so you can step through history one revision at a time. `Esc` closes it. After a jump, `U` and `Ctrl-r` redo along the branch you jumped into.
 
 With `core:git-diff` loaded, the buffer also shows what the revision you are on changed, drawn the way `core:git-diff`'s inline diff draws a diff against a git ref:
 
@@ -229,7 +251,9 @@ With `core:git-diff` loaded, the buffer also shows what the revision you are on 
 - the changed words highlighted
 - a tint on the changed lines
 
-The diff follows every jump and edit while the drawer is open. The root revision shows nothing, and closing the drawer clears it. The diff does not depend on whether `core:git-diff`'s own inline diff is switched on. Without `core:git-diff` the drawer works the same, and opening it shows a message saying to load the plugin.
+The diff follows every jump and edit while the drawer is open. The root revision shows nothing, and closing the drawer clears it. The diff does not depend on whether `core:git-diff`'s own inline diff is switched on.
+
+Without `core:git-diff` the drawer works the same, and opening it shows a message saying to load the plugin.
 
 While the drawer is open:
 
@@ -244,7 +268,13 @@ The history lives in memory only, so it starts fresh each time you open a file.
 
 <img src="/core_markdown_preview.png" alt="core:markdown in action" />
 
-Draws Markdown without its syntax, in the style of a rendered preview, right in the buffer you edit. A heading's `#` becomes its level as a glyph of one to six dots and a bar (`⠘▌` for a second-level heading) over a tinted band, bullets become dots, task boxes become checkboxes, quotes get a bar, horizontal rules become a line, code fences give way to a background band, and tables are drawn as box grids. Emphasis, strikethrough and code spans lose their markers, links show only their text, and escapes and entities (`\*`, `&amp;`, `&#65;`) show the character they stand for.
+Draws Markdown without its syntax, in the style of a rendered preview, right in the buffer you edit:
+
+- A heading's `#` becomes its level as a glyph of one to six dots and a bar (`⠘▌` for a second-level heading) over a tinted band.
+- Bullets become dots, task boxes become checkboxes, quotes get a bar, and horizontal rules become a line.
+- Code fences give way to a background band, and tables are drawn as box grids.
+- Emphasis, strikethrough and code spans lose their markers, and links show only their text.
+- Escapes and entities (`\*`, `&amp;`, `&#65;`) show the character they stand for.
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -259,11 +289,19 @@ It needs the `markdown` and `markdown.inline` grammars: install them with `:plum
 
 Every line the cursor or a selection touches shows its source, in every mode. While a selection is inside a code block or a table, the whole block shows its source.
 
-Pasting a URL over selected text makes a link: select `foo`, paste `https://example.com`, and get `[foo](https://example.com)`. It works with `p`, `P` and your terminal's paste shortcut, and one `u` brings the selected text back. Pasting a URL over a URL or a link replaces it, as does pasting at a cursor, over text that spans lines, or over text that holds a `[` or `]` or ends with `\`.
+Pasting a URL over selected text makes a link: select `foo`, paste `https://example.com`, and get `[foo](https://example.com)`. It works with `p`, `P` and your terminal's paste shortcut, and one `u` brings the selected text back.
 
-In a link's destination, right after `](`, `Ctrl-Space` lists the files and folders next to the Markdown file, and after a folder you have typed, such as `](notes/`, the ones in that folder. Typing `(` right after `]`, or `/` after a folder's name, opens the list too. The list narrows as you type, and the letters need only appear in order, so `rdm` finds `README.md`. Start the name with `.` to list hidden files. A name with a space is inserted as it is, which Markdown doesn't read as a link.
+Pasting a URL over a URL or a link replaces it, as does pasting at a cursor, over text that spans lines, or over text that holds a `[` or `]` or ends with `\`.
 
-Ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block are left as written. The colors and bands come from the [theme](themes.md#scopes-hume-adds); to change them without editing it, [style the scopes from your config](themes.md#styling-scopes-from-your-config).
+In a link's destination, right after `](`, `Ctrl-Space` lists the files and folders next to the Markdown file. After a folder you have typed, such as `](notes/`, it lists the ones in that folder. Typing `(` right after `]`, or `/` after a folder's name, opens the list too.
+
+- The list narrows as you type, and the letters need only appear in order, so `rdm` finds `README.md`.
+- Start the name with `.` to list hidden files.
+- A name with a space is inserted as it is, which Markdown doesn't read as a link.
+
+Ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block are left as written.
+
+The colors and bands come from the [theme](themes.md#scopes-hume-adds); to change them without editing it, [style the scopes from your config](themes.md#styling-scopes-from-your-config).
 
 Only the lines on screen are drawn. After you scroll, the lines that came into view appear as written until `hook-viewport-debounce-ms` after you stop; lower it in [Settings](settings.md#global-options) to shorten the wait.
 
@@ -301,9 +339,13 @@ Requires `core:stdlib` loaded first. It starts when you open a file.
 
 A literal's alpha is ignored. An `oklch()` color outside what the screen can show is painted with the nearest color it can, as browsers do. `hwb()`, `lab()`, `lch()`, `oklab()` and `color()` are not painted, nor a call whose arguments use `var()`, `calc()` or a relative color, nor a call written across several lines.
 
-A `#` followed by hex digits is painted when no ASCII letter, digit, `_`, `-` or `&` comes right before it and no ASCII letter, digit, `_` or `-` comes right after the digits, so a CSS id selector spelled in hex digits, such as `#bad {`, is painted too, and `div#bad` is not. Outside the languages in `'named-languages`, a three- or four-digit `#` with no letter, such as the issue number `#123`, is not painted.
+A `#` followed by hex digits is painted when no ASCII letter, digit, `_`, `-` or `&` comes right before it, and no ASCII letter, digit, `_` or `-` comes right after the digits. So a CSS id selector spelled in hex digits, such as `#bad {`, is painted too, and `div#bad` is not.
 
-Only the lines on screen are painted. After you scroll, the lines that came into view appear unpainted until `hook-viewport-debounce-ms` after you stop; lower it in [Settings](settings.md#global-options) to shorten the wait. To keep painting from slowing the editor down, one render reads at most `'max-render-chars` characters of the lines on screen, from the top. A line that does not fit what is left stays unpainted. At the default of 7,100 characters, a full-screen 200x60 terminal of lines up to 120 characters paints whole. A screen of longer lines, such as minified CSS, loses its last lines.
+Outside the languages in `'named-languages`, a three- or four-digit `#` with no letter, such as the issue number `#123`, is not painted.
+
+Only the lines on screen are painted. After you scroll, the lines that came into view appear unpainted until `hook-viewport-debounce-ms` after you stop; lower it in [Settings](settings.md#global-options) to shorten the wait.
+
+To keep painting from slowing the editor down, one render reads at most `'max-render-chars` characters of the lines on screen, from the top. A line that does not fit what is left stays unpainted. At the default of 7,100 characters, a full-screen 200x60 terminal of lines up to 120 characters paints whole. A screen of longer lines, such as minified CSS, loses its last lines.
 
 A session can style about 65,000 distinct colors, a budget it shares with themes, grammars and other plugins. Once it runs out, a color not painted before in the session stays unpainted, and a warning says so once.
 
@@ -374,7 +416,11 @@ By default (`'smart`), `C` is context-sensitive. On a bare cursor with no count 
 
 ## core:classic-paste
 
-GUI-style paste, if you'd rather keep the clipboard on its own keys: `p` / `P` paste the kill ring, `Ctrl-v` / `Ctrl-Shift-v` paste the system clipboard (`Ctrl-Shift-v` needs the kitty protocol), and [`clipboard-joins-ring`](settings.md) is set to `never`, so copied text stays off the kill ring. A `clipboard-joins-ring` you set yourself wins.
+GUI-style paste, if you'd rather keep the clipboard on its own keys:
+
+- `p` / `P` paste the kill ring.
+- `Ctrl-v` / `Ctrl-Shift-v` paste the system clipboard (`Ctrl-Shift-v` needs the kitty protocol).
+- [`clipboard-joins-ring`](settings.md) is set to `never`, so copied text stays off the kill ring. A `clipboard-joins-ring` you set yourself wins.
 
 ```scheme
 (load-plugin! "core:classic-paste")
