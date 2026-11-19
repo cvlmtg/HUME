@@ -857,3 +857,10 @@ fn d_yanks_what_it_deletes() {
         assert_eq!(yank, yanked, "register after d on {before:?}");
     }
 }
+
+#[test]
+fn d_of_the_only_line_yanks_it_as_a_whole_line() {
+    let removal = delete_selection(hume_editing::marked::parse("-[ab\n]>"));
+    let whole_line = crate::register::Piece::new("ab\n", crate::register::Shape::Linewise);
+    assert_eq!(removal.yanked, vec![whole_line]);
+}

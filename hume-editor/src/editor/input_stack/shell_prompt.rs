@@ -8,6 +8,7 @@ use hume_engine::types::EditorMode;
 use super::super::error::CommandError;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, PromptCompletion};
+use super::super::paste_plan::PlannedPaste;
 use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
 use super::paste::PastedText;
@@ -79,11 +80,11 @@ fn shell_prompt_paste(
     _view: &EngineView,
     _r: LayerRef,
     text: PastedText,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     if minibuf::paste_into_minibuf(state, &text) {
         shell_line_edited(state);
     }
-    Ok(())
+    Ok(PlannedPaste::NONE)
 }
 
 /// Demotes any active history recall back to scratch: what an edit or a

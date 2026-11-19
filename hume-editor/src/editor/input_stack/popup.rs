@@ -12,6 +12,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::commands::half_page;
 use super::super::error::CommandError;
+use super::super::paste_plan::PlannedPaste;
 use super::super::popup_syntax::Markup;
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
@@ -258,7 +259,7 @@ fn popup_paste(
     view: &EngineView,
     r: LayerRef,
     text: PastedText,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     state.truncate_layers(view, r);
     state.fall_through_paste(view, r, text)
 }

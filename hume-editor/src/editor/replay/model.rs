@@ -127,7 +127,7 @@ pub(crate) enum Input {
     /// ([`EditorState::record_paste`](crate::editor::EditorState::record_paste)),
     /// replayed as one bulk insert rather than synthetic per-char keys: a
     /// synthesized `Enter` would auto-indent, which a real paste never does.
-    Paste(Vec<String>),
+    Paste(Rc<[String]>),
     /// A key bound in the Insert keymap, re-run on replay through
     /// [`Editor::dispatch`](crate::editor::Editor::dispatch) as the live key
     /// was, so it decides again at the new cursor, its own `call!`s, register

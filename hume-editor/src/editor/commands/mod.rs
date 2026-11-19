@@ -121,35 +121,23 @@ pub(in crate::editor::commands) fn apply_pane_edit(
 }
 
 /// Apply a grouped edit (inside an open insert/paste session) to the focused
-/// (pane, buffer) pair. Takes [`FocusedPane`], not [`CommandPane`]: an edit
-/// group only ever exists on the pane the user is looking at (see
-/// `pane_state.rs`'s module doc), so a `Pane`-category body (which may
-/// target a pane other than focus) has no business opening one.
+/// (pane, buffer) pair, reporting a refusal. Takes [`FocusedPane`], not
+/// [`CommandPane`]: an edit group only ever exists on the pane the user is
+/// looking at (see `pane_state.rs`'s module doc), so a `Pane`-category body
+/// (which may target a pane other than focus) has no business opening one.
 ///
 /// Thin wrapper around [`doc_ops::apply_doc_edit_grouped`]; see
 /// [`apply_pane_motion`]. `pub(in crate::editor)`, not `pub(in crate::editor::
-/// commands)`: callers outside this module (`replay`, Insert-mode paste)
-/// would otherwise spell out `doc_ops::apply_doc_edit_grouped`'s own 8
-/// arguments, the duplication this wrapper exists to avoid.
-pub(in crate::editor) fn try_apply_focused_edit_grouped(
-    state: &mut EditorState,
-    view: &EngineView,
-    fp: FocusedPane,
-    cmd: impl FnOnce(hume_editing::state::EditState) -> hume_editing::edit::Edited,
-) -> Result<(), CommandError> {
-    let buf = fp.bid(view);
-    let (buffers, mut stores) = state.edit_parts();
-    doc_ops::apply_doc_edit_grouped(buffers, &mut stores, fp.pid(), buf, cmd).map(drop)
-}
-
-/// [`try_apply_focused_edit_grouped`], reporting a refusal.
+/// commands)`: `replay` calls it too.
 pub(in crate::editor) fn apply_focused_edit_grouped(
     state: &mut EditorState,
     view: &EngineView,
     fp: FocusedPane,
     cmd: impl FnOnce(hume_editing::state::EditState) -> hume_editing::edit::Edited,
 ) {
-    if let Err(e) = try_apply_focused_edit_grouped(state, view, fp, cmd) {
+    let buf = fp.bid(view);
+    let (buffers, mut stores) = state.edit_parts();
+    if let Err(e) = doc_ops::apply_doc_edit_grouped(buffers, &mut stores, fp.pid(), buf, cmd) {
         state.report_error(&e);
     }
 }
@@ -420,11 +408,12 @@ pub(in crate::editor) use pane::CloseRefused;
 use pane::close_focused_pane;
 pub(in crate::editor) use pane::split_pane_onto;
 pub(in crate::editor) use pane::{open_pane_as_new_tab, open_pane_in_layout};
+pub(in crate::editor) use paste::land_register_paste;
 pub(in crate::editor) use pipe::{apply_pipe_output, cmd_cancel_pipe, cmd_pipe, is_blank_command};
 use pipeline::MissingOperand;
 pub(in crate::editor) use pipeline::{
-    BoundCommand, FocusedBindError, Missing, NativeBody, PendingDispatch, report_arg_error, run,
-    run_body, step_paste_commit,
+    BoundCommand, CommandOutcome, FocusedBindError, Missing, NativeBody, PendingDispatch,
+    report_arg_error, run, run_body, step_paste_commit,
 };
 pub(in crate::editor) use target::{CommandPane, FocusedPane, TargetError, shown_through};
 

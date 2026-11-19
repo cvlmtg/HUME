@@ -62,6 +62,7 @@ mod message_log;
 mod minibuf;
 mod mouse;
 mod pane_state;
+mod paste_plan;
 mod picker_source;
 mod pipe_run;
 pub(crate) use pipe_run::PipeProgress;
@@ -338,6 +339,9 @@ pub(crate) struct EditorState {
     /// Deferred dot-repeat job enqueued by `cmd_repeat`; consumed by
     /// `replay_dot` at the tail of `handle_key`.
     pub(super) pending_repeat: Option<PendingRepeat>,
+    /// The paste waiting for its `on-paste` handlers (`paste_plan`); empty
+    /// whenever the editor settles.
+    pub(in crate::editor) paste_awaiting_handlers: paste_plan::PasteWait,
     /// Every `pipe` run in flight; the statusline's `Pipe` element shows the
     /// focused buffer's.
     pub(crate) pipe_runs: pipe_run::PipeRuns,
@@ -458,6 +462,7 @@ impl EditorState {
             selection_recipe_touched: false,
             selection_group: None,
             pending_repeat: None,
+            paste_awaiting_handlers: paste_plan::PasteWait::default(),
             pipe_runs: pipe_run::PipeRuns::new(),
             sift_reuse: None,
             #[cfg(test)]

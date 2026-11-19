@@ -658,3 +658,28 @@ fn paste_charwise_ending_in_newline_over_the_last_line_adds_no_blank_line() {
         "abc\n-[xyz\n]>"
     );
 }
+
+// ── replaced_texts ────────────────────────────────────────────────────────
+
+fn replaced(marked: &str) -> Vec<Option<String>> {
+    let (text, sels) = test_fixtures::testing::parse_state(marked);
+    replaced_texts(hume_editing::selection::EditView::bind(&text, &sels))
+}
+
+#[test]
+fn a_cursor_replaces_nothing() {
+    assert_eq!(replaced("a-[b]>c\n"), vec![None]);
+}
+
+#[test]
+fn a_selection_replaces_what_it_covers() {
+    assert_eq!(replaced("a-[bc]>d\n"), vec![Some("bc".to_string())]);
+}
+
+#[test]
+fn each_selection_reports_its_own_text_in_document_order() {
+    assert_eq!(
+        replaced("-[ab]>c-{d}>-[e\u{301}f]>\n"),
+        vec![Some("ab".to_string()), None, Some("e\u{301}f".to_string())]
+    );
+}

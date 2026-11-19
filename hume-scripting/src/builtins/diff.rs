@@ -19,7 +19,7 @@ use super::args::{
     symbol_hash,
 };
 use super::buffers::live_text;
-use super::errors::{generic_err, require_cap};
+use super::errors::generic_err;
 use super::ids::BufferGeneration;
 
 /// `(diff-lines old-text new-text)` → `(hash 'hunks (…))`: the hunks, oldest
@@ -58,7 +58,9 @@ pub(crate) fn buffer_revision_diff(
     bid: BufferId,
     revision: usize,
 ) -> SteelResult {
-    let diff = require_cap(ctx.host.diff())?
+    let diff = ctx
+        .host
+        .require(|h| h.diff())?
         .revision_diff(bid, revision)
         .map_err(generic_err)?;
     Ok(hunks_to_steel(diff))
@@ -75,7 +77,9 @@ pub(crate) fn buffer_changes_since(
     generation: SteelVal,
 ) -> SteelResult {
     let generation = BufferGeneration::of(&generation, bid, "generation").map_err(generic_err)?;
-    let hunks = require_cap(ctx.host.diff())?
+    let hunks = ctx
+        .host
+        .require(|h| h.diff())?
         .changes_since(bid, generation)
         .map_err(generic_err)?;
     Ok(hunk_list_value(hunks))

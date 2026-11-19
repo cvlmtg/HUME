@@ -310,6 +310,7 @@ A plugin reacts to editor events by registering a hook handler with `register-ho
 `register-hook!` raises for a lambda that can't take its hook's arguments. Every `pane` below is the same opaque value as a command's leading parameter (see [Defining commands](#defining-commands)): pass it straight to any editor function that takes one. Which pane it names depends on the hook:
 
 - `on-buffer-enter`, `on-viewport-change`, `on-trigger-char` and `on-completion-accept`: the pane the event happened in.
+- `on-paste`: the pane the text is pasted into.
 - `on-before-buffer-save`: the pane the save was asked from (see below).
 - Every other hook is about a buffer with no pane of its own, and its value carries no particular pane.
 
@@ -331,6 +332,7 @@ A plugin reacts to editor events by registering a hook handler with `register-ho
 | `on-viewport-change` | The lines a pane shows change, the lines its scope headers show included | `(pane range headers)`: `range` is the value `viewport-range` returns, 0-based and end-exclusive. `headers` lists the lines the pane's scope headers show, one range of the same shape per header row, top row first, `'()` with none |
 | `on-trigger-char` | A registered trigger character is typed | `(pane char source)`: `char` is a Scheme char, like `#\.` |
 | `on-completion-accept` | A completion entry is accepted | `(pane item)` |
+| `on-paste` | Text is about to be pasted into a buffer, by `p`, `P`, `[`, `]`, the terminal or `paste-text!` | `(pane pasted previous)`: return the text to paste instead, or `#f`; see [Rewriting a paste](#rewriting-a-paste) |
 | `on-option-change` | A global setting is changed (`:set global`, `set-option!`, `:theme`) | `(key value)`: `key` is a string, `value` the option's new value as `get-option` returns it |
 | `on-text-changed` | A buffer's text changes | `(pane changes)`: `changes` is a list of hunks shaped like those `diff-lines` returns, from the text at the previous `on-text-changed` (the old side) to the current one, or `#f` when HUME can't say what changed |
 | `on-undo-history-changed` | A buffer's undo history changes: an edit is recorded, an undo, redo or jump moves to another revision, or a write changes which revision is saved | `(pane)`: pull the tree with `buffer-undo-tree` |
@@ -366,6 +368,23 @@ That buffer is still open, though, and keeps whatever the plugin drew in it: sig
 `changes` is `#f` after a refresh of a read-only view buffer, and after a long run of edits, or edits that change a lot of text, since the previous fire. Treat `#f` as "anything may have changed" and rebuild from the whole buffer. A debounced handler runs once for several fires and sees only the last one's `changes`. To get everything, keep the `(buffer-generation pane)` value from when you last caught up and pass it to `buffer-changes-since`.
 
 `on-undo-history-changed` also fires once per command, but only when the undo history moves or a write changes the saved revision, so an insert session fires it once, when the session ends. It also fires for an undo whose net change to the text is nothing (undoing an insert together with its later delete), which `on-text-changed` does not.
+
+### Rewriting a paste
+
+An `on-paste` handler can change what a paste puts in the buffer. It runs before the text lands, once for each selection: `pasted` is the text that selection is about to get, and `previous` is the text the paste replaces there, or `#f` when it replaces nothing, as at a cursor, where the text goes beside it. Return the text to paste instead, or `#f` to leave it as it is. This one puts a selected word in front of the text pasted over it:
+
+```scheme
+(register-hook! 'on-paste
+  (lambda (pane pasted previous)
+    (and previous (string-append previous ": " pasted))))
+```
+
+- Handlers run in the order they were registered, each one given the text the one before it returned.
+- The paste is still one undo step. `[` and `]` run the handlers again for each kill-ring entry, with the text the first paste replaced, and `.` runs them again on the new selections. The kill ring and the registers keep the text as it was copied.
+- When the pasted text is whole lines and the returned text doesn't end with a line break, it gets one. Return `""` to paste nothing.
+- A handler that raises, or returns something other than a string or `#f`, is reported in `:messages`, and the paste goes on as if it had returned `#f`.
+- A handler may read the editor but not change it. Pasting, editing a buffer, moving the cursor, setting an option or running a built-in editor command raises, and an editor command from a plugin is held to the same rule. A handler that tries any of these is reported and the paste goes on as if it had returned `#f`, even when the handler catches the error.
+- A plugin that loads on `on-paste` loads before its handlers run, and its code may change the editor, but not paste.
 
 A handler can pull details when it fires. This one logs how many errors a buffer has whenever its diagnostics change:
 

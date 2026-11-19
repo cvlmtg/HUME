@@ -24,7 +24,7 @@ use super::args::{
     symbol_enum_arg, symbol_hash,
 };
 use super::buffers::{content_line_arg, content_line_bound, live_text, optional_line_range_arg};
-use super::errors::{generic_err, require_cap};
+use super::errors::generic_err;
 use super::ids::DocRange;
 
 /// `(set-inlay-hints! pane source hints)`: `hints`: list of `(hash 'char-offset
@@ -46,7 +46,8 @@ pub(crate) fn set_inlay_hints(
         let side = side_arg(entry.required("side")?, &entry.label("side"))?;
         Ok((pos, text, side))
     })?;
-    require_cap(ctx.host.decorations())?
+    ctx.host
+        .require(|h| h.decorations())?
         .set_inlay_hints(source, bid, parsed)
         .map_err(set_err(list))?;
     Ok(SteelVal::Void)
@@ -72,7 +73,8 @@ pub(crate) fn register_sign_source(
     priority: SteelVal,
 ) -> SteelResult {
     let priority = int_arg(priority, "priority")?;
-    require_cap(ctx.host.decorations())?
+    ctx.host
+        .require(|h| h.decorations())?
         .register_sign_source(source, bid, priority)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -88,7 +90,9 @@ pub(crate) fn unregister_sign_source(
     bid: BufferId,
     source: String,
 ) -> SteelResult {
-    require_cap(ctx.host.decorations())?.unregister_sign_source(&source, bid);
+    ctx.host
+        .require(|h| h.decorations())?
+        .unregister_sign_source(&source, bid);
     Ok(SteelVal::Void)
 }
 
@@ -118,7 +122,8 @@ pub(crate) fn set_signs(
         Ok((marked_lines(lines, line_count)?, text, scope))
     })
     .map_err(set_err(list))?;
-    require_cap(ctx.host.decorations())?
+    ctx.host
+        .require(|h| h.decorations())?
         .set_signs(source, bid, parsed)
         .map_err(set_err(list))?;
     Ok(SteelVal::Void)
@@ -142,7 +147,8 @@ pub(crate) fn set_virtual_lines(
         Ok((content_line_arg(line, line_count)?, spec))
     })
     .map_err(set_err(VIRTUAL_LINES))?;
-    require_cap(ctx.host.decorations())?
+    ctx.host
+        .require(|h| h.decorations())?
         .set_virtual_lines(source, bid, parsed)
         .map_err(set_err(VIRTUAL_LINES))?;
     Ok(SteelVal::Void)
@@ -272,7 +278,7 @@ fn decorated_line_count(
     ctx: &mut SteelCtx,
     bid: BufferId,
 ) -> Result<hume_rope::line::ContentLineCount, SteelErr> {
-    require_cap(ctx.host.decorations())?;
+    ctx.host.require(|h| h.decorations())?;
     Ok(live_text(ctx, bid)?.content_line_count())
 }
 
@@ -314,7 +320,8 @@ pub(crate) fn set_conceals(
     let overlaps = conceal_overlaps_arg(overlaps, "#:overlaps")?;
     let line_count = decorated_line_count(ctx, bid)?;
     let parsed = conceal_specs(entries, CONCEALS, line_count)?;
-    require_cap(ctx.host.decorations())?
+    ctx.host
+        .require(|h| h.decorations())?
         .set_conceals(source, bid, parsed, overlaps)
         .map_err(set_err(CONCEALS))?;
     Ok(SteelVal::Void)
@@ -420,7 +427,8 @@ pub(crate) fn set_eol_text(
         Ok((content_line_arg(line, line_count)?, text, scope))
     })
     .map_err(set_err(list))?;
-    require_cap(ctx.host.decorations())?
+    ctx.host
+        .require(|h| h.decorations())?
         .set_eol_text(source, bid, parsed, hide_on_insert_line)
         .map_err(set_err(list))?;
     Ok(SteelVal::Void)
@@ -436,7 +444,8 @@ pub(crate) fn set_extra_highlights(
 ) -> SteelResult {
     let list = "spans";
     let parsed = char_range_scopes(spans, list)?;
-    require_cap(ctx.host.decorations())?
+    ctx.host
+        .require(|h| h.decorations())?
         .set_extra_highlights(source, bid, parsed)
         .map_err(set_err(list))?;
     Ok(SteelVal::Void)
@@ -457,7 +466,8 @@ pub(crate) fn set_line_backgrounds(
     let parsed = hash_list(entries, list, LINE_BACKGROUND_KEYS, line_background)?;
     let line_count = decorated_line_count(ctx, bid)?;
     let parsed = line_backgrounds_within(parsed, list, line_count)?;
-    require_cap(ctx.host.decorations())?
+    ctx.host
+        .require(|h| h.decorations())?
         .set_line_backgrounds(source, bid, parsed)
         .map_err(set_err(list))?;
     Ok(SteelVal::Void)
@@ -537,7 +547,8 @@ pub(crate) fn set_statusline_text(
     text: SteelVal,
 ) -> SteelResult {
     let text = string_arg(text, "text")?;
-    require_cap(ctx.host.decorations())?
+    ctx.host
+        .require(|h| h.decorations())?
         .set_statusline_text(source, bid, text)
         .map_err(generic_err)?;
     Ok(SteelVal::Void)
@@ -562,7 +573,9 @@ pub(crate) fn diagnostics_for_buffer(
             .transpose()?
             .map(|(start, end)| DiagnosticRange::Chars { start, end }),
     };
-    let entries = require_cap(ctx.host.decorations())?
+    let entries = ctx
+        .host
+        .require(|h| h.decorations())?
         .diagnostics_for_buffer(id, floor, range)
         .map_err(generic_err)?;
     Ok(list_of(entries.into_iter().map(diagnostic_entry_to_steel)))
@@ -635,7 +648,10 @@ pub(crate) fn diagnostic_counts(
 ) -> SteelResult {
     let id = pane.0.buffer();
     let floor = severity_floor_arg(severity)?;
-    let counts = require_cap(ctx.host.decorations())?.diagnostic_counts(id, floor);
+    let counts = ctx
+        .host
+        .require(|h| h.decorations())?
+        .diagnostic_counts(id, floor);
     Ok(symbol_hash(DiagSeverity::ALL.map(|severity| {
         (
             severity.name(),

@@ -12,6 +12,7 @@ use super::super::error::CommandError;
 use super::super::jump_list::JumpEntry;
 use super::super::minibuf::history::{HistoryDir, HistoryKind, HistoryStore};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
+use super::super::paste_plan::PlannedPaste;
 use super::super::replay::WaitingInput;
 use super::super::search::SearchPattern;
 use super::super::{Editor, EditorState, commands, search};
@@ -122,11 +123,11 @@ fn search_paste(
     _view: &EngineView,
     r: LayerRef,
     text: PastedText,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     if minibuf::paste_into_minibuf(state, &text) {
         search_edited(state, r);
     }
-    Ok(())
+    Ok(PlannedPaste::NONE)
 }
 
 /// What an edit to the pattern does beyond changing it: demotes any active

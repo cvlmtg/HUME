@@ -67,6 +67,13 @@ fn attach_steel(ed: &mut Editor, src: &str) {
     ed.scripting = Some(host);
 }
 
+/// An editor over `initial_state` with the Steel commands `source` defines.
+fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
+    let mut ed = editor_from(initial_state);
+    attach_steel(&mut ed, source);
+    ed
+}
+
 /// Whether the next key will be read as a character for a command or a
 /// Steel callback.
 fn reading_char(ed: &Editor) -> bool {
@@ -2032,6 +2039,7 @@ mod mouse;
 mod multi_pane;
 mod native_call_targeting;
 mod object_jump_align;
+mod on_paste;
 mod page_scroll;
 mod pane_focus;
 mod pane_sync;

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Plugins & scripting
+- The `on-paste` hook lets a plugin change the text a paste puts in a buffer.
+
 ## [0.22.1] - 2026-11-18
 
 ### Breaking changes

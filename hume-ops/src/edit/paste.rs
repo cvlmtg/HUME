@@ -2,7 +2,7 @@
 
 use hume_editing::edit::Edited;
 use hume_editing::edit::Landing;
-use hume_editing::selection::{Facing, SelectionView};
+use hume_editing::selection::{EditView, Facing, SelectionView};
 use hume_editing::state::EditState;
 use hume_rope::cluster::ClusterRange;
 
@@ -34,11 +34,7 @@ fn paste_impl(state: EditState, values: &[Piece], before: bool) -> Edited {
         return Edited::unchanged(state);
     }
 
-    // Joined content pastes in the shape of the last piece.
-    let placement = Placement::new(values, state.view().len(), |values| {
-        let shape = values.last().map_or(Shape::Charwise, Piece::shape);
-        Piece::new(values.iter().map(Piece::text).collect::<String>(), shape)
-    });
+    let placement = paste_placement(values, state.view().len());
     // Whether the text right before selection `i` is a linewise paste over
     // the selection touching it: that paste already ended its line, so `i`
     // needs no leading '\n' of its own.
@@ -135,4 +131,22 @@ pub fn paste_after(state: EditState, values: &[Piece]) -> Edited {
 /// no-op.
 pub fn paste_before(state: EditState, values: &[Piece]) -> Edited {
     paste_impl(state, values, true)
+}
+
+/// The piece each of `selections` gets from `values`: one per selection when
+/// the counts match, otherwise all of them joined, in the shape of the last.
+pub fn paste_placement(values: &[Piece], selections: usize) -> Placement<'_, Piece> {
+    Placement::new(values, selections, |values| {
+        let shape = values.last().map_or(Shape::Charwise, Piece::shape);
+        Piece::new(values.iter().map(Piece::text).collect::<String>(), shape)
+    })
+}
+
+/// What a paste at each selection of `view` replaces, in document order:
+/// `None` for a cursor, which a paste lands beside, otherwise the text the
+/// selection covers.
+pub fn replaced_texts(view: EditView<'_>) -> Vec<Option<String>> {
+    view.iter()
+        .map(|sel| (!sel.is_cursor()).then(|| sel.slice().to_string()))
+        .collect()
 }

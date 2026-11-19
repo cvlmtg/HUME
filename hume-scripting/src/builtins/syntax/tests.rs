@@ -608,7 +608,7 @@ fn register_grammar_resolves_relative_paths_against_the_editor_cwd() {
 
 // ── %syntax-captures ─────────────────────────────────────────────────────
 
-/// A host with no `SyntaxHost` capability raises `require_cap`'s one message,
+/// A host with no `SyntaxHost` capability raises `SessionHost::require`'s one message,
 /// not a complaint about the buffer or the range.
 #[test]
 fn syntax_captures_reports_an_unsupported_host() {

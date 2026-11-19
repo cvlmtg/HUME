@@ -19,7 +19,7 @@ use super::SteelResult;
 use super::args::{
     ENV_PAIR_SHAPE, cwd_arg, job_arg, list_to_string_pairs, list_to_strings, string_arg,
 };
-use super::errors::{generic_err, require_cap};
+use super::errors::generic_err;
 
 /// `(%spawn-async! cmd args cwd callback)`, wrapped by `spawn-async!`'s
 /// `#:cwd` keyword in `bootstrap.scm`: runs `cmd` with `args` (direct
@@ -49,7 +49,10 @@ pub(crate) fn spawn_async(
     let args = list_to_strings(args, "args")?;
     let cwd = cwd_arg(cwd, &ctx.host.buffers().cwd(), "cwd")?;
 
-    let job = require_cap(ctx.host.async_process())?.spawn_async(&cmd, args, cwd, callback);
+    let job = ctx
+        .host
+        .require(|h| h.async_process())?
+        .spawn_async(&cmd, args, cwd, callback);
     Ok(job.into_steel_val())
 }
 
@@ -61,7 +64,7 @@ pub(crate) fn spawn_async(
 /// a job.
 pub(crate) fn cancel_async(ctx: &mut SteelCtx, job: SteelVal) -> SteelResult {
     let job = job_arg(&job, "job")?;
-    require_cap(ctx.host.async_process())?.cancel_async(job);
+    ctx.host.require(|h| h.async_process())?.cancel_async(job);
     Ok(SteelVal::Void)
 }
 
@@ -125,7 +128,8 @@ pub(crate) fn run_capture(
 /// "Filesystem and processes").
 ///
 /// # Errors
-/// Called outside an `#:inline-output` command, the binary can't be spawned
+/// Called outside an `#:inline-output` command or while the editor cannot
+/// change, the binary can't be spawned
 /// (e.g. not found on `PATH`), or it exited non-zero or was killed by a
 /// signal.
 pub(crate) fn run_inline_output(

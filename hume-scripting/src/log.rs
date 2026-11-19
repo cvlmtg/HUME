@@ -13,7 +13,7 @@ pub(crate) fn log_msg(
 ) -> Result<steel::rvals::SteelVal, steel::rerrs::SteelErr> {
     let name = symbol_arg(&severity, "log!", "a severity symbol like 'warning")?;
     let sev = symbol_enum_arg(name, "log!", &Severity::NAMED)?;
-    ctx.pending_messages.push((sev, message));
+    ctx.log(sev, message);
     Ok(steel::rvals::SteelVal::Void)
 }
 

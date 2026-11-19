@@ -167,9 +167,8 @@ impl Editor {
         // swallow, e.g. under Confirm, still dismisses the previous message
         // as a real input event).
         self.state.status_msg.clear();
-        if let Err(e) = self.state.paste(&self.view, text) {
-            self.state.report_error(&e);
-        }
+        let planned = self.state.paste(&self.view, text);
+        self.finish_planned_paste(planned);
     }
 }
 

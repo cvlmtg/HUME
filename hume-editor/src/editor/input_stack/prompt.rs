@@ -8,6 +8,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::error::CommandError;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
+use super::super::paste_plan::PlannedPaste;
 use super::super::replay::{Answer, InputOpener, PendingAnswer, WaitingInput};
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
@@ -149,9 +150,9 @@ fn prompt_paste(
     _view: &EngineView,
     _r: LayerRef,
     text: PastedText,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     minibuf::paste_into_minibuf(state, &text);
-    Ok(())
+    Ok(PlannedPaste::NONE)
 }
 
 /// Routes a `Prompt` layer's key for a Steel `(prompt! …)` session

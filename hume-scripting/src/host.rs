@@ -40,7 +40,7 @@ pub use decorations::{
     each_entry,
 };
 pub use diff::DiffHost;
-pub use edits::{CharTextEdit, EditHost, WireTextEdit};
+pub use edits::{CharTextEdit, EditHost, PasteAudience, PasteQuestion, WireTextEdit};
 pub use events::{EventHost, EventShape, EventSubject};
 pub use language::LanguageHost;
 pub use lsp::{
@@ -81,9 +81,11 @@ pub enum KeymapTarget {
 ///
 /// Six accessors are required (`buffers`, `settings`, `language`, `commands`,
 /// `cursor`, `events`); the rest return `None` when the host lacks the
-/// capability. A mutating builtin maps `None` to the "not supported by this
-/// host" error (`errors::require_cap`) rather than reporting a write that never
-/// happened; only already-idempotent calls such as `cancel-timer!` no-op.
+/// capability. A builtin maps `None` to an error (`SessionHost::require`)
+/// rather than reporting a read or write that never happened; only the
+/// internal ones a host without the capability has nothing to do for
+/// (`%arm-inline-output!`, `%restore-inline-output!`, `%start-paste-finish!`)
+/// return without one.
 /// Command-mode-only and init-only builtins are gated per registration by
 /// `errors::require_cmd` and `errors::require_config`.
 pub trait EditorHost {

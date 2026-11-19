@@ -102,7 +102,9 @@ pub enum Shape {
 /// [`normalize_line_endings`](hume_editing::text::normalize_line_endings)
 /// gives `BufferText`), so a register filled from the OS clipboard or a
 /// plugin can't smuggle a foreign line ending into a paste or a byte-exact
-/// repeat-paste comparison.
+/// repeat-paste comparison. A whole-lines piece always ends with a `\n`, and
+/// empty text pastes charwise: a paste of whole lines over a selection that
+/// starts mid-line breaks the line first, which no text would justify.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Piece {
     text: String,
@@ -111,10 +113,16 @@ pub struct Piece {
 
 impl Piece {
     pub fn new(text: impl Into<String>, shape: Shape) -> Self {
-        Self {
-            text: normalize_line_endings_owned(text.into()),
-            shape,
+        let mut text = normalize_line_endings_owned(text.into());
+        let shape = if text.is_empty() {
+            Shape::Charwise
+        } else {
+            shape
+        };
+        if shape == Shape::Linewise && !text.ends_with('\n') {
+            text.push('\n');
         }
+        Self { text, shape }
     }
 
     pub fn text(&self) -> &str {

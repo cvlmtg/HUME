@@ -4,6 +4,7 @@ use std::rc::Rc;
 use crate::editor::commands::{CommandPane, FocusedPane, NativeBody};
 use crate::editor::error::CommandError;
 use crate::editor::jump_list::JumpRule;
+use crate::editor::paste_plan::PlannedPaste;
 use hume_core::Count;
 use hume_editing::edit::Edited;
 use hume_editing::state::EditState;
@@ -34,6 +35,17 @@ pub(in crate::editor) type FocusedCmdFn = fn(
     Count,
     MotionMode,
 ) -> Result<(), CommandError>;
+
+/// Function pointer for an [`EditorCmdBody::FocusedPaste`] handler: a
+/// [`FocusedCmdFn`] that hands back the paste it planned, for the code that
+/// dispatched it to finish.
+pub(in crate::editor) type PasteCmdFn = fn(
+    &mut super::super::EditorState,
+    &mut EngineView,
+    FocusedPane,
+    Count,
+    MotionMode,
+) -> Result<PlannedPaste, CommandError>;
 
 /// Function pointer for an [`EditorCmdBody::PaneChar`] handler: a
 /// [`PaneCmdFn`] that also takes the character its operand names (a key read
@@ -96,6 +108,7 @@ impl TextPrompt {
 pub(in crate::editor) enum EditorCmdBody {
     Pane(PaneCmdFn),
     FocusedPane(FocusedCmdFn),
+    FocusedPaste(PasteCmdFn),
     PaneChar(PaneCharCmdFn),
     PaneText(PaneTextCmdFn, TextPrompt),
 }

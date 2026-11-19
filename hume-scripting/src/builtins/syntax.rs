@@ -19,7 +19,7 @@ use super::args::{
     optional_string_arg, path_arg, string_arg, under_cwd,
 };
 use super::buffers::{line_ranges_arg, live_text};
-use super::errors::{generic_err, require_cap};
+use super::errors::generic_err;
 use super::ids::{ParsedText, downcast};
 
 /// `(%define-language! name extensions globs shebangs)`: init-only.
@@ -64,7 +64,7 @@ pub(crate) fn define_language(
             shebangs,
         },
         origin,
-    }));
+    }))?;
     Ok(SteelVal::Void)
 }
 
@@ -136,7 +136,7 @@ pub(crate) fn configure_language(
         name,
         fields,
         origin,
-    }));
+    }))?;
     Ok(SteelVal::Void)
 }
 
@@ -170,7 +170,7 @@ pub(crate) fn register_grammar(
     };
 
     if ctx.session == crate::context::EvalSession::Init {
-        ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Grammar(reg)));
+        ctx.push_effect(Effect::LanguageReg(PendingLanguageReg::Grammar(reg)))?;
         return Ok(SteelVal::Void);
     }
 
@@ -182,7 +182,7 @@ pub(crate) fn register_grammar(
         .attach_grammar(&reg)
         .map_err(generic_err)?;
     if attached {
-        ctx.push_effect(Effect::GrammarSweep(reg.name));
+        ctx.push_effect(Effect::GrammarSweep(reg.name))?;
     }
     Ok(SteelVal::Void)
 }
@@ -297,10 +297,14 @@ pub(crate) fn syntax_captures(
     query: String,
     ranges: SteelVal,
 ) -> SteelResult {
-    require_cap(ctx.host.syntax())?;
+    // Checked first, so a host with no syntax support says so before the
+    // buffer or the ranges are read.
+    ctx.host.require(|h| h.syntax())?;
     let line_count = live_text(ctx, bid)?.content_line_count();
     let ranges = line_ranges_arg(ranges, line_count)?;
-    let captures = require_cap(ctx.host.syntax())?
+    let captures = ctx
+        .host
+        .require(|h| h.syntax())?
         .syntax_captures(bid, &language, &query, &ranges)
         .map_err(generic_err)?;
     Ok(captures_list(&captures))

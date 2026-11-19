@@ -4,7 +4,7 @@
 //! can call `show-popup!`. `hume-editor`'s `EditorHostImpl` is the only
 //! implementation that actually renders anything; other hosts (tests,
 //! `MockHost`) have no `UiHost`, so `ctx.host.ui()` returns `None` and each
-//! builtin surfaces `require_cap`'s "not supported by this host" instead.
+//! builtin raises `SessionHost::require`'s error instead.
 
 use steel::rerrs::SteelErr;
 use steel::rvals::SteelVal;
@@ -25,7 +25,7 @@ use super::args::{
     pair_fields, set_err, single_key, spanned_text, string_arg, symbol_enum_arg, token_arg,
     token_or_false, truncate_end_arg, usize_arg, write_item_label,
 };
-use super::errors::{generic_err, require_cap};
+use super::errors::generic_err;
 
 /// `(%show-popup! pane text anchor kind lang)`: the `show-popup!` Scheme
 /// wrapper supplies `#:anchor`/`#:kind`/`#:lang`'s defaults. Returns a token
@@ -49,7 +49,9 @@ pub(crate) fn show_popup(
     let kind = string_arg(kind, "#:kind")?;
     let kind = symbol_enum_arg(&kind, "#:kind", &PopupKind::NAMED)?;
     let lang = optional_string_arg(lang, "#:lang")?;
-    let token = require_cap(ctx.host.ui())?
+    let token = ctx
+        .host
+        .require(|h| h.ui())?
         .show_popup(pane, text, kind, layout, lang)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
@@ -59,7 +61,8 @@ pub(crate) fn show_popup(
 /// popup has since closed) is a no-op, same as any other stale token.
 pub(crate) fn close_popup(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
-    require_cap(ctx.host.ui())?
+    ctx.host
+        .require(|h| h.ui())?
         .close_popup(token)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -75,7 +78,9 @@ pub(crate) fn show_menu(
     on_select: Callback,
 ) -> SteelResult {
     let items = non_empty(display_items(items, "items", row_display)?, "items")?;
-    let token = require_cap(ctx.host.ui())?
+    let token = ctx
+        .host
+        .require(|h| h.ui())?
         .show_menu(pane, items, on_select)
         .map_err(set_err("items"))?;
     Ok(token_or_false(token))
@@ -84,7 +89,8 @@ pub(crate) fn show_menu(
 /// `(close-menu! token)`. A `#f` token is a no-op, same as `close-popup!`.
 pub(crate) fn close_menu(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
-    require_cap(ctx.host.ui())?
+    ctx.host
+        .require(|h| h.ui())?
         .close_menu(token)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -114,7 +120,9 @@ pub(crate) fn show_drawer_list(
     let items = drawer_items(ctx, items, render)?;
     let selected = usize_arg(selected, "selected")?;
     let truncate = truncate_end_arg(truncate, "#:truncate")?;
-    let token = require_cap(ctx.host.ui())?
+    let token = ctx
+        .host
+        .require(|h| h.ui())?
         .show_drawer_list(pane, items, on_select, selected, truncate)
         .map_err(set_err("items"))?;
     Ok(token_or_false(token))
@@ -123,7 +131,8 @@ pub(crate) fn show_drawer_list(
 /// `(close-drawer! token)`. A `#f` token is a no-op, same as `close-popup!`.
 pub(crate) fn close_drawer(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
-    require_cap(ctx.host.ui())?
+    ctx.host
+        .require(|h| h.ui())?
         .close_drawer(token)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -149,7 +158,9 @@ pub(crate) fn update_drawer_list(
     let token = token_arg(token, "token")?;
     let items = drawer_items(ctx, items, render)?;
     let selected = usize_arg(selected, "selected")?;
-    let applied = require_cap(ctx.host.ui())?
+    let applied = ctx
+        .host
+        .require(|h| h.ui())?
         .update_drawer_list(token, items, on_select, selected)
         .map_err(set_err("items"))?;
     Ok(SteelVal::BoolV(applied))
@@ -196,7 +207,7 @@ fn non_empty<T>(items: Vec<T>, ctx_name: &str) -> Result<NonEmpty<T>, SteelErr> 
 /// `#f`).
 pub(crate) fn drawer_selection(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
-    match require_cap(ctx.host.ui())?.drawer_selection(token) {
+    match ctx.host.require(|h| h.ui())?.drawer_selection(token) {
         Some((item, idx)) => cons_pair(item, SteelVal::IntV(idx as isize)),
         None => Ok(SteelVal::BoolV(false)),
     }
@@ -214,7 +225,8 @@ pub(crate) fn prompt(
 ) -> SteelResult {
     let label = string_arg(label, "label")?;
     let prefill = string_arg(prefill, "prefill")?;
-    require_cap(ctx.host.ui())?
+    ctx.host
+        .require(|h| h.ui())?
         .prompt(pane, label, prefill, on_confirm)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -228,7 +240,8 @@ pub(crate) fn prompt(
 /// gets the character the repeated command read, at once, and the call
 /// raises when the repeated command read fewer.
 pub(crate) fn on_next_char(ctx: &mut SteelCtx, callback: Callback) -> SteelResult {
-    require_cap(ctx.host.ui())?
+    ctx.host
+        .require(|h| h.ui())?
         .on_next_char(callback)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -361,7 +374,9 @@ pub(crate) fn picker(
     let pending = bool_arg(pending, "#:pending")?;
     let common = picker_common_opts(ctx, prompt, query, truncate, render, on_close)?;
     let opts = PickerOpts { common, pending };
-    let token = require_cap(ctx.host.ui())?
+    let token = ctx
+        .host
+        .require(|h| h.ui())?
         .open_picker(pane, items, keymap, opts)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
@@ -396,7 +411,9 @@ pub(crate) fn live_picker(
         common,
         on_query_change,
     };
-    let token = require_cap(ctx.host.ui())?
+    let token = ctx
+        .host
+        .require(|h| h.ui())?
         .open_live_picker(pane, keymap, opts)
         .map_err(generic_err)?;
     Ok(token_or_false(token))
@@ -431,7 +448,10 @@ fn picker_feed_builtin(
 ) -> SteelResult {
     let token = token_arg(token, "token")?;
     let items = display_items(items, "items", string_arg)?;
-    let applied = require_cap(ctx.host.ui())?.picker_feed(token, items, mode);
+    let applied = ctx
+        .host
+        .require(|h| h.ui())?
+        .picker_feed(token, items, mode);
     Ok(SteelVal::BoolV(applied))
 }
 
@@ -479,7 +499,9 @@ pub(crate) fn picker_source_spawn(
         ok_exit_codes,
     };
 
-    let applied = require_cap(ctx.host.ui())?
+    let applied = ctx
+        .host
+        .require(|h| h.ui())?
         .picker_source_spawn(token, &cmd, args, opts)
         .map_err(generic_err)?;
     Ok(SteelVal::BoolV(applied))
@@ -492,7 +514,7 @@ pub(crate) fn picker_source_spawn(
 /// attached.
 pub(crate) fn picker_source_stop(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
-    let applied = require_cap(ctx.host.ui())?.picker_source_stop(token);
+    let applied = ctx.host.require(|h| h.ui())?.picker_source_stop(token);
     Ok(SteelVal::BoolV(applied))
 }
 
@@ -501,7 +523,7 @@ pub(crate) fn picker_source_stop(ctx: &mut SteelCtx, token: SteelVal) -> SteelRe
 /// same as `close-popup!`.
 pub(crate) fn picker_close(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
-    require_cap(ctx.host.ui())?.picker_close(token);
+    ctx.host.require(|h| h.ui())?.picker_close(token);
     Ok(SteelVal::Void)
 }
 
@@ -517,7 +539,9 @@ pub(crate) fn picker_move(
     let token = token_arg(token, "token")?;
     let count = int_arg(count, "count")? as isize;
     let step = symbol_enum_arg(string_arg(by, "#:by")?.as_str(), "#:by", &PickerStep::NAMED)?;
-    require_cap(ctx.host.ui())?.picker_move(token, count, step);
+    ctx.host
+        .require(|h| h.ui())?
+        .picker_move(token, count, step);
     Ok(SteelVal::Void)
 }
 

@@ -57,6 +57,10 @@ impl Editor {
     /// bounds it. `:reload-config`'s `resync_config_state` call site drains
     /// only `drain_pending_work` for this reason; see its doc.
     pub(crate) fn settle(&mut self) {
+        debug_assert!(
+            self.state.paste_awaiting_handlers.is_empty(),
+            "a paste was planned and never finished"
+        );
         self.drain_async_sources();
         if self.drain_pending_work() {
             // The span `Editor::handle_input` opened ("this input's own

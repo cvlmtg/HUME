@@ -11,7 +11,7 @@ use super::super::replay::{Answer, AnswerTicket, InputOpener, PendingAnswer};
 use super::super::{Editor, EditorState};
 use super::search::{all_cursors, open_search_prompt, open_sift_prompt};
 use super::{
-    BoundCommand, FocusedPane, Missing, MissingOperand, PendingDispatch, report_arg_error, run,
+    BoundCommand, FocusedPane, Missing, MissingOperand, PendingDispatch, report_arg_error,
 };
 use hume_core::{CommandArg, PaneHandle, Severity};
 
@@ -117,26 +117,24 @@ pub(in crate::editor) fn finish_text_operand(
     let Some(text) = text else {
         return false;
     };
-    ed.run_answered(ticket, |ed| {
-        run_collected(&mut ed.state, &mut ed.view, then, CommandArg::Text(text))
-    })
+    ed.run_answered(ticket, |ed| run_collected(ed, then, CommandArg::Text(text)))
 }
 
 /// Run `pending` with the operand the user supplied for it, reporting any
 /// refusal: by then no script caller is waiting to raise to. Returns
-/// `false` when the operand does not fit or the command refused.
+/// `false` when the operand does not fit, or as
+/// [`Editor::finish_command`] does.
 pub(in crate::editor) fn run_collected(
-    state: &mut EditorState,
-    view: &mut EngineView,
+    ed: &mut Editor,
     pending: PendingDispatch,
     arg: CommandArg,
 ) -> bool {
     let PendingDispatch { cmd, pane, ctx } = pending;
     let name = cmd.name().clone();
-    match BoundCommand::resolve(state, view, cmd, pane, Some(arg)) {
-        Ok(bound) => run(state, view, bound, ctx),
+    match BoundCommand::resolve(&ed.state, &ed.view, cmd, pane, Some(arg)) {
+        Ok(bound) => ed.run_command(bound, ctx),
         Err(e) => {
-            report_arg_error(state, &name, &e);
+            report_arg_error(&mut ed.state, &name, &e);
             false
         }
     }

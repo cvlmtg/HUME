@@ -228,7 +228,7 @@ pub fn delete_selection_content(state: EditState) -> Removal {
 /// What `d` puts in the register for the text it removed: whole lines paste
 /// as lines, anything else as characters. Empty when `d` removed nothing.
 fn removed_piece(removed: Option<RopeSlice<'_>>, linewise: bool) -> Piece {
-    let shape = if removed.is_some() && linewise {
+    let shape = if linewise {
         Shape::Linewise
     } else {
         Shape::Charwise

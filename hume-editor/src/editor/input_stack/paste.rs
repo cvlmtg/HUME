@@ -4,6 +4,7 @@
 //! builds a [`PastedText`] and calls it.
 
 use std::borrow::Cow;
+use std::rc::Rc;
 
 use hume_editing::text::normalize_line_endings_owned;
 use hume_engine::pipeline::EngineView;
@@ -11,6 +12,7 @@ use hume_engine::pipeline::EngineView;
 use super::super::EditorState;
 use super::super::error::CommandError;
 use super::super::minibuf::flatten_single_line;
+use super::super::paste_plan::PlannedPaste;
 use super::stack::LayerRef;
 
 /// Pasted values with normalized line endings, not all empty: the only form a
@@ -34,10 +36,6 @@ impl PastedText {
         values.iter().any(|v| !v.is_empty()).then_some(Self(values))
     }
 
-    pub(in crate::editor) fn values(&self) -> &[String] {
-        &self.0
-    }
-
     /// Every value in order, joined and flattened to one line.
     pub(in crate::editor) fn single_line(&self) -> String {
         let joined = match self.0.as_slice() {
@@ -47,19 +45,20 @@ impl PastedText {
         flatten_single_line(&joined)
     }
 
-    pub(in crate::editor) fn into_values(self) -> Vec<String> {
-        self.0
+    pub(in crate::editor) fn into_values(self) -> Rc<[String]> {
+        self.0.into()
     }
 }
 
 impl EditorState {
-    /// Paste `text` into whatever layer is on top of the stack. `Err` when
-    /// the layer refused it.
+    /// Paste `text` into whatever layer is on top of the stack, returning
+    /// the buffer paste it planned for the caller to finish. `Err` when the
+    /// layer refused it.
     pub(in crate::editor) fn paste(
         &mut self,
         view: &EngineView,
         text: PastedText,
-    ) -> Result<(), CommandError> {
+    ) -> Result<PlannedPaste, CommandError> {
         let top = self.input.top();
         self.paste_at(view, top, text)
     }
@@ -69,7 +68,7 @@ impl EditorState {
         view: &EngineView,
         r: LayerRef,
         text: PastedText,
-    ) -> Result<(), CommandError> {
+    ) -> Result<PlannedPaste, CommandError> {
         let f = self
             .input
             .paste_handler(r)
@@ -84,7 +83,7 @@ impl EditorState {
         view: &EngineView,
         r: LayerRef,
         text: PastedText,
-    ) -> Result<(), CommandError> {
+    ) -> Result<PlannedPaste, CommandError> {
         let below = self.input.below(r);
         self.paste_at(view, below, text)
     }
@@ -96,6 +95,6 @@ pub(in crate::editor) fn ignore_paste(
     _view: &EngineView,
     _r: LayerRef,
     _text: PastedText,
-) -> Result<(), CommandError> {
-    Ok(())
+) -> Result<PlannedPaste, CommandError> {
+    Ok(PlannedPaste::NONE)
 }

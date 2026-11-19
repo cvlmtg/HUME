@@ -506,24 +506,6 @@ impl ScriptingHost {
         self.eval_source_with_budget(source, 10_000, host)
     }
 
-    /// Evaluates `source` and returns its last value, under
-    /// `read_only_call`'s read-only rules.
-    #[cfg(any(test, feature = "test-util"))]
-    pub fn eval_source_for_value(
-        &mut self,
-        source: &str,
-        host: &mut dyn host::EditorHost,
-    ) -> Result<steel::rvals::SteelVal, String> {
-        let source = source.to_owned();
-        let base = attribution::Provenance::own(attribution::Owner::User);
-        self.read_only_call(host, base, |steel| {
-            steel
-                .compile_and_run_raw_program(source)?
-                .pop()
-                .ok_or_else(|| builtins::errors::generic_err("the source produced no value"))
-        })
-    }
-
     /// Like [`eval_source`](Self::eval_source) but arms a real
     /// [`EvalWatchdog`] with the given budget, for tests that need the
     /// watchdog to fire.

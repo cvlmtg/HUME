@@ -122,6 +122,20 @@ pub(crate) fn optional_string_arg(
     optional(val, ctx_name, string_arg)
 }
 
+/// A string that may be `#f` (absent), borrowed from `val`. Unlike
+/// `optional_string_arg`, it rejects a symbol: text that lands as written,
+/// where `'foo` is a slip rather than a name.
+pub(crate) fn optional_text_ref_arg<'a>(
+    val: &'a SteelVal,
+    ctx_name: &str,
+) -> Result<Option<&'a str>, SteelErr> {
+    match val {
+        SteelVal::BoolV(false) => Ok(None),
+        SteelVal::StringV(s) => Ok(Some(s.as_str())),
+        _ => steel::stop!(TypeMismatch => "{}: expected a string or #f", ctx_name),
+    }
+}
+
 /// A symbol argument that may be `#f` (absent). Unlike `optional_string_arg`,
 /// it rejects a plain string: a caller wanting this shape is decoding a Scheme
 /// keyword like `'error`, not free text, and `string_arg`'s string-or-symbol

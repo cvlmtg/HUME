@@ -5,11 +5,15 @@
 //! share the word "paste".
 //!
 //! This module owns opening and closing `EditorState::paste_session`
-//! (`do_paste`, `commit_paste_session`) via `edit_session::open_paste`,
-//! which applies the same open rule as `edit_session::open_insert` does for
-//! an Insert session.
+//! (`land_register_paste`, `commit_paste_session`) via
+//! `edit_session::open_paste`, which applies the same open rule as
+//! `edit_session::open_insert` does for an Insert session. A `p`/`P` opens
+//! its session when it lands, not when it is planned, so nothing that runs
+//! while it waits for its `on-paste` handlers can end the session it lands
+//! in.
 
 use std::borrow::Cow;
+use std::rc::Rc;
 
 use hume_core::{BufferId, Count, PaneId, Severity};
 use hume_engine::pipeline::EngineView;
@@ -22,8 +26,9 @@ use hume_ops::register::{BLACK_HOLE_REGISTER, KILL_RING_REGISTER, Piece};
 
 use super::super::{EditorState, doc_ops, register_ops};
 use super::FocusedPane;
-use crate::editor::edit_session;
+use crate::editor::edit_session::{self, OpeningPaste};
 use crate::editor::error::CommandError;
+use crate::editor::paste_plan::{PasteApply, PlannedPaste, Replaced};
 use crate::editor::replay::{AnswerPlace, ReplayedPaste};
 use crate::editor::settings::ClipboardJoinsRing;
 
@@ -90,11 +95,12 @@ impl EditorState {
     ///
     /// Reads the session's own recorded pane/buffer (`PasteSession::pane`/
     /// `buffer`), not live focus or `&EngineView`. A paste session only
-    /// ever opens on the focused pane (`do_paste`), but focus can move again
-    /// before this runs, and the session's own record is what stays correct
-    /// regardless. Thin wrapper around [`edit_session::commit_paste_group`], the
-    /// same commit `doc_ops::apply_doc_edit` uses to close a same-pane Paste
-    /// session before an unrelated direct edit.
+    /// stays open on the focused pane (`land_register_paste`), but focus can
+    /// move again before this runs, and the session's own record is what
+    /// stays correct regardless. Thin wrapper around
+    /// [`edit_session::commit_paste_group`], the same commit
+    /// `doc_ops::apply_doc_edit` uses to close a same-pane Paste session
+    /// before an unrelated direct edit.
     pub(in crate::editor) fn commit_paste_session(&mut self) {
         crate::editor::edit_session::commit_paste_group(
             &mut self.buffers,
@@ -134,18 +140,116 @@ fn collapse_if_repeat(state: EditState, values: &[Piece], before: bool) -> EditS
     })
 }
 
-/// Paste `values` before or after `focused`'s selections in `buf`, replacing
-/// what the open Paste session has pasted so far.
-fn paste_values(
+/// A planned `p`/`P` or `[`/`]`.
+pub(in crate::editor) struct RegisterPaste {
+    /// The pieces resolved for the paste, which the kill ring's cycle and
+    /// `.` keep whatever the handlers answer.
+    pub(in crate::editor) values: Vec<Piece>,
+    /// The handlers' text, one piece per selection, when one answered.
+    pub(in crate::editor) answered: Option<Vec<Piece>>,
+    pub(in crate::editor) lands: RegisterLanding,
+}
+
+/// Where a register paste lands.
+pub(in crate::editor) enum RegisterLanding {
+    /// `p`/`P`: opens a paste session for `opening` at the selections it was
+    /// planned on, which undo returns to `undo_sels`.
+    Opens {
+        opening: OpeningPaste,
+        undo_sels: SelectionSet,
+    },
+    /// `[`/`]`: in the paste session it was planned in, replacing what that
+    /// session has pasted so far.
+    Cycles,
+}
+
+/// Land `paste` in `buf` through `pane`, which is open, at the selections
+/// `replaced` holds. `Err`, with nothing changed, when the buffer's text
+/// may not change, when a `p`/`P` finds a session open, and when a `[`/`]`
+/// finds its session gone. A session left open on a pane that is not the
+/// focused one showing `buf` is committed at once: a paste session only
+/// stays open there.
+pub(in crate::editor) fn land_register_paste(
     state: &mut EditorState,
-    focused: PaneId,
+    view: &EngineView,
+    pane: PaneId,
     buf: BufferId,
-    before: bool,
-    values: &[Piece],
+    replaced: &Replaced,
+    paste: RegisterPaste,
 ) -> Result<(), CommandError> {
+    let RegisterPaste {
+        values,
+        answered,
+        lands,
+    } = paste;
+    doc_ops::text_gate(&state.buffers, buf)?;
+    let (before, answer) = match lands {
+        RegisterLanding::Opens { opening, undo_sels } => {
+            edit_session::check_can_open(state.open_session())?;
+            let before = opening.before;
+            let sels = replaced.sels().clone();
+            state
+                .panes
+                .entries
+                .seeded_mut(pane, buf)
+                .set_selections(sels.clone(), state.buffers.get(buf).text());
+            let buffers = &state.buffers;
+            edit_session::open_paste(
+                state.input.insert_session(),
+                &mut state.paste_session,
+                pane,
+                buf,
+                opening,
+                || buffers.get(buf).begin_edit_group(sels, undo_sels),
+            )?;
+            state.kill_ring.seed_cycle(&values);
+            (before, None)
+        }
+        RegisterLanding::Cycles => {
+            let OpeningPaste { before, answer, .. } = state
+                .paste_session
+                .as_ref()
+                .filter(|s| s.owned_by(pane, buf))
+                .map(|s| s.opening().clone())
+                .ok_or_else(|| {
+                    CommandError::new(
+                        "paste dropped: its paste session ended while it waited for its on-paste handlers",
+                    )
+                })?;
+            (before, answer)
+        }
+    };
+    let pasted = answered.as_deref().unwrap_or(&values);
     let paste_fn = if before { paste_before } else { paste_after };
     let (buffers, mut stores) = state.edit_parts();
-    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, focused, buf, |s| paste_fn(s, values))
+    doc_ops::apply_doc_edit_regrouped(buffers, &mut stores, pane, buf, |s| paste_fn(s, pasted))?;
+    if let Some(at) = &answer {
+        state.replace_paste_answer(at, values);
+    }
+    let shown = view.focused_pane() == pane && view.panes[pane].buffer_id() == buf;
+    if !shown {
+        state.commit_paste_session();
+    }
+    Ok(())
+}
+
+/// Plan `values` to land in `buf` through `pane` as `lands` says;
+/// `replaced` is what the selections covered before the paste session's first
+/// paste.
+fn plan_register_paste(
+    state: &EditorState,
+    pane: PaneId,
+    buf: BufferId,
+    replaced: Rc<Replaced>,
+    values: Vec<Piece>,
+    lands: RegisterLanding,
+) -> PlannedPaste {
+    let apply = PasteApply::Register(RegisterPaste {
+        values,
+        answered: None,
+        lands,
+    });
+    PlannedPaste::new(&state.buffers, pane, buf, replaced, apply)
 }
 
 /// A resolved paste, ready for [`do_paste`] to execute.
@@ -157,18 +261,14 @@ struct ResolvedPaste {
     recorded: Option<AnswerPlace>,
 }
 
-/// Core paste implementation: applies `resolved` at `sels`, which undo
-/// returns to `undo_sels` (the selections the command saw), opens the
-/// paste/ring-cycle session, and seeds the ring cycle. Does not resolve the
-/// source or apply the repeat-vs-swap rule. Callers resolve the source and
-/// (for smart paste) collapse `sels` before calling in.
+/// Core paste implementation: plans `resolved` at `sels`, which undo
+/// returns to `undo_sels` (the selections the command saw), and records it
+/// for `.`. Landing opens the paste/ring-cycle session and seeds the ring
+/// cycle ([`land_register_paste`]). Does not resolve the source or apply the
+/// repeat-vs-swap rule. Callers resolve the source and (for smart paste)
+/// collapse `sels` before calling in.
 ///
 /// `before`: true for `P` (paste before), false for `p` (paste after).
-///
-/// `Err` when an open `Insert`/`Paste` session blocks this, reachable only
-/// through a `call!` (a hook or timer firing mid-typing) or an Insert-mode
-/// binding, since `step_paste_commit` closes a prior paste session before
-/// every ordinary dispatch.
 fn do_paste(
     state: &mut EditorState,
     focused: PaneId,
@@ -177,37 +277,21 @@ fn do_paste(
     resolved: ResolvedPaste,
     sels: SelectionSet,
     undo_sels: SelectionSet,
-) -> Result<(), CommandError> {
+) -> PlannedPaste {
     let ResolvedPaste {
         values,
         bare,
         recorded,
     } = resolved;
     let answer = recorded.or_else(|| state.record_paste_answer(&values, bare));
-
-    let base = sels.clone();
-    state
-        .panes
-        .entries
-        .seeded_mut(focused, buf)
-        .set_selections(sels, state.buffers.get(buf).text());
-    let buffers = &state.buffers;
-    edit_session::open_paste(
-        state.input.insert_session(),
-        &mut state.paste_session,
-        focused,
-        buf,
+    let replaced = Rc::new(Replaced::new(state.buffers.get(buf).text(), sels));
+    let opening = OpeningPaste {
         before,
         answer,
-        || buffers.get(buf).begin_edit_group(base, undo_sels),
-    )?;
-    paste_values(state, focused, buf, before, &values)?;
-
-    // Every completed paste opens a fresh session (any prior one was already
-    // committed in BEFORE by `step_paste_commit`), so every one reseeds the
-    // cycle.
-    state.kill_ring.seed_cycle(&values);
-    Ok(())
+        replaced: Rc::clone(&replaced),
+    };
+    let lands = RegisterLanding::Opens { opening, undo_sels };
+    plan_register_paste(state, focused, buf, replaced, values, lands)
 }
 
 /// The kill-ring head, or the refusal for an empty ring.
@@ -336,11 +420,10 @@ fn do_normal_paste(
     view: &mut EngineView,
     fp: FocusedPane,
     before: bool,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     let (pid, buf) = (fp.pid(), fp.bid(view));
-    // Checked here, not left to `do_paste`'s own `open_paste` call,
-    // which runs after `do_paste` has written the selections it pastes at:
-    // a refusal here leaves the pane untouched.
+    // Checked before resolving, which takes the register prefix and may
+    // take in the clipboard; landing checks again.
     edit_session::check_can_open(state.open_session())?;
     super::ensure_writable(state, view, fp.pane())?;
     let resolved = resolve(state, resolve_plain_bare)?;
@@ -350,7 +433,15 @@ fn do_normal_paste(
         .shown(&view.panes, pid)
         .selections()
         .clone();
-    do_paste(state, pid, buf, before, resolved, sels.clone(), sels)
+    Ok(do_paste(
+        state,
+        pid,
+        buf,
+        before,
+        resolved,
+        sels.clone(),
+        sels,
+    ))
 }
 
 /// Smart paste: resolve the kill-ring head, after taking in a new clipboard
@@ -362,7 +453,7 @@ fn do_smart_paste(
     view: &mut EngineView,
     fp: FocusedPane,
     before: bool,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     let (pid, buf) = (fp.pid(), fp.bid(view));
     edit_session::check_can_open(state.open_session())?;
     super::ensure_writable(state, view, fp.pane())?;
@@ -379,7 +470,7 @@ fn do_smart_paste(
     } else {
         sels.clone()
     };
-    do_paste(state, pid, buf, before, resolved, base, sels)
+    Ok(do_paste(state, pid, buf, before, resolved, base, sels))
 }
 
 /// Paste after the selection: plain paste, kill-ring head by default.
@@ -389,7 +480,7 @@ pub(in crate::editor) fn cmd_paste_after(
     fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     do_normal_paste(state, view, fp, false)
 }
 
@@ -400,7 +491,7 @@ pub(in crate::editor) fn cmd_paste_before(
     fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     do_normal_paste(state, view, fp, true)
 }
 
@@ -411,7 +502,7 @@ pub(in crate::editor) fn cmd_smart_paste_after(
     fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     do_smart_paste(state, view, fp, false)
 }
 
@@ -422,7 +513,7 @@ pub(in crate::editor) fn cmd_smart_paste_before(
     fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     do_smart_paste(state, view, fp, true)
 }
 
@@ -436,13 +527,13 @@ fn do_paste_cycle(
     view: &mut EngineView,
     fp: FocusedPane,
     older: bool,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     let (focused, buf) = (fp.pid(), fp.bid(view));
-    let Some((before, answer)) = state
+    let Some(replaced) = state
         .paste_session
         .as_ref()
         .filter(|s| s.owned_by(focused, buf))
-        .map(|s| (s.before(), s.answer().cloned()))
+        .map(|s| Rc::clone(&s.opening().replaced))
     else {
         return Err(CommandError::transient("no paste to cycle"));
     };
@@ -461,11 +552,14 @@ fn do_paste_cycle(
             "no newer entry"
         })
     })?;
-    paste_values(state, focused, buf, before, &values)?;
-    if let Some(at) = &answer {
-        state.replace_paste_answer(at, values);
-    }
-    Ok(())
+    Ok(plan_register_paste(
+        state,
+        focused,
+        buf,
+        replaced,
+        values,
+        RegisterLanding::Cycles,
+    ))
 }
 
 /// Cycle the kill ring one step older and re-paste from the session snapshot.
@@ -475,7 +569,7 @@ pub(in crate::editor) fn cmd_paste_ring_older(
     fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     do_paste_cycle(state, view, fp, true)
 }
 
@@ -486,6 +580,6 @@ pub(in crate::editor) fn cmd_paste_ring_newer(
     fp: FocusedPane,
     _count: Count,
     _mode: MotionMode,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     do_paste_cycle(state, view, fp, false)
 }

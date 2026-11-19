@@ -229,7 +229,7 @@ pub(crate) fn set_buffer_option(
             buffer: bid,
             language,
             origin,
-        });
+        })?;
     }
     Ok(SteelVal::Void)
 }
@@ -281,7 +281,7 @@ pub(crate) fn get_buffer_option(ctx: &mut SteelCtx, bid: BufferId, key: String) 
 /// editor will apply them, `None` for none.
 fn effective_language(ctx: &mut SteelCtx, bid: BufferId) -> Option<String> {
     let mut language = ctx.host.buffers().buffer_stored_language(bid);
-    for QueuedEffect { effect, .. } in ctx.effects.iter() {
+    for QueuedEffect { effect, .. } in ctx.queued_effects() {
         if let Effect::SetBufferLanguage {
             buffer,
             language: written,

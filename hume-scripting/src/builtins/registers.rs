@@ -20,7 +20,6 @@ use hume_ops::register::is_valid_register_name;
 
 use super::SteelResult;
 use super::args::{list_to_strings, single_char, string_list};
-use super::errors::require_cap;
 use crate::SteelCtx;
 
 /// Decode a single-character register name and validate it against the same
@@ -51,7 +50,7 @@ pub(crate) fn register_name(name: String) -> SteelResult {
 /// if it's empty, is the black hole, or holds a recorded macro.
 pub(crate) fn read_register(ctx: &mut SteelCtx, name: String) -> SteelResult {
     let reg = register_arg(&name)?;
-    let registers = require_cap(ctx.host.registers())?;
+    let registers = ctx.host.require(|h| h.registers())?;
     match registers.read_register(reg) {
         Some(values) => Ok(string_list(values)),
         None => Ok(SteelVal::BoolV(false)),
@@ -63,7 +62,7 @@ pub(crate) fn read_register(ctx: &mut SteelCtx, name: String) -> SteelResult {
 pub(crate) fn write_register(ctx: &mut SteelCtx, name: String, values: SteelVal) -> SteelResult {
     let reg = register_arg(&name)?;
     let values = list_to_strings(values, "values")?;
-    let registers = require_cap(ctx.host.registers())?;
+    let registers = ctx.host.require(|h| h.registers())?;
     registers.write_register(reg, values);
     Ok(SteelVal::Void)
 }

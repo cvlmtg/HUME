@@ -332,6 +332,17 @@ fn a_piece_normalizes_line_endings() {
     assert_eq!(Piece::new("a\r\nb", Shape::Charwise).text(), "a\nb");
 }
 
+#[test]
+fn a_whole_lines_piece_ends_in_a_break() {
+    let piece = Piece::new("ab", Shape::Linewise);
+    assert_eq!((piece.text(), piece.shape()), ("ab\n", Shape::Linewise));
+}
+
+#[test]
+fn an_empty_piece_pastes_charwise() {
+    assert_eq!(Piece::new("", Shape::Linewise).shape(), Shape::Charwise);
+}
+
 // ── KillRing ──────────────────────────────────────────────────────────────
 
 fn vs(s: &str) -> Vec<Piece> {

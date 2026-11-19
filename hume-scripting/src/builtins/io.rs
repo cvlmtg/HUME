@@ -21,8 +21,10 @@ use super::errors::generic_err;
 /// Claims the terminal for a builtin that writes to it: only an
 /// `#:inline-output` command may, its screen left first. One rule whether
 /// or not a screen is up, so a call cannot work at startup and then raise
-/// on `:reload-config`. A host with no terminal state refuses.
+/// on `:reload-config`. A host with no terminal state refuses, and so does
+/// a session that cannot change the editor, even inside such a command.
 pub(crate) fn claim_terminal(ctx: &mut SteelCtx) -> Result<(), SteelErr> {
+    ctx.check_write()?;
     let claim = ctx
         .host
         .output()
@@ -37,7 +39,8 @@ pub(crate) fn claim_terminal(ctx: &mut SteelCtx) -> Result<(), SteelErr> {
 /// an `#:inline-output` command.
 ///
 /// # Errors
-/// Called outside an `#:inline-output` command, or the write failed.
+/// Called outside an `#:inline-output` command or while the editor cannot
+/// change, or the write failed.
 pub(crate) fn print(ctx: &mut SteelCtx, text: String) -> SteelResult {
     claim_terminal(ctx)?;
     let mut stdout = std::io::stdout().lock();

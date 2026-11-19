@@ -51,7 +51,7 @@ use hume_core::Severity;
 
 use super::SteelResult;
 use super::args::{list_to_strings, relative_base_arg, string_list, under_cwd};
-use super::errors::{generic_err, require_cap};
+use super::errors::generic_err;
 
 // ── data-dir / runtime-dir ───────────────────────────────────────────────────
 
@@ -298,7 +298,9 @@ pub(crate) fn path_programs(
     on_names: crate::Callback,
 ) -> SteelResult {
     let extensions = list_to_strings(extensions, "extensions")?;
-    let job = require_cap(ctx.host.async_process())?
+    let job = ctx
+        .host
+        .require(|h| h.async_process())?
         .scan_programs(prefix, extensions, on_names)
         .map_err(generic_err)?;
     Ok(job.into_steel_val())

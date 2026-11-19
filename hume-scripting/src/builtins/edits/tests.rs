@@ -8,9 +8,9 @@ use hume_rope::position_encoding::PositionEncoding;
 use steel::rvals::IntoSteelVal as _;
 
 /// `insert_key` on a host with no `EditHost` capability surfaces
-/// `require_cap`'s canonical message, same contract as every other
+/// `SessionHost::require`'s canonical message, same contract as every other
 /// `EditHost` builtin in this file. Also proves the key spec decoded fine
-/// (a bad spec would fail before ever reaching `require_cap`, with a
+/// (a bad spec would fail before ever reaching `SessionHost::require`, with a
 /// different message; see the next test).
 #[test]
 fn insert_key_without_edit_host_is_unsupported() {
@@ -23,7 +23,7 @@ fn insert_key_without_edit_host_is_unsupported() {
 }
 
 /// `paste_text` on a host with no `EditHost` capability surfaces
-/// `require_cap`'s message.
+/// `SessionHost::require`'s message.
 #[test]
 fn paste_text_without_edit_host_is_unsupported() {
     let mut h = SteelCtxTestHarness::new();
@@ -62,7 +62,7 @@ fn insert_key_rejects_a_multi_key_spec() {
 }
 
 /// `apply_text_edits` on a host with no `EditHost` capability (`NullHost`,
-/// the harness default) surfaces `require_cap`'s message.
+/// the harness default) surfaces `SessionHost::require`'s message.
 #[test]
 fn apply_text_edits_without_edit_host_is_unsupported() {
     let mut h = SteelCtxTestHarness::new();
@@ -79,7 +79,7 @@ fn apply_text_edits_without_edit_host_is_unsupported() {
     assert!(msg.contains("not supported by this host"), "got: {msg}");
 }
 
-/// A server-tagged `JsonHandle` argument must reach `require_cap`'s "no
+/// A server-tagged `JsonHandle` argument must reach `SessionHost::require`'s "no
 /// host" error, not an argument-type or encoding error, proving
 /// `apply_workspace_edit` decoded it as JSON and resolved its encoding
 /// before ever needing the host.

@@ -22,6 +22,7 @@ use super::super::completion::{
 };
 use super::super::error::CommandError;
 use super::super::keymap::WalkResult;
+use super::super::paste_plan::PlannedPaste;
 use super::super::popup_syntax::Markup;
 use super::super::syntax::GrammarLoads;
 use super::super::{Editor, EditorState};
@@ -409,7 +410,7 @@ impl super::stack::InputStack {
 
 /// Both completion layers' paste handler. A paste bypasses per-char
 /// refiltering the same way an Insert-mode paste bypasses trigger-char hooks
-/// (see `EditorState::apply_insert_mode_paste`'s doc), and has no "cycle"
+/// (see `EditorState::plan_insert_mode_paste`'s doc), and has no "cycle"
 /// or "accept" reading, so the session is dismissed and the layer below
 /// takes the text.
 fn dismiss_and_pass_paste(
@@ -417,7 +418,7 @@ fn dismiss_and_pass_paste(
     view: &EngineView,
     r: LayerRef,
     text: PastedText,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     state.dismiss_completion(view);
     state.fall_through_paste(view, r, text)
 }

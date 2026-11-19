@@ -2,7 +2,7 @@ use crate::editor::commands::*;
 use crate::editor::jump_list::JumpRule;
 use crate::editor::registry::CommandRegistry;
 
-use super::builder::{ecmd_focused, ecmd_pane, ecmd_pane_char, ecmd_pane_text};
+use super::builder::{ecmd_focused, ecmd_pane, ecmd_pane_char, ecmd_pane_text, ecmd_paste};
 use crate::editor::registry::{SelectionEffect, TextPrompt};
 use hume_ops::search::SearchDirection;
 
@@ -118,7 +118,7 @@ impl CommandRegistry {
             cmd_yank,
         )
         .reg(self);
-        ecmd_focused(
+        ecmd_paste(
             "paste-after",
             "Paste register contents after the selection. Bare (no \"<reg> prefix) reads the kill-ring head, with no clipboard fallback.",
             cmd_paste_after,
@@ -126,7 +126,7 @@ impl CommandRegistry {
         .repeatable()
         .clears_extend()
         .reg(self);
-        ecmd_focused(
+        ecmd_paste(
             "paste-before",
             "Paste register contents before the selection. Bare (no \"<reg> prefix) reads the kill-ring head, with no clipboard fallback.",
             cmd_paste_before,
@@ -134,7 +134,7 @@ impl CommandRegistry {
         .repeatable()
         .clears_extend()
         .reg(self);
-        ecmd_focused(
+        ecmd_paste(
             "smart-paste-after",
             "Paste the kill-ring head after the selection, first adding to the ring any text copied to the clipboard outside HUME, as clipboard-joins-ring allows.",
             cmd_smart_paste_after,
@@ -142,7 +142,7 @@ impl CommandRegistry {
         .repeatable()
         .clears_extend()
         .reg(self);
-        ecmd_focused(
+        ecmd_paste(
             "smart-paste-before",
             "Paste the kill-ring head before the selection, first adding to the ring any text copied to the clipboard outside HUME, as clipboard-joins-ring allows.",
             cmd_smart_paste_before,
@@ -150,7 +150,7 @@ impl CommandRegistry {
         .repeatable()
         .clears_extend()
         .reg(self);
-        ecmd_focused(
+        ecmd_paste(
             "paste-ring-older",
             "Cycle kill ring one step older and re-paste.",
             cmd_paste_ring_older,
@@ -158,7 +158,7 @@ impl CommandRegistry {
         .defers_paste_commit()
         .clears_extend()
         .reg(self);
-        ecmd_focused(
+        ecmd_paste(
             "paste-ring-newer",
             "Cycle kill ring one step newer and re-paste.",
             cmd_paste_ring_newer,

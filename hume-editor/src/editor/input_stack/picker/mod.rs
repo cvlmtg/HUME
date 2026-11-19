@@ -22,6 +22,7 @@ use steel::rvals::SteelVal;
 use super::super::commands::half_page;
 use super::super::error::CommandError;
 use super::super::keymap::CanonicalKey;
+use super::super::paste_plan::PlannedPaste;
 use super::super::replay::{
     Answer, AnswerTicket, InputOpener, PendingAnswer, Pick, Picked, PickerKeyRun, ReplayRefusal,
     WaitingInput,
@@ -480,10 +481,10 @@ fn picker_paste(
     _view: &EngineView,
     r: LayerRef,
     text: PastedText,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     let cb = picker_mut(state, r).insert_str(&text.single_line());
     queue_query_change(state, r, cb);
-    Ok(())
+    Ok(PlannedPaste::NONE)
 }
 
 /// Queues `cb`, the `on_query_change` callback a `PickerSession` query

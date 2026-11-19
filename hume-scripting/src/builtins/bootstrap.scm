@@ -66,7 +66,40 @@
                     (else
                      (error (string-append "'" name "' unavailable: plugin '" label
                                            "' failed to load"))))))
-              (%call-native! name args))))))
+              (let ((ran (%call-native! name args)))
+                (%finish-paste!)
+                ran))))))
+
+(define (paste-text! pane text)
+  (%paste-text! pane text)
+  (%finish-paste!))
+
+(define (%finish-paste!)
+  (when (%start-paste-finish!)
+    (for-each (lambda (entry) (%activate-plugin-inline! (car entry) (cadr entry)))
+              (%paste-event-plugins))
+    (let ((plan (%paste-plan)))
+      (%apply-paste! (%paste-answers (car plan) (cadr plan) (caddr plan))))))
+
+(define (%paste-answers pane requests handlers)
+  (map (lambda (request)
+         (let loop ((i 0) (text (car request)) (answer #f))
+           (if (= i handlers)
+               answer
+               (let ((out (%run-paste-handler i pane text (cadr request))))
+                 (if out
+                     (loop (+ i 1) out out)
+                     (loop (+ i 1) text answer))))))
+       requests))
+
+(define (%run-paste-handler i pane text replaced)
+  (let ((entered (%enter-paste-handler! i)))
+    (dynamic-wind (lambda () #t)
+                  (lambda ()
+                    (with-handler
+                      (lambda (e) (%paste-handler-failed! (error-text e)) #f)
+                      (%paste-result ((car entered) pane text replaced))))
+                  (lambda () (%leave-command! (cadr entered))))))
 
 (define (register-lsp-server! name #:command command
                                     #:args [args '()]

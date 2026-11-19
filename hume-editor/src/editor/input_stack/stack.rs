@@ -16,6 +16,7 @@ use super::super::edit_session::InsertSession;
 use super::super::error::CommandError;
 use super::super::event::mode_name;
 use super::super::minibuf::MiniBuffer;
+use super::super::paste_plan::PlannedPaste;
 use super::super::{Editor, EditorState};
 use super::base::BaseLayer;
 use super::completion::{BufferCompletionLayer, MinibufCompletionLayer};
@@ -47,10 +48,11 @@ pub(in crate::editor) enum InputEvent {
 pub(in crate::editor) type LayerHandler = fn(&mut Editor, LayerRef, InputEvent);
 
 /// The function that lands a paste at a layer: [`LayerHandler`]'s
-/// counterpart for a paste, a fn pointer for the same reason. `Err` when
-/// the paste was refused, for the entry point to report or return.
+/// counterpart for a paste, a fn pointer for the same reason. Returns the
+/// buffer paste it planned, which the entry point finishes; `Err` when the
+/// paste was refused, for the entry point to report or return.
 pub(in crate::editor) type PasteHandler =
-    fn(&mut EditorState, &EngineView, LayerRef, PastedText) -> Result<(), CommandError>;
+    fn(&mut EditorState, &EngineView, LayerRef, PastedText) -> Result<PlannedPaste, CommandError>;
 
 /// Which popup homes landing a layer evicts, read by
 /// [`EditorState::push_layer`] after [`Layer::setup`]. A completion layer

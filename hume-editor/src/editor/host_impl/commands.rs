@@ -178,6 +178,11 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
             // would run first.
             Err(e) => return Err(format!("'{name}': {e}")),
         };
+        if bound.plans_paste() {
+            self.state
+                .refuse_paste_while_one_waits()
+                .map_err(|e| format!("'{name}': {}", e.message()))?;
+        }
         // Arm the register prefix so register-aware commands (yank, delete,
         // paste-after, …) route to the right destination.
         if register.is_some() {
@@ -187,12 +192,17 @@ impl<'a> CommandHost for EditorHostImpl<'a> {
         // list, dot-repeat) lives there so the sync path is identical to the
         // keypress path, except that a target other than the focused pane
         // skips the focus-bound steps.
-        let ran = crate::editor::commands::run(self.state, self.view, bound, ctx);
+        let outcome = crate::editor::commands::run(self.state, self.view, bound, ctx);
         // Clear the prefix when we armed it, so it does not bleed into the
         // next interactive command.
         if register.is_some() {
             self.state.register_prefix = None;
         }
-        Ok(ran)
+        let Ok(paste) = outcome else {
+            return Ok(false);
+        };
+        // Finished by the `%finish-paste!` after the script's `call!`.
+        self.state.park_paste(paste);
+        Ok(true)
     }
 }

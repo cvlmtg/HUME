@@ -4,8 +4,8 @@ use crate::editor::commands::NativeBody;
 use crate::editor::jump_list::JumpRule;
 use crate::editor::registry::{
     ArgExpansion, CommandRegistry, EditorCmdBody, FocusedCmdFn, MappableCommand, NativeCommand,
-    NativeTyped, PaneCharCmdFn, PaneCmdFn, PaneTextCmdFn, SelectionEffect, SelectionRole,
-    TextPrompt, TypedBody, TypedCommand,
+    NativeTyped, PaneCharCmdFn, PaneCmdFn, PaneTextCmdFn, PasteCmdFn, SelectionEffect,
+    SelectionRole, TextPrompt, TypedBody, TypedCommand,
 };
 
 // Builder for EditorCmd registration. Each method sets one field, except the
@@ -162,6 +162,16 @@ pub(super) fn ecmd_focused(
     fun: FocusedCmdFn,
 ) -> EditorCmdBuilder {
     ecmd_builder(name, doc, EditorCmdBody::FocusedPane(fun))
+}
+
+/// An [`ecmd_focused`] command that pastes. See
+/// [`crate::editor::registry::EditorCmdBody::FocusedPaste`].
+pub(super) fn ecmd_paste(
+    name: &'static str,
+    doc: &'static str,
+    fun: PasteCmdFn,
+) -> EditorCmdBuilder {
+    ecmd_builder(name, doc, EditorCmdBody::FocusedPaste(fun))
 }
 
 /// An [`ecmd_pane`] command that takes a character operand. See

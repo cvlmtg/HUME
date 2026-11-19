@@ -36,6 +36,23 @@ fn optional_string_arg_false_is_none() {
 }
 
 #[test]
+fn optional_text_ref_arg_false_is_none_string_is_some_symbol_is_rejected() {
+    assert_eq!(
+        optional_text_ref_arg(&SteelVal::BoolV(false), "f").unwrap(),
+        None
+    );
+    assert_eq!(
+        optional_text_ref_arg(&SteelVal::StringV("x".into()), "f").unwrap(),
+        Some("x")
+    );
+    let err = optional_text_ref_arg(&SteelVal::SymbolV("x".into()), "f").unwrap_err();
+    assert!(
+        err.to_string().contains("expected a string or #f"),
+        "got: {err}"
+    );
+}
+
+#[test]
 fn optional_symbol_arg_false_is_none_symbol_is_some_string_is_rejected() {
     assert_eq!(
         optional_symbol_arg(SteelVal::BoolV(false), "f").unwrap(),

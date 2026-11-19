@@ -18,7 +18,7 @@ use crate::builtins::args::{
     list_to_strings, optional_json_arg, optional_list_items, string_arg, symbol_enum_arg,
     symbol_hash,
 };
-use crate::builtins::errors::{generic_err, require_cap};
+use crate::builtins::errors::generic_err;
 
 /// A registration or list-entry server name, as [`ServerName::parse`]
 /// accepts it.
@@ -76,7 +76,7 @@ pub(crate) fn register_lsp_server(
             },
             origin,
         },
-    )));
+    )))?;
     Ok(SteelVal::Void)
 }
 
@@ -107,7 +107,7 @@ pub(crate) fn unregister_lsp_server(ctx: &mut SteelCtx, name: SteelVal) -> Steel
     ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Unregister {
         name,
         origin,
-    }));
+    }))?;
     Ok(SteelVal::Void)
 }
 
@@ -191,7 +191,7 @@ fn queue_language_servers(
             origin,
             entries,
         },
-    ));
+    ))?;
     Ok(SteelVal::Void)
 }
 
@@ -224,8 +224,8 @@ pub(crate) fn set_default_language_servers(
 /// and registrations, as `lsp-server-registered?` does.
 pub(crate) fn lsp_language_servers(ctx: &mut SteelCtx, language: SteelVal) -> SteelResult {
     let language = string_arg(language, "language")?;
-    let mut lists = require_cap(ctx.host.lsp())?.lsp_language_lists(&language);
-    for queued in ctx.effects.iter() {
+    let mut lists = ctx.host.require(|h| h.lsp())?.lsp_language_lists(&language);
+    for queued in ctx.queued_effects() {
         if let Effect::LspServerOp(PendingLspServerOp::SetLanguageServers {
             language: queued_language,
             tier,
@@ -262,14 +262,14 @@ pub(crate) fn lsp_language_servers(ctx: &mut SteelCtx, language: SteelVal) -> St
 /// `Editor::apply_lsp_server_ops`); the report of how many servers stopped is
 /// emitted by that same drain.
 pub(crate) fn lsp_stop(ctx: &mut SteelCtx, target: LspServerTarget) -> SteelResult {
-    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Stop { target }));
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Stop { target }))?;
     Ok(SteelVal::Void)
 }
 
 /// `(lsp-restart! target)`: same argument shape as `lsp-stop!`. Queues a
 /// stop-then-respawn, applied at the end of the current eval.
 pub(crate) fn lsp_restart(ctx: &mut SteelCtx, target: LspServerTarget) -> SteelResult {
-    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Restart { target }));
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Restart { target }))?;
     Ok(SteelVal::Void)
 }
 
@@ -278,7 +278,7 @@ pub(crate) fn lsp_restart(ctx: &mut SteelCtx, target: LspServerTarget) -> SteelR
 /// then that `pane` is still the focused pane, and reports a refusal instead
 /// of opening the view.
 pub(crate) fn lsp_show_status(ctx: &mut SteelCtx, pane: FocusedHandle) -> SteelResult {
-    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::ShowStatus { pane }));
+    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::ShowStatus { pane }))?;
     Ok(SteelVal::Void)
 }
 

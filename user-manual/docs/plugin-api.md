@@ -295,7 +295,7 @@ Both raise and change nothing for:
 
 A list of strings, such as `read-register`'s, is placed the way `p` places a register: one string per selection when the counts match, all of them joined otherwise. A prompt always gets them joined.
 
-Pasting into a buffer raises when the buffer is read-only or busy with a running `|`.
+Pasting into a buffer raises when the buffer is read-only or busy with a running `|`. The [`on-paste`](writing-plugins.md#rewriting-a-paste) handlers rewrite the text first, and it is in the buffer when `paste-text!` returns.
 
 `paste-text!` ends a pending `on-next-char!` read without a character, as a terminal paste does. When `paste-text!` runs from an Insert-mode key's binding, `.` repeats it by running the binding again; from a hook or a timer during Insert mode, `.` repeats the paste.
 

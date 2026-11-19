@@ -93,7 +93,7 @@ pub(crate) fn begin_lazy_activation(
         .permit_plugin_activation(&id)
         .map_err(generic_err)?;
 
-    if ctx.attribution.body_depth() >= MAX_ACTIVATION_DEPTH {
+    if ctx.host.attribution().body_depth() >= MAX_ACTIVATION_DEPTH {
         fail_plugin_activation(ctx, &id);
         steel::stop!(Generic =>
             "activation depth limit ({}) exceeded \
@@ -109,7 +109,7 @@ pub(crate) fn begin_lazy_activation(
         .lazy_registry
         .plugins
         .insert(id.clone(), PluginState::Loading);
-    ctx.attribution.push_body(id);
+    ctx.host.push_body(id);
     ctx.mark_effects();
 
     Ok(SteelVal::StringV(require_program.into()))
@@ -142,7 +142,7 @@ pub(crate) fn finish_lazy_activation(ctx: &mut SteelCtx, error: SteelVal) -> Ste
     // queued effects and leave the entry `Loading`. An `error` that decodes
     // as neither `#f` nor a caught error value becomes the failure reason,
     // same shape as a body's own raised error.
-    let Some(id) = ctx.attribution.pop_body() else {
+    let Some(id) = ctx.host.pop_body() else {
         steel::stop!(Generic => "no plugin activation in progress");
     };
     let error = optional_steel_error_arg(error, "%finish-lazy-activation!").unwrap_or_else(Some);
@@ -182,13 +182,16 @@ pub(crate) fn fail_open_bodies(ctx: &mut SteelCtx, bodies: Vec<EntryId>, reason:
     }
 }
 
-/// Fails every activation and manifest load still open above `depth` when a
-/// session ends, innermost first, with `reason`: the state a caught error
-/// leaves through `%finish-lazy-activation!`/`%finish-manifest-load!`. Their
-/// handlers are Scheme, which a session stopped by its budget never runs;
-/// the same holds for a `call!` frame's restore, which is dropped here too.
-pub(crate) fn abandon_open_activations(ctx: &mut SteelCtx, depth: usize, reason: &SteelErr) {
-    let bodies = ctx.attribution.drain_above(depth);
+/// Fails `bodies`, the activations a session's end left open, innermost
+/// first, and the manifest load still open, with `reason`: the state a
+/// caught error leaves through `%finish-lazy-activation!`/
+/// `%finish-manifest-load!`. Their handlers are Scheme, which a session
+/// stopped by its budget never runs.
+pub(crate) fn abandon_open_activations(
+    ctx: &mut SteelCtx,
+    bodies: Vec<EntryId>,
+    reason: &SteelErr,
+) {
     fail_open_bodies(ctx, bodies, reason);
     if let Some(id) = ctx.manifest_resolving.take() {
         ctx.pop_effect_marks(false);

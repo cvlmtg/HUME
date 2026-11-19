@@ -12,13 +12,6 @@ fn is_binding(i: &Input, name: &str) -> bool {
     matches!(i, Input::Binding { name: n, .. } if n.as_ref() == name)
 }
 
-/// An editor over `initial_state` with the Steel commands `source` defines.
-fn editor_with_steel(initial_state: &str, source: &str) -> Editor {
-    let mut ed = editor_from(initial_state);
-    attach_steel(&mut ed, source);
-    ed
-}
-
 mod basics;
 mod command_pickers;
 mod insert_binding_replay;

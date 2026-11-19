@@ -6,8 +6,10 @@ use steel::rerrs::SteelErr;
 
 use std::rc::Rc;
 
-use super::attribution::{AttributionStack, EntryId, Owner, PluginId, Provenance};
+use super::attribution::{EntryId, Owner, PluginId, Provenance};
 use super::host::EditorHost;
+use super::read_only_host::{ReadOnlySession, SessionHost};
+use super::rooted::Callback;
 use super::types::{Effect, QueuedEffect};
 use super::{HostBundle, ScriptingRegistries};
 use hume_core::Severity;
@@ -27,26 +29,26 @@ use hume_core::Severity;
 /// `&mut SteelCtx` as their first argument, injected automatically by Steel.
 pub(crate) struct SteelCtx<'a> {
     // ── Editor interface ───────────────────────────────────────────────────────
-    /// Access to all live editor state during evaluation.
+    /// Access to all live editor state during evaluation, read-only while a
+    /// read-only scope is open (see [`SessionHost`]).
     ///
     /// In `EvalSession::Init`, `host.buffers()`'s methods are gated by the
     /// `cmd` kind in `builtins!`'s registration table and never called; the
     /// init-only method (`host.settings().set_global_option`) is always safe.
-    pub(crate) host: &'a mut dyn EditorHost,
+    pub(crate) host: SessionHost<'a>,
     // ── Persistent state borrowed from HostState ──────────────────────────────
-    /// The frames of attributed code running: plugin bodies and `call!`ed
-    /// commands. See [`Self::owner`].
-    pub(crate) attribution: &'a mut AttributionStack,
     /// The persistent registries (`hooks`, `lazy_registry`, `plugin_records`).
     /// Borrowed as a unit, disjoint from `steel`.
     pub(crate) registries: &'a mut ScriptingRegistries,
     /// Log messages accumulated by `(log! …)`.
-    pub(crate) pending_messages: &'a mut Vec<(Severity, String)>,
+    pending_messages: &'a mut Vec<(Severity, String)>,
     /// Side effects queued by Steel builtins this eval (and any eval this one
     /// is nested inside), in the exact order they were pushed. Persistent on
     /// `HostState`, borrowed here; each eval entry point drains its own
     /// contribution back out (see `types::Effect`, `push_effect`).
-    pub(crate) effects: &'a mut Vec<QueuedEffect>,
+    /// Private so that `push_effect`, which refuses while the session
+    /// cannot change the editor, is its one writer.
+    effects: &'a mut Vec<QueuedEffect>,
     /// Data/runtime directories (raw + display form), computed once by
     /// `ScriptingHost::new`.
     pub(crate) dirs: &'a crate::builtins::dirs::ScriptDirs,
@@ -90,6 +92,9 @@ pub(crate) struct SteelCtx<'a> {
     /// `run_steel_session` drops what is left when the session ends, so a
     /// lock never outlives the session that took it.
     pub(crate) file_locks: HashMap<PathBuf, crate::builtins::fs::HeldLock>,
+    /// The handlers of the paste being finished, in the order they run, as
+    /// `%paste-plan` found them.
+    pub(crate) paste_handlers: Vec<Callback>,
 }
 
 /// Which entry point started this eval session.
@@ -143,21 +148,43 @@ impl<'a> SteelCtx<'a> {
         host_bundle: HostBundle<'a>,
         owner: Owner,
     ) -> Self {
+        Self::build(
+            host,
+            None,
+            host_bundle,
+            Provenance::own(owner),
+            EvalSession::Init,
+        )
+    }
+
+    /// A context over `host`, read-only from its start for `read_only`'s
+    /// reason when given.
+    fn build(
+        host: &'a mut dyn EditorHost,
+        read_only: Option<ReadOnlySession>,
+        host_bundle: HostBundle<'a>,
+        base: Provenance,
+        session: EvalSession,
+    ) -> Self {
+        let host = match read_only {
+            Some(why) => SessionHost::read_only(host, host_bundle.attribution, why),
+            None => SessionHost::new(host, host_bundle.attribution),
+        };
         Self {
             host,
-            base: Provenance::own(owner),
-            attribution: host_bundle.attribution,
+            base,
             registries: host_bundle.registries,
             pending_messages: host_bundle.pending_messages,
             effects: host_bundle.effects,
             dirs: host_bundle.dirs,
             budget: host_bundle.budget,
             current_register_prefix: None,
-            session: EvalSession::Init,
+            session,
             activation_effect_marks: Vec::new(),
             manifest_resolving: None,
             failed_activations: Vec::new(),
             file_locks: HashMap::new(),
+            paste_handlers: Vec::new(),
         }
     }
 
@@ -173,15 +200,18 @@ impl<'a> SteelCtx<'a> {
         host: &'a mut dyn EditorHost,
         host_bundle: HostBundle<'a>,
     ) -> Self {
-        Self {
-            session: EvalSession::Runtime,
-            ..Self::new_init(host, host_bundle, Owner::Core)
-        }
+        Self::build(
+            host,
+            None,
+            host_bundle,
+            Provenance::own(Owner::Core),
+            EvalSession::Runtime,
+        )
     }
 
     /// The effective legality context builtins gate on. See [`EvalMode`].
     pub(crate) fn mode(&self) -> EvalMode {
-        match (self.session, self.attribution.in_body()) {
+        match (self.session, self.host.attribution().in_body()) {
             (EvalSession::Init, false) => EvalMode::Init,
             (EvalSession::Init, true) => EvalMode::PluginLoad,
             (EvalSession::Runtime, true) => EvalMode::PluginActivation,
@@ -194,7 +224,7 @@ impl<'a> SteelCtx<'a> {
     /// otherwise as made on the session's behalf. A `call!`ed command runs
     /// on its caller's.
     pub(crate) fn registration_origin(&self) -> hume_core::ConfigOrigin {
-        if self.attribution.in_body() {
+        if self.host.attribution().in_body() {
             hume_core::ConfigOrigin::Plugin
         } else {
             self.base.behalf
@@ -205,13 +235,16 @@ impl<'a> SteelCtx<'a> {
     /// command this session entered, else the code the session was started
     /// for.
     pub(crate) fn owner(&self) -> &Rc<Owner> {
-        self.attribution.top_owner().unwrap_or(&self.base.owner)
+        self.host
+            .attribution()
+            .top_owner()
+            .unwrap_or(&self.base.owner)
     }
 
     /// The plugin body a registration made now belongs to: rolled back with
     /// it if that body fails, whoever wrote the code making it.
     pub(crate) fn activation(&self) -> Option<Rc<EntryId>> {
-        self.attribution.innermost_body().cloned()
+        self.host.attribution().innermost_body().cloned()
     }
 
     /// The running code's [`Provenance`]: what a proc it hands over is
@@ -223,19 +256,26 @@ impl<'a> SteelCtx<'a> {
         }
     }
 
-    /// Push a log message. Prefer this over direct `pending_messages.push` so
-    /// any future severity filter is applied uniformly.
+    /// Queue a message the editor reports when the session ends.
     pub(crate) fn log(&mut self, severity: Severity, msg: String) {
         self.pending_messages.push((severity, msg));
     }
 
     /// Queue `effect` (uncommitted). All builtins push through here so the
-    /// `committed` flag has a single origin; see `pop_effect_marks`.
-    pub(crate) fn push_effect(&mut self, effect: Effect) {
+    /// `committed` flag has a single origin; see `pop_effect_marks`. `Err`
+    /// while the session cannot change the editor.
+    pub(crate) fn push_effect(&mut self, effect: Effect) -> Result<(), SteelErr> {
+        self.check_write()?;
         self.effects.push(QueuedEffect {
             effect,
             committed: false,
         });
+        Ok(())
+    }
+
+    /// The effects queued so far, in the order they were pushed.
+    pub(crate) fn queued_effects(&self) -> &[QueuedEffect] {
+        self.effects
     }
 
     /// Snapshot the effect log's current length and push it. Called by
@@ -294,22 +334,35 @@ impl<'a> SteelCtx<'a> {
         host_bundle: HostBundle<'a>,
         base: Provenance,
     ) -> Self {
-        Self {
-            host,
-            base,
-            attribution: host_bundle.attribution,
-            registries: host_bundle.registries,
-            pending_messages: host_bundle.pending_messages,
-            effects: host_bundle.effects,
-            dirs: host_bundle.dirs,
-            budget: host_bundle.budget,
-            current_register_prefix: None,
-            session: EvalSession::Runtime,
-            activation_effect_marks: Vec::new(),
-            manifest_resolving: None,
-            failed_activations: Vec::new(),
-            file_locks: HashMap::new(),
-        }
+        Self::build(host, None, host_bundle, base, EvalSession::Runtime)
+    }
+
+    /// [`Self::new_command`] for a session that may read the editor but not
+    /// change it, for `why`.
+    pub(crate) fn new_read_only(
+        host: &'a mut dyn EditorHost,
+        host_bundle: HostBundle<'a>,
+        base: Provenance,
+        why: ReadOnlySession,
+    ) -> Self {
+        Self::build(host, Some(why), host_bundle, base, EvalSession::Runtime)
+    }
+
+    /// `Err` while the session cannot change the editor: the check for a
+    /// write that does not go through the host.
+    pub(crate) fn check_write(&self) -> Result<(), SteelErr> {
+        self.host
+            .check_write()
+            .map_err(crate::builtins::errors::generic_err)
+    }
+}
+
+#[cfg(test)]
+impl SteelCtx<'_> {
+    /// [`Self::push_effect`] in a session that may change the editor.
+    pub(crate) fn queue(&mut self, effect: Effect) {
+        self.push_effect(effect)
+            .expect("a session that may change the editor queues the effect");
     }
 }
 

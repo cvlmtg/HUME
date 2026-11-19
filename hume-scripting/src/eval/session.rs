@@ -30,7 +30,7 @@ pub(super) fn run_steel_session<'a, R>(
     budget_ms: u64,
     body: impl FnOnce(&mut Engine) -> Result<R, SteelErr>,
 ) -> Result<(), SessionError> {
-    let open_depth = ctx.attribution.len();
+    let open_depth = ctx.host.attribution().len();
     ctx.host.commands().open_dispatch_group();
     watchdog.arm(
         steel.get_thread_state_controller(),
@@ -40,7 +40,7 @@ pub(super) fn run_steel_session<'a, R>(
     // so the `LifetimeGuard` `with_mut_reference` returns is fully dropped
     // (ending its exclusive borrow of `steel`) before `describe_steel_error`
     // below needs `steel` back for an immutable read.
-    let raw_result: Result<R, SteelErr> = steel
+    let mut raw_result: Result<R, SteelErr> = steel
         .with_mut_reference::<SteelCtx<'a>, SteelCtx<'static>>(ctx)
         .consume_once(|steel, args| {
             let ctx_val = args
@@ -53,6 +53,15 @@ pub(super) fn run_steel_session<'a, R>(
             res
         });
     let interrupted = watchdog.cancel();
+    // The frames a raise or the budget left open, `call!` frames and
+    // plugin bodies alike. Left before the cleanup below, which a read-only
+    // scope one of them opened would refuse.
+    let open_bodies = ctx.host.leave_frames_above(open_depth);
+    if raw_result.is_ok()
+        && let Some(refused) = ctx.host.take_refusal()
+    {
+        raw_result = Err(crate::builtins::errors::generic_err(refused));
+    }
     // Released whether the session returned, raised or was stopped.
     ctx.file_locks.clear();
     ctx.host.commands().close_dispatch_group();
@@ -70,7 +79,7 @@ pub(super) fn run_steel_session<'a, R>(
 
     // An activation or manifest load still open lost its Scheme handler to
     // the budget (or to an error raised inside that handler).
-    if ctx.attribution.len() > open_depth || ctx.manifest_resolving.is_some() {
+    if !open_bodies.is_empty() || ctx.manifest_resolving.is_some() {
         let reason = stopped
             .clone()
             .or_else(|| raw_result.as_ref().err().cloned())
@@ -79,7 +88,7 @@ pub(super) fn run_steel_session<'a, R>(
                     "the session ended with a plugin activation still open",
                 )
             });
-        crate::builtins::plugins::abandon_open_activations(ctx, open_depth, &reason);
+        crate::builtins::plugins::abandon_open_activations(ctx, open_bodies, &reason);
     }
 
     // A plugin activation contained mid-session (see `finish_lazy_activation`/

@@ -9,14 +9,13 @@ use crate::host::TimerHandle;
 
 use super::SteelResult;
 use super::args::{timer_arg, usize_arg};
-use super::errors::require_cap;
 
 /// `(after! ms thunk)` → a timer for `cancel-timer!`. `thunk` is called with no args at
 /// the drain boundary once `ms` milliseconds have passed (never inline;
 /// same queued-Steel-call delivery as the LSP callbacks).
 pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: crate::Callback) -> SteelResult {
     let ms = usize_arg(ms, "ms")? as u64;
-    match require_cap(ctx.host.timers())?.schedule_timer(ms, thunk) {
+    match ctx.host.require(|h| h.timers())?.schedule_timer(ms, thunk) {
         Some(timer) => Ok(TimerHandle::new(timer).into_steel_val()),
         None => steel::stop!(Generic => "no timer wheel in this context"),
     }
@@ -27,7 +26,9 @@ pub(crate) fn after(ctx: &mut SteelCtx, ms: SteelVal, thunk: crate::Callback) ->
 /// or after an earlier cancel. Raises for anything but a timer.
 pub(crate) fn cancel_timer(ctx: &mut SteelCtx, timer: SteelVal) -> SteelResult {
     let timer = timer_arg(&timer, "timer")?;
-    require_cap(ctx.host.timers())?.cancel_timer(timer.timer());
+    ctx.host
+        .require(|h| h.timers())?
+        .cancel_timer(timer.timer());
     Ok(SteelVal::Void)
 }
 

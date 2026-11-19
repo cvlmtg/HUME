@@ -505,6 +505,46 @@ fn a_render_proc_that_changes_the_editor_closes_the_drawer() {
     );
 }
 
+/// A write the editor offers no render proc is refused the same way.
+#[test]
+fn a_render_proc_that_schedules_a_timer_closes_the_drawer() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    open(
+        &mut ed,
+        tmp.path(),
+        "(range 0 30)",
+        r#"(lambda (rows budget)
+             (with-handler (lambda (e) (begin)) (after! 10 (lambda () #f)))
+             (map (lambda (k) "row") rows))"#,
+    );
+    frame(&mut ed, WIDTH, HEIGHT);
+
+    assert_render_failure_closes(&mut ed, "cannot be changed while rendering");
+}
+
+/// Reading a register reads the editor, so a render proc can.
+#[test]
+fn a_render_proc_can_read_a_register() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = editor_from("-[x]>abc\n");
+    ed.state.registers.write_text('3', vec!["R".to_string()]);
+    open(
+        &mut ed,
+        tmp.path(),
+        "(range 0 2)",
+        r#"(lambda (rows budget) (map (lambda (k) (car (read-register "3"))) rows))"#,
+    );
+    frame(&mut ed, WIDTH, HEIGHT);
+
+    assert!(
+        ed.state.input.drawer().is_some(),
+        "errors: {:?}",
+        error_log(&ed)
+    );
+    assert_eq!(view_rows(&ed), vec![Some("R".to_string()); 2]);
+}
+
 /// Diffing a buffer against a text reads the editor, so a render proc can.
 #[test]
 fn a_render_proc_can_diff_a_buffer() {

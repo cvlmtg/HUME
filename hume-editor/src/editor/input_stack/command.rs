@@ -7,6 +7,7 @@ use super::super::dispatch::unknown_command_text;
 use super::super::error::CommandError;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, PromptCompletion};
+use super::super::paste_plan::PlannedPaste;
 use super::super::registry::{ArgExpansion, Takes, TypedBody};
 use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
@@ -117,11 +118,11 @@ fn command_paste(
     _view: &EngineView,
     _r: LayerRef,
     text: PastedText,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     if minibuf::paste_into_minibuf(state, &text) {
         command_line_edited(state);
     }
-    Ok(())
+    Ok(PlannedPaste::NONE)
 }
 
 /// Demotes any active history recall back to scratch: what an edit or a

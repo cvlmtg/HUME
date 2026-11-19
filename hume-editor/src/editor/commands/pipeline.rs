@@ -9,10 +9,12 @@ use hume_engine::pipeline::EngineView;
 
 use crate::editor::EditorState;
 use crate::editor::dispatch::CmdCtx;
+use crate::editor::error::CommandError;
 use crate::editor::jump_list::with_jump;
+use crate::editor::paste_plan::PlannedPaste;
 use crate::editor::registry::{
     CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
-    PaneTextCmdFn, SelectionBody, TextPrompt,
+    PaneTextCmdFn, PasteCmdFn, SelectionBody, TextPrompt,
 };
 use crate::editor::replay::{Answer, InputOpener, NewChange, record_change};
 use crate::editor::selection_history::Record;
@@ -139,6 +141,8 @@ enum Bound {
     Pane(PaneCmdFn, Target),
     /// `EditorCmdBody::FocusedPane`.
     FocusedCmd(FocusedCmdFn, FocusedPane),
+    /// `EditorCmdBody::FocusedPaste`.
+    Paste(PasteCmdFn, FocusedPane),
     /// `EditorCmdBody::PaneChar`, with the character its operand named.
     PaneChar(PaneCharCmdFn, Target, char),
     /// `EditorCmdBody::PaneText`, with the pattern its operand named.
@@ -154,7 +158,7 @@ impl Bound {
             | Self::Pane(_, t)
             | Self::PaneChar(_, t, _)
             | Self::PaneText(_, t, _) => t.pane(),
-            Self::FocusedCmd(_, fp) => fp.pane(),
+            Self::FocusedCmd(_, fp) | Self::Paste(_, fp) => fp.pane(),
         }
     }
 
@@ -167,7 +171,7 @@ impl Bound {
             | Self::Pane(_, t)
             | Self::PaneChar(_, t, _)
             | Self::PaneText(_, t, _) => t.focused(),
-            Self::FocusedCmd(_, fp) => Some(*fp),
+            Self::FocusedCmd(_, fp) | Self::Paste(_, fp) => Some(*fp),
         }
     }
 
@@ -176,7 +180,11 @@ impl Bound {
         match self {
             Self::PaneChar(_, _, ch) => Some(Answer::Char(Some(*ch))),
             Self::PaneText(_, _, text) => Some(Answer::Prompt(Some(text.clone()))),
-            Self::Selection(..) | Self::Edit(..) | Self::Pane(..) | Self::FocusedCmd(..) => None,
+            Self::Selection(..)
+            | Self::Edit(..)
+            | Self::Pane(..)
+            | Self::FocusedCmd(..)
+            | Self::Paste(..) => None,
         }
     }
 }
@@ -337,6 +345,10 @@ fn bind_body<E: From<ArgError>>(
                 no_operand(arg)?;
                 Ok(Bound::FocusedCmd(f, fp))
             }),
+            EditorCmdBody::FocusedPaste(f) => focused().and_then(|fp| {
+                no_operand(arg)?;
+                Ok(Bound::Paste(f, fp))
+            }),
             EditorCmdBody::PaneChar(f) => match arg {
                 Some(arg) => any().and_then(|t| Ok(Bound::PaneChar(f, t, char_operand(arg)?))),
                 None => match any() {
@@ -457,6 +469,11 @@ impl BoundCommand {
     fn operand_answer(&self) -> Option<Answer> {
         self.body.operand_answer()
     }
+
+    /// Whether this command's body plans a paste.
+    pub(in crate::editor) fn plans_paste(&self) -> bool {
+        matches!(self.body, Bound::Paste(..))
+    }
 }
 
 // ── Native command body execution ───────────────────────────────────────────
@@ -466,17 +483,18 @@ impl BoundCommand {
 /// ([`crate::editor::Editor::replay_dot`]) runs its selection-recipe steps
 /// through it directly.
 ///
-/// Returns `false` when the body refused. Its `Err` is reported here at the
-/// error's own severity (search's "no match" is transient, statusline only;
-/// an I/O failure is logged; see `CommandError::new` vs `::transient`), and
-/// every `Err` counts as a refusal regardless of severity: rollback is about
-/// whether an edit happened, not about how loudly the failure is recorded.
+/// Its outcome is [`Refused`] when the body refused. The body's `Err` is
+/// reported here at the error's own severity (search's "no match" is
+/// transient, statusline only; an I/O failure is logged; see
+/// `CommandError::new` vs `::transient`), and every `Err` counts as a
+/// refusal regardless of severity: rollback is about whether an edit
+/// happened, not about how loudly the failure is recorded.
 pub(in crate::editor) fn run_body(
     state: &mut EditorState,
     view: &mut EngineView,
     bound: BoundCommand,
     ctx: &CmdCtx,
-) -> bool {
+) -> CommandOutcome {
     let count = ctx.count;
     let motion_mode = if ctx.extend {
         MotionMode::Extend
@@ -538,7 +556,7 @@ pub(in crate::editor) fn run_body(
                     });
                 }
             }
-            Ok(())
+            Ok(PlannedPaste::NONE)
         }
         Bound::Edit(fun, target) => {
             let t = target.pane();
@@ -548,24 +566,36 @@ pub(in crate::editor) fn run_body(
             // creating a standalone undo revision. `Err` when another pane
             // holds one instead: same reporting shape as `EditorCmd`'s
             // fallible arms below.
-            apply_pane_edit(state, view, t, fun)
+            no_paste(apply_pane_edit(state, view, t, fun))
         }
         // Any target will do: a focused pane is also a pane.
-        Bound::Pane(f, target) => f(state, view, target.pane(), count, motion_mode),
-        Bound::FocusedCmd(f, fp) => f(state, view, fp, count, motion_mode),
-        Bound::PaneChar(f, target, ch) => f(state, view, target.pane(), count, motion_mode, ch),
+        Bound::Pane(f, target) => no_paste(f(state, view, target.pane(), count, motion_mode)),
+        Bound::FocusedCmd(f, fp) => no_paste(f(state, view, fp, count, motion_mode)),
+        Bound::Paste(f, fp) => f(state, view, fp, count, motion_mode),
+        Bound::PaneChar(f, target, ch) => {
+            no_paste(f(state, view, target.pane(), count, motion_mode, ch))
+        }
         Bound::PaneText(f, target, text) => {
-            f(state, view, target.pane(), count, motion_mode, &text)
+            no_paste(f(state, view, target.pane(), count, motion_mode, &text))
         }
     };
-    match outcome {
-        Ok(()) => true,
-        Err(e) => {
-            state.report_error(&e);
-            false
-        }
-    }
+    outcome.map_err(|e| {
+        state.report_error(&e);
+        Refused
+    })
 }
+
+/// The outcome of a body that plans no paste.
+fn no_paste(outcome: Result<(), CommandError>) -> Result<PlannedPaste, CommandError> {
+    outcome.map(|()| PlannedPaste::NONE)
+}
+
+/// What running a native command did: the paste its body planned, which
+/// the caller finishes, or [`Refused`].
+pub(in crate::editor) type CommandOutcome = Result<PlannedPaste, Refused>;
+
+/// A command body refused, and its error was reported.
+pub(in crate::editor) struct Refused;
 
 // ── Dispatch step functions ─────────────────────────────────────────────────
 
@@ -631,11 +661,12 @@ pub(in crate::editor::commands::pipeline) fn step_clear_extend(
 /// (`EditorHostImpl::run_command_sync`) binds via [`BoundCommand::resolve`],
 /// which may name a pane other than the focused one.
 ///
-/// Returns `false` if the body refused outright (see [`run_body`]), `true`
-/// otherwise. `run_command_sync`
-/// forwards this to Steel's `call!` as the outcome of the dispatch;
-/// `Editor::dispatch` returns it. A refusal already reported itself via
-/// `state.report` inside the body.
+/// Its [`CommandOutcome`] says whether the body refused outright (see
+/// [`run_body`]) and carries the paste the body planned:
+/// `Editor::finish_command` finishes it, and `run_command_sync` parks it for
+/// the `%finish-paste!` after the script's `call!`, forwarding whether the
+/// body ran as the outcome of the dispatch. A refusal already reported
+/// itself via `state.report` inside the body.
 ///
 /// Composed from the step functions above. Every BEFORE/AFTER step that
 /// touches focus-bound state (paste session, typed run, dot-repeat recipe,
@@ -647,7 +678,7 @@ pub(in crate::editor) fn run(
     view: &mut EngineView,
     bound: BoundCommand,
     ctx: CmdCtx,
-) -> bool {
+) -> CommandOutcome {
     let meta = bound.meta;
     // Clone the name once, before the body consumes `bound`; the AFTER steps
     // reuse this.
@@ -690,14 +721,15 @@ pub(in crate::editor) fn run(
     // A cursor-moving command runs inside the jump list's capture. Selection
     // commands are excluded from that rule: a large text-object selection is
     // a select-then-act staging step, so only those declaring a jump record.
-    let (ran, moved) = record_change(state, change, |state| {
-        let (ran, moved) = match meta.jump_rule() {
+    let (outcome, moved) = record_change(state, change, |state| {
+        let (outcome, moved) = match meta.jump_rule() {
             Some(rule) => with_jump(state, view, pane, rule, |state, view| {
                 run_body(state, view, bound, &ctx)
             }),
             None => (run_body(state, view, bound, &ctx), false),
         };
-        ((ran, moved), ran)
+        let ran = outcome.is_ok();
+        ((outcome, moved), ran)
     });
 
     // AFTER
@@ -709,5 +741,5 @@ pub(in crate::editor) fn run(
         state.update_recipe(&meta, &name, &ctx, selection_changed);
         step_clear_extend(state, meta.clears_extend);
     }
-    ran
+    outcome
 }

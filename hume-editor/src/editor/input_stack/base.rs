@@ -12,6 +12,7 @@ use hume_ops::MotionMode;
 use super::super::commands::cmd_clear_search;
 use super::super::error::CommandError;
 use super::super::keymap::WalkResult;
+use super::super::paste_plan::PlannedPaste;
 use super::super::{Editor, EditorState};
 use super::char::{CharRead, MacroRead, read_char};
 use super::paste::PastedText;
@@ -115,20 +116,16 @@ pub(in crate::editor) fn base_input(ed: &mut Editor, _r: LayerRef, ev: InputEven
     }
 }
 
-/// Bulk-insert `text`'s values at the selections in the focused buffer as
-/// one edit: the `Base` layer's paste policy (Normal and Extend alike).
+/// Plan inserting `text`'s values at the selections in the focused buffer
+/// as one edit: the `Base` layer's paste policy (Normal and Extend alike).
+/// `Err` when the buffer's text may not change.
 fn paste_over_selections(
     state: &mut EditorState,
     view: &EngineView,
     _r: LayerRef,
     text: PastedText,
-) -> Result<(), CommandError> {
-    let focused = view.focused_pane();
-    let buf = view.panes[focused].buffer_id();
-    let (buffers, mut stores) = state.edit_parts();
-    super::super::doc_ops::apply_doc_edit(buffers, &mut stores, focused, buf, |s| {
-        hume_ops::edit::insert_values(s, text.values())
-    })
+) -> Result<PlannedPaste, CommandError> {
+    state.plan_selections_paste(view, text.into_values())
 }
 
 // ── Normal mode ───────────────────────────────────────────────────────────

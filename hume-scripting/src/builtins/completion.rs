@@ -18,7 +18,7 @@ use super::args::{
     optional_callback_arg, optional_hash_entry, optional_string_arg, server_arg, string_arg,
     symbol_enum_arg, token_arg, usize_arg,
 };
-use super::errors::{generic_err, require_cap};
+use super::errors::generic_err;
 use super::lsp::required_feature_arg;
 
 /// Decodes `#:match` (`'fuzzy`/`'string`/`'delegated`). A `String` source
@@ -118,7 +118,7 @@ fn queue_triggers(
         listener: listener(source.into()),
         scope,
         chars,
-    });
+    })?;
     Ok(SteelVal::Void)
 }
 
@@ -195,7 +195,7 @@ pub(crate) fn register_completion_source(
             match_kind,
             cancel,
         },
-    ));
+    ))?;
     Ok(SteelVal::Void)
 }
 
@@ -248,7 +248,9 @@ pub(crate) fn completion_emit(
         .into_iter()
         .map(|item| json_arg(item, "items"))
         .collect::<Result<Vec<_>, _>>()?;
-    let applied = require_cap(ctx.host.completions())?
+    let applied = ctx
+        .host
+        .require(|h| h.completions())?
         .completion_emit(id, parts, incomplete, end, EmittedWord { span, prefix })
         .map_err(generic_err)?;
     Ok(SteelVal::BoolV(applied))
@@ -257,7 +259,7 @@ pub(crate) fn completion_emit(
 /// `(completion-top n)`.
 pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
     let n = usize_arg(n, "n")?;
-    let items = require_cap(ctx.host.completions())?.completion_top(n);
+    let items = ctx.host.require(|h| h.completions())?.completion_top(n);
     Ok(list_of(items.iter().map(json_to_steel)))
 }
 
@@ -265,7 +267,8 @@ pub(crate) fn completion_top(ctx: &mut SteelCtx, n: SteelVal) -> SteelResult {
 /// (`completion-top`'s order), not the raw response order.
 pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResult {
     let idx = usize_arg(idx, "idx")?;
-    require_cap(ctx.host.completions())?
+    ctx.host
+        .require(|h| h.completions())?
         .completion_accept(idx)
         .map(|()| SteelVal::Void)
         .map_err(generic_err)
@@ -273,7 +276,8 @@ pub(crate) fn completion_accept(ctx: &mut SteelCtx, idx: SteelVal) -> SteelResul
 
 /// `(completion-dismiss!)`.
 pub(crate) fn completion_dismiss(ctx: &mut SteelCtx) -> SteelResult {
-    require_cap(ctx.host.completions())?
+    ctx.host
+        .require(|h| h.completions())?
         .completion_dismiss()
         .map(|()| SteelVal::Void)
         .map_err(generic_err)

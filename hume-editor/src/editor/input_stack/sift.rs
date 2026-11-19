@@ -11,6 +11,7 @@ use hume_ops::selection_cmd::sift_matches_within;
 
 use super::super::error::CommandError;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
+use super::super::paste_plan::PlannedPaste;
 use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
 use super::paste::PastedText;
@@ -151,11 +152,11 @@ fn sift_paste(
     _view: &EngineView,
     r: LayerRef,
     text: PastedText,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     if minibuf::paste_into_minibuf(state, &text) {
         update_live_sift(state, r);
     }
-    Ok(())
+    Ok(PlannedPaste::NONE)
 }
 
 fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {

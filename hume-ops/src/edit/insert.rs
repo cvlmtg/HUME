@@ -45,8 +45,14 @@ pub fn insert_values(state: EditState, values: &[String]) -> Edited {
     if values.is_empty() {
         return Edited::unchanged(state);
     }
-    let placement = Placement::new(values, state.view().len(), |values| values.concat());
+    let placement = insert_placement(values, state.view().len());
     insert_with(state, |i| placement.get(i))
+}
+
+/// The value each of `selections` gets from `values`: one per selection when
+/// the counts match, otherwise all of them joined.
+pub fn insert_placement(values: &[String], selections: usize) -> Placement<'_, String> {
+    Placement::new(values, selections, |values| values.concat())
 }
 
 /// Insert `text_of(i)` at selection `i`, replacing what a non-cursor

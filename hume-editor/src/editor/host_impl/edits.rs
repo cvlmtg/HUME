@@ -1,5 +1,6 @@
 //! `EditorHostImpl`'s LSP-driven text edits, workspace edits,
-//! go-to-location, `insert-key!`, `paste-text!` and `edit-text!`.
+//! go-to-location, `insert-key!`, `paste-text!` with the paste its
+//! `on-paste` handlers rewrite, and `edit-text!`.
 
 use hume_core::{BufferId, NonEmpty, PaneHandle};
 use hume_platform::path::AbsolutePath;
@@ -10,7 +11,9 @@ use super::EditorHostImpl;
 use crate::editor::buffer::offsets::widened_to_clusters;
 use crate::editor::commands;
 use crate::editor::input_stack::PastedText;
-use hume_scripting::host::{CharTextEdit, EditHost, FocusedHandle, ShownHandle};
+use hume_scripting::host::{
+    CharTextEdit, EditHost, FocusedHandle, PasteAudience, PasteQuestion, ShownHandle,
+};
 
 impl<'a> EditHost for EditorHostImpl<'a> {
     // ── Edit + navigation primitives ────────────────────────────────────
@@ -138,13 +141,38 @@ impl<'a> EditHost for EditorHostImpl<'a> {
 
     fn paste_text(&mut self, pane: FocusedHandle, values: Vec<String>) -> Result<(), String> {
         self.focused(pane)?;
-        match PastedText::new(values) {
-            Some(text) => self
-                .state
-                .paste(self.view, text)
+        let Some(text) = PastedText::new(values) else {
+            return Ok(());
+        };
+        let planned = self
+            .state
+            .refuse_paste_while_one_waits()
+            .and_then(|()| self.state.paste(self.view, text))
+            .map_err(|e| e.message().to_owned())?;
+        // Finished by the `%finish-paste!` after the script's `paste-text!`.
+        self.state.park_paste(planned);
+        Ok(())
+    }
+
+    fn paste_audience(&mut self) -> Option<PasteAudience> {
+        Some(self.state.finishing_paste()?.audience(&self.state.buffers))
+    }
+
+    fn paste_question(&mut self) -> Option<PasteQuestion> {
+        Some(self.state.finishing_paste()?.question())
+    }
+
+    fn start_paste_finish(&mut self) -> bool {
+        self.state.start_paste_finish()
+    }
+
+    fn apply_paste(&mut self, answers: Vec<Option<String>>) -> Option<Result<(), String>> {
+        let plan = self.state.take_finishing_paste()?;
+        Some(
+            self.state
+                .apply_paste_plan(self.view, plan, answers)
                 .map_err(|e| e.message().to_owned()),
-            None => Ok(()),
-        }
+        )
     }
 
     fn edit_text(

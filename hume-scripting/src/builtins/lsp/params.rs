@@ -9,7 +9,7 @@ use hume_core::BufferId;
 
 use crate::builtins::SteelResult;
 use crate::builtins::args::{list_of, string_hash, token_arg};
-use crate::builtins::errors::{generic_err, require_cap};
+use crate::builtins::errors::generic_err;
 use crate::builtins::ids::{DocRange, DocUri};
 
 /// The `{"uri" <doc>}` a params hash names its document by, `<doc>` an
@@ -57,7 +57,8 @@ pub(crate) fn lsp_document_params(_ctx: &mut SteelCtx, bid: BufferId) -> SteelRe
 /// for the primary cursor head in `pane`'s pane, `p` an opaque position
 /// each server receives in its own encoding.
 pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
-    require_cap(ctx.host.lsp())?
+    ctx.host
+        .require(|h| h.lsp())?
         .lsp_position_params(pane)
         .map(position_params_value)
         .map_err(generic_err)
@@ -66,7 +67,9 @@ pub(crate) fn lsp_position_params(ctx: &mut SteelCtx, pane: ShownHandle) -> Stee
 /// `(track-position! pane)` → a token naming the primary cursor head in
 /// `pane`'s pane, carried through every edit.
 pub(crate) fn track_position(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
-    let token = require_cap(ctx.host.lsp())?
+    let token = ctx
+        .host
+        .require(|h| h.lsp())?
         .track_position(pane)
         .map_err(generic_err)?;
     Ok(token_to_steel(token))
@@ -78,7 +81,9 @@ pub(crate) fn track_position(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResu
 /// case; only a non-integer raises.
 pub(crate) fn tracked_position_params(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
-    Ok(require_cap(ctx.host.lsp())?
+    Ok(ctx
+        .host
+        .require(|h| h.lsp())?
         .tracked_position_params(token)
         .map_or(SteelVal::BoolV(false), position_params_value))
 }
@@ -88,7 +93,7 @@ pub(crate) fn tracked_position_params(ctx: &mut SteelCtx, token: SteelVal) -> St
 /// `untrack-position!`. A `#f`, released or unknown token is a no-op.
 pub(crate) fn keep_tracked_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
-    require_cap(ctx.host.lsp())?.keep_tracked_position(token);
+    ctx.host.require(|h| h.lsp())?.keep_tracked_position(token);
     Ok(SteelVal::Void)
 }
 
@@ -96,14 +101,15 @@ pub(crate) fn keep_tracked_position(ctx: &mut SteelCtx, token: SteelVal) -> Stee
 /// unknown token is a no-op.
 pub(crate) fn untrack_position(ctx: &mut SteelCtx, token: SteelVal) -> SteelResult {
     let token = token_arg(token, "token")?;
-    require_cap(ctx.host.lsp())?.untrack_position(token);
+    ctx.host.require(|h| h.lsp())?.untrack_position(token);
     Ok(SteelVal::Void)
 }
 
 /// `(lsp-primary-range-params pane)` → same shape but a `"range"` from the
 /// primary selection alone, an opaque range value.
 pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
-    require_cap(ctx.host.lsp())?
+    ctx.host
+        .require(|h| h.lsp())?
         .lsp_primary_range_params(pane)
         .map(range_params_value)
         .map_err(generic_err)
@@ -118,7 +124,8 @@ pub(crate) fn lsp_primary_range_params(ctx: &mut SteelCtx, pane: ShownHandle) ->
 /// unchanged or with a protocol key inserted, and a non-protocol key here
 /// would break that (see `CursorHost::selections_linewise`'s doc comment).
 pub(crate) fn lsp_linewise_ranges_params(ctx: &mut SteelCtx, pane: ShownHandle) -> SteelResult {
-    require_cap(ctx.host.lsp())?
+    ctx.host
+        .require(|h| h.lsp())?
         .lsp_linewise_ranges_params(pane)
         .map(ranges_params_value)
         .map_err(generic_err)

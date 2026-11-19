@@ -54,10 +54,10 @@ fn lsp_server_ops(h: &SteelCtxTestHarness) -> Vec<&PendingLspServerOp> {
 }
 
 /// `Effect::LspRequest` entries queued so far on a live `ctx`, in
-/// emission order. `ctx.effects` (not the harness) since these tests
+/// emission order. `ctx.queued_effects()` (not the harness) since these tests
 /// read before `ctx` drops.
 fn lsp_requests<'a>(ctx: &'a SteelCtx) -> Vec<&'a PendingLspRequest> {
-    ctx.effects
+    ctx.queued_effects()
         .iter()
         .filter_map(|e| match &e.effect {
             Effect::LspRequest(req) => Some(req),
@@ -186,7 +186,7 @@ fn queues_a_pending_registration_from_command_mode() {
 fn allowed_during_plugin_activation_even_though_is_init_is_false() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx_activation();
-    ctx.attribution.push_body(crate::attribution::EntryId::main(
+    ctx.host.push_body(crate::attribution::EntryId::main(
         crate::attribution::PluginId::Core("lsp".to_string()),
     ));
     let result = register_lsp_server(
@@ -454,14 +454,14 @@ fn lsp_server_registered_reads_through_queued_ops() {
     let mut h = SteelCtxTestHarness::new();
     let mut host = EmptyLspHost::default();
     let mut ctx = h.ctx_with_host(&mut host);
-    ctx.push_effect(pending_register("rust-analyzer"));
+    ctx.queue(pending_register("rust-analyzer"));
     assert_eq!(registered(&mut ctx, "rust-analyzer"), SteelVal::BoolV(true));
-    ctx.push_effect(pending_unregister("rust-analyzer"));
+    ctx.queue(pending_unregister("rust-analyzer"));
     assert_eq!(
         registered(&mut ctx, "rust-analyzer"),
         SteelVal::BoolV(false)
     );
-    ctx.push_effect(pending_register("rust-analyzer"));
+    ctx.queue(pending_register("rust-analyzer"));
     assert_eq!(registered(&mut ctx, "rust-analyzer"), SteelVal::BoolV(true));
 }
 
@@ -505,15 +505,15 @@ fn lsp_language_servers_reads_through_queued_ops() {
     let mut h = SteelCtxTestHarness::new();
     let mut host = EmptyLspHost::default();
     let mut ctx = h.ctx_with_host(&mut host);
-    ctx.push_effect(pending_list("rust", &["rust-analyzer", "ra-lint"]));
+    ctx.queue(pending_list("rust", &["rust-analyzer", "ra-lint"]));
     assert_eq!(
         language_server_names(&mut ctx, "rust"),
         Vec::<String>::new(),
         "a listed name that is not registered is left out"
     );
-    ctx.push_effect(pending_register("ra-lint"));
+    ctx.queue(pending_register("ra-lint"));
     assert_eq!(language_server_names(&mut ctx, "rust"), ["ra-lint"]);
-    ctx.push_effect(pending_register("rust-analyzer"));
+    ctx.queue(pending_register("rust-analyzer"));
     assert_eq!(
         language_server_names(&mut ctx, "rust"),
         ["rust-analyzer", "ra-lint"]
@@ -528,10 +528,10 @@ fn lsp_server_registered_skips_an_op_a_higher_origin_shadows() {
     let mut h = SteelCtxTestHarness::new();
     let mut host = EmptyLspHost::default();
     let mut ctx = h.ctx_with_host(&mut host);
-    ctx.push_effect(pending_register_by("rust-analyzer", User));
-    ctx.push_effect(pending_unregister_by("rust-analyzer", Plugin));
+    ctx.queue(pending_register_by("rust-analyzer", User));
+    ctx.queue(pending_unregister_by("rust-analyzer", Plugin));
     assert_eq!(registered(&mut ctx, "rust-analyzer"), SteelVal::BoolV(true));
-    ctx.push_effect(pending_unregister_by("rust-analyzer", User));
+    ctx.queue(pending_unregister_by("rust-analyzer", User));
     assert_eq!(
         registered(&mut ctx, "rust-analyzer"),
         SteelVal::BoolV(false)
@@ -544,7 +544,7 @@ fn lsp_server_registered_skips_an_op_a_higher_origin_shadows() {
 fn lsp_server_registered_raises_without_an_lsp_capability_even_with_a_queued_op() {
     let mut h = SteelCtxTestHarness::new();
     let mut ctx = h.ctx();
-    ctx.push_effect(pending_register("rust-analyzer"));
+    ctx.queue(pending_register("rust-analyzer"));
     let err =
         lsp_server_registered(&mut ctx, "rust-analyzer".into_steelval().unwrap()).unwrap_err();
     assert!(
@@ -559,7 +559,7 @@ fn a_queued_op_for_a_different_name_does_not_flip_the_answer() {
     let mut h = SteelCtxTestHarness::new();
     let mut host = EmptyLspHost::default();
     let mut ctx = h.ctx_with_host(&mut host);
-    ctx.push_effect(pending_register("pyright"));
+    ctx.queue(pending_register("pyright"));
     assert_eq!(
         registered(&mut ctx, "rust-analyzer"),
         SteelVal::BoolV(false),
@@ -574,7 +574,7 @@ fn a_stop_op_alone_does_not_flip_the_answer() {
     let mut h = SteelCtxTestHarness::new();
     let mut host = EmptyLspHost::default();
     let mut ctx = h.ctx_with_host(&mut host);
-    ctx.push_effect(Effect::LspServerOp(PendingLspServerOp::Stop {
+    ctx.queue(Effect::LspServerOp(PendingLspServerOp::Stop {
         target: LspServerTarget::Name(server_name("rust-analyzer")),
     }));
     assert_eq!(
@@ -891,7 +891,7 @@ fn lsp_request_refuses_a_string_supersede_key() {
 /// `Effect::LspCancel` entries queued so far on a live `ctx`, in emission
 /// order.
 fn lsp_cancels(ctx: &SteelCtx) -> Vec<(BufferId, crate::host::SupersedeKey)> {
-    ctx.effects
+    ctx.queued_effects()
         .iter()
         .filter_map(|e| match e.effect {
             Effect::LspCancel { bid, key } => Some((bid, key)),

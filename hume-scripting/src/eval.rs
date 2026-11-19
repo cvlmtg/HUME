@@ -13,7 +13,7 @@ use crate::attribution::{Owner, Provenance};
 use crate::command_procs::CommandProc;
 use crate::context::SteelCtx;
 use crate::host::{EditorHost, token_to_steel};
-use crate::read_only_host::ReadOnlyHost;
+use crate::read_only_host::ReadOnlySession;
 use crate::types::{Effect, EvalError};
 use crate::visibility::Audience;
 use crate::{Callback, HostBundle, Rooted, ScriptingHost, SteelCall, attribution, builtins};
@@ -46,6 +46,7 @@ enum CtxKind {
     Init(Owner),
     Activation,
     Command(Provenance),
+    ReadOnly(Provenance, ReadOnlySession),
 }
 
 impl CtxKind {
@@ -54,6 +55,7 @@ impl CtxKind {
             Self::Init(owner) => SteelCtx::new_init(host, bundle, owner),
             Self::Activation => SteelCtx::new_activation(host, bundle),
             Self::Command(base) => SteelCtx::new_command(host, bundle, base),
+            Self::ReadOnly(base, why) => SteelCtx::new_read_only(host, bundle, base, why),
         }
     }
 }
@@ -336,6 +338,24 @@ impl ScriptingHost {
         self.run_steel_calls(calls, host)
     }
 
+    /// Runs the `on-paste` handlers for the paste `host` has parked and
+    /// lands it, through `%finish-paste!` (see the BOOTSTRAP comment in
+    /// `builtins/mod.rs`): the finish of a paste asked for outside a script.
+    /// A paste the session leaves parked, because the budget stopped it, is
+    /// the caller's to land.
+    pub fn finish_paste<'a>(
+        &'a mut self,
+        host: &'a mut dyn EditorHost,
+    ) -> Result<Vec<Effect>, EvalError> {
+        let budget_ms = host.settings().steel_command_budget_ms();
+        let kind = CtxKind::Command(Provenance::own(Owner::Core));
+        self.run_session(host, kind, budget_ms, |steel| {
+            steel
+                .call_function_by_name_with_args("%finish-paste!", Vec::new())
+                .map(|_| ())
+        })
+    }
+
     /// The handlers registered for the held event `name`
     /// (`EventShape::held`) that `audience` reaches: only these get a hold.
     pub fn held_handlers(&self, name: &str, audience: Audience<'_>) -> HeldHandlers {
@@ -516,7 +536,8 @@ impl ScriptingHost {
         ];
         args.extend(query.map(|query| SteelVal::StringV(query.into())));
         let proc = render.proc().value().clone();
-        let value = self.read_only_call(host, render.provenance().clone(), |steel| {
+        let base = render.provenance().clone();
+        let value = self.read_only_call(host, base, ReadOnlySession::Rendering, |steel| {
             steel.call_function_with_args(proc, args)
         })?;
         let expected = || format!("expected a list of {} rows, got {value}", places.len());
@@ -557,7 +578,9 @@ impl ScriptingHost {
             builtins::ids::ParsedText(parsed).into_steel_val(),
         ];
         let base = Provenance::own(Owner::clone(proc.owner()));
-        let value = self.read_only_call(host, base, |steel| proc.call(steel, args))?;
+        let value = self.read_only_call(host, base, ReadOnlySession::Rendering, |steel| {
+            proc.call(steel, args)
+        })?;
         builtins::decorations::text_format(value, text.content_line_count())
             .map_err(|e| e.to_string())
     }
@@ -572,42 +595,64 @@ impl ScriptingHost {
         host: &mut dyn EditorHost,
     ) -> Result<Option<hume_core::LanguageFields>, String> {
         const CONFIG: &str = "%bundled-language-config";
-        let config = self.read_only_call(host, Provenance::own(Owner::Core), |steel| {
+        let base = Provenance::own(Owner::Core);
+        let config = self.read_only_call(host, base, ReadOnlySession::LanguageConfig, |steel| {
             steel.call_function_by_name_with_args(CONFIG, vec![SteelVal::StringV(name.into())])
         })?;
         builtins::syntax::optional_language_fields(config, CONFIG)
             .map_err(|e| format!("{name}.scm: {e}"))
     }
 
-    /// Runs `call`, credited as `base`, under read-only rules: it sees `host`
-    /// through `ReadOnlyHost`, so it may read the editor but not change it,
-    /// queue commands with `call!`, or start a declared plugin's activation.
-    /// Any such attempt fails the call, even when `call` caught the error it
-    /// raised, and whatever it queued is dropped. Runs under the same
-    /// watchdog budget as a command. The shared body of
-    /// [`render_rows`](Self::render_rows) and
-    /// [`bundled_language`](Self::bundled_language).
-    pub(crate) fn read_only_call(
+    /// Runs `call`, credited as `base`, in a session read-only from its
+    /// start for `why` (`SessionHost::read_only`): it may read the editor
+    /// but not change it, queue an effect, run a native command with
+    /// `call!`, or start a declared plugin's activation. Any such attempt
+    /// fails the call, even when `call` caught the error it raised. Runs
+    /// under the same watchdog budget as a command. The shared body of
+    /// [`render_rows`](Self::render_rows), [`format_text`](Self::format_text)
+    /// and [`bundled_language`](Self::bundled_language).
+    fn read_only_call(
         &mut self,
         host: &mut dyn EditorHost,
         base: Provenance,
+        why: ReadOnlySession,
         call: impl FnOnce(&mut Engine) -> Result<SteelVal, steel::rerrs::SteelErr>,
     ) -> Result<SteelVal, String> {
         let budget_ms = host.settings().steel_command_budget_ms();
-        let mut read_only = ReadOnlyHost::new(host);
+        let kind = CtxKind::ReadOnly(base, why);
         let mut value = None;
         let queued = self
-            .run_session(&mut read_only, CtxKind::Command(base), budget_ms, |steel| {
+            .run_session(host, kind, budget_ms, |steel| {
                 value = Some(call(steel)?);
                 Ok(())
             })
             .map_err(|e| e.message)?;
-        if let Some(refused) = read_only.refused() {
-            return Err(refused);
-        }
-        if !queued.is_empty() {
-            return Err("commands cannot be queued during a read-only call".to_string());
-        }
+        debug_assert!(queued.is_empty(), "a read-only session queued an effect");
         Ok(value.expect("a session that succeeded ran the call"))
+    }
+
+    /// Evaluates `source` as the user's code and returns its last value.
+    /// `Err` when it raised, and when it queued an effect, which nothing
+    /// would apply.
+    #[cfg(any(test, feature = "test-util"))]
+    pub fn eval_source_for_value(
+        &mut self,
+        source: &str,
+        host: &mut dyn EditorHost,
+    ) -> Result<SteelVal, String> {
+        let source = source.to_owned();
+        let budget_ms = host.settings().steel_command_budget_ms();
+        let kind = CtxKind::Command(Provenance::own(Owner::User));
+        let mut value = None;
+        let queued = self
+            .run_session(host, kind, budget_ms, |steel| {
+                value = steel.compile_and_run_raw_program(source)?.pop();
+                Ok(())
+            })
+            .map_err(|e| e.message)?;
+        if !queued.is_empty() {
+            return Err(format!("the source queued {} effects", queued.len()));
+        }
+        value.ok_or_else(|| "the source produced no value".to_owned())
     }
 }

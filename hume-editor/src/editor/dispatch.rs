@@ -33,6 +33,25 @@ pub(in crate::editor) struct CmdCtx {
 impl Editor {
     // ── Unified command dispatch pipeline ──────────────────────────────────────
 
+    /// Run the native command `bound` and land the paste it asked for, if
+    /// any: every native command run no script called ends here.
+    pub(in crate::editor) fn run_command(
+        &mut self,
+        bound: commands::BoundCommand,
+        ctx: CmdCtx,
+    ) -> bool {
+        let outcome = commands::run(&mut self.state, &mut self.view, bound, ctx);
+        self.finish_command(outcome)
+    }
+
+    /// Land the paste a native command run outside a script planned, if
+    /// any. `false` when the command refused, its paste was dropped, or its
+    /// paste's handlers' script failed and the paste landed without their
+    /// text.
+    pub(in crate::editor) fn finish_command(&mut self, outcome: commands::CommandOutcome) -> bool {
+        outcome.is_ok_and(|paste| self.finish_paste(paste))
+    }
+
     /// Execute a resolved command through the unified dispatch pipeline.
     ///
     /// Native commands delegate to [`commands::run`].  Steel-backed
@@ -55,7 +74,7 @@ impl Editor {
                 // A keypress always acts at the focused pane.
                 let fp = commands::FocusedPane::current(&self.view);
                 return match commands::BoundCommand::focused(cmd, fp, None) {
-                    Ok(bound) => commands::run(&mut self.state, &mut self.view, bound, ctx),
+                    Ok(bound) => self.run_command(bound, ctx),
                     Err(commands::FocusedBindError::NeedsOperand(missing)) => {
                         let pane = fp.handle(&self.view);
                         commands::collect_operand(

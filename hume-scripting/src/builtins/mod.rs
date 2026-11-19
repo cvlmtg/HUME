@@ -245,6 +245,26 @@ macro_rules! builtins {
 // the event's args followed by a thunk that releases hold `hold`.
 // ScriptingHost::fire_held_hook calls every such handler through it.
 //
+// %finish-paste!: Rust cannot call Steel while a script runs, so a native
+// command or paste-text! called from a script parks the paste it planned,
+// and the call that asked for it finishes it here before returning:
+// %dispatch-command! after every native command, paste-text! after its
+// builtin. Outside a script, Editor::finish_paste parks it and runs this
+// same function through ScriptingHost::finish_paste. %start-paste-finish! takes the parked paste; while it
+// finishes, a call made by a plugin it activates finds nothing parked of its
+// own. It first activates the plugins waiting on the hook, so their handlers
+// count, then hands %apply-paste! one answer per selection.
+//
+// %paste-answers: runs the handlers in registration order for each
+// selection, each given the text the one before it returned, or the pasted
+// text; #f means "unchanged" and passes the text on. A selection's answer is
+// #f when no handler changed it. %run-paste-handler runs one handler inside
+// the call! frame %enter-paste-handler! enters, so it runs as the code that
+// registered it, read-only (SessionHost) until %leave-command! leaves that
+// frame, on a raise too. A raise, a write the frame refused (caught or not),
+// or a value other than a string or #f is reported under that code and
+// counts as #f: a broken handler never loses the paste.
+//
 // lsp-request!: callback is (lambda (err result)), one of them non-#f; err is
 // (hash 'kind 'message ['code]).
 // lsp-request-all!: callback is (lambda (err results)), results one hash per
@@ -549,7 +569,14 @@ builtins! {
     cmd "goto-location!" edits::goto_location(pane: args::ShownPane, loc: SteelVal);
     cmd "goto-revision!" edits::goto_revision(pane: args::ShownPane, revision: args::Usize);
     cmd "insert-key!" edits::insert_key(pane: args::FocusedPane, key: SteelVal);
-    cmd "paste-text!" edits::paste_text(pane: args::FocusedPane, text: SteelVal);
+    cmd "%paste-text!" => "paste-text!" edits::paste_text(pane: args::FocusedPane, text: SteelVal);
+    open "%start-paste-finish!" => "on-paste" edits::start_paste_finish();
+    open "%paste-event-plugins" => "on-paste" edits::paste_event_plugins();
+    open "%paste-plan" => "on-paste" edits::paste_plan();
+    open "%enter-paste-handler!" => "on-paste" edits::enter_paste_handler(i: args::Usize);
+    open "%paste-result" => "on-paste" edits::paste_result(value: SteelVal);
+    open "%paste-handler-failed!" => "on-paste" edits::paste_handler_failed(message: String);
+    open "%apply-paste!" => "on-paste" edits::apply_paste(answers: SteelVal);
     cmd "%edit-text!" => "edit-text!" edits::edit_text(pane: args::RequesterPane, edits: SteelVal, expect_gen: SteelVal);
     cmd "selections-linewise?" buffers::selections_linewise(pane: args::ShownPane);
     cmd "selections-charwise?" buffers::selections_charwise(pane: args::ShownPane);

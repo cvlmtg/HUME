@@ -1,5 +1,5 @@
 //! The `Insert` layer and its key and paste handlers.
-//! [`EditorState::apply_insert_mode_paste`] is a method rather than part of
+//! [`EditorState::plan_insert_mode_paste`] is a method rather than part of
 //! the paste handler because it has a second caller: `replay`'s
 //! dot-repeat replay of a recorded paste.
 //!
@@ -7,6 +7,8 @@
 //! match; a key with no match runs its *default* behaviour via
 //! `commands::insert_default_key`. See that function's own doc (`commands/
 //! insert_keys.rs`) for why it's a free function rather than inlined here.
+
+use std::rc::Rc;
 
 use termina::event::KeyEvent;
 
@@ -17,6 +19,7 @@ use hume_engine::types::EditorMode;
 use super::super::edit_session::InsertSession;
 use super::super::error::CommandError;
 use super::super::keymap::WalkResult;
+use super::super::paste_plan::PlannedPaste;
 use super::super::replay::{Input, dispatch_insert_key};
 use super::super::{Editor, EditorState, commands};
 use super::paste::PastedText;
@@ -133,10 +136,11 @@ fn insert_paste(
     view: &EngineView,
     _r: LayerRef,
     text: PastedText,
-) -> Result<(), CommandError> {
-    state.apply_insert_mode_paste(view, text.values())?;
-    state.record_paste(text.into_values());
-    Ok(())
+) -> Result<PlannedPaste, CommandError> {
+    let values = text.into_values();
+    let planned = state.plan_insert_mode_paste(view, Rc::clone(&values))?;
+    state.record_paste(values);
+    Ok(planned)
 }
 
 /// Walks the Insert keymap for `key`: a bound key re-dispatches its
@@ -202,27 +206,23 @@ fn handle_insert(ed: &mut Editor, key: KeyEvent) {
 impl EditorState {
     // ── Insert mode ───────────────────────────────────────────────────────────
 
-    /// Bulk-insert `values` into the focused buffer as one grouped edit,
+    /// Plan inserting `values` into the focused buffer as one grouped edit,
     /// placed at the selections as `p` places them: the
     /// Insert-mode paste path. Also used by dot-repeat replay so a replayed
     /// paste re-runs as one edit rather than as synthesized per-char keys
     /// (which would wrongly re-trigger auto-indent on an embedded newline).
+    /// `Err` when the buffer's text may not change.
     ///
     /// Bypasses auto-pairs, trigger-char hooks, and per-char LSP
     /// refiltering: auto-pairing pasted brackets would corrupt already-balanced
     /// text, and refiltering a completion against a pasted blob is meaningless.
-    pub(in crate::editor) fn apply_insert_mode_paste(
+    pub(in crate::editor) fn plan_insert_mode_paste(
         &mut self,
         view: &EngineView,
-        values: &[String],
-    ) -> Result<(), CommandError> {
-        commands::try_apply_focused_edit_grouped(
-            self,
-            view,
-            commands::FocusedPane::current(view),
-            |s| hume_ops::edit::insert_values(s, values),
-        )?;
+        values: Rc<[String]>,
+    ) -> Result<PlannedPaste, CommandError> {
+        let planned = self.plan_selections_paste(view, values)?;
         self.dismiss_completion(view);
-        Ok(())
+        Ok(planned)
     }
 }

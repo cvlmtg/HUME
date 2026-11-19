@@ -923,7 +923,7 @@ impl EditorState {
     /// any, unless the code running now belongs to that same change: `.`
     /// re-runs that code (a binding, a command, an answered callback), which
     /// pastes again, so recording the paste too would replay it twice.
-    pub(in crate::editor) fn record_paste(&mut self, values: Vec<String>) {
+    pub(in crate::editor) fn record_paste(&mut self, values: Rc<[String]>) {
         let Some(session) = self.input.insert_session() else {
             return;
         };
@@ -1325,8 +1325,8 @@ impl Editor {
                     "a dot-repeat selection-recipe step always names a native command taking no character"
                 )
             };
-            let ran = commands::run_body(&mut self.state, &mut self.view, bound, &step.ctx);
-            if !ran {
+            let outcome = commands::run_body(&mut self.state, &mut self.view, bound, &step.ctx);
+            if !self.finish_command(outcome) {
                 pre_recipe.take_restore(&mut self.state.panes.entries, &self.state.buffers);
                 return;
             }
@@ -1372,9 +1372,10 @@ impl Editor {
                     commands::insert_default_key(&mut self.state, &mut self.view, &entry, fp, *key);
                 }
                 Input::Paste(values) => {
-                    if let Err(e) = self.state.apply_insert_mode_paste(&self.view, values) {
-                        self.state.report_error(&e);
-                    }
+                    let planned = self
+                        .state
+                        .plan_insert_mode_paste(&self.view, Rc::clone(values));
+                    self.finish_planned_paste(planned);
                 }
                 Input::Result(r) => {
                     if let Err(msg) = self.state.apply_cursor_replacement(&self.view, fp, r) {

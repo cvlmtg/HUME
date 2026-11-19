@@ -24,6 +24,7 @@ use termina::event::{KeyCode, Modifiers, MouseEventKind};
 use super::super::commands::{self, PendingDispatch};
 use super::super::error::CommandError;
 use super::super::event::PendingWork;
+use super::super::paste_plan::PlannedPaste;
 use super::super::replay::{Answer, AnswerTicket, InputOpener, PendingAnswer, ReplayRefusal};
 use super::super::{Editor, EditorState};
 use super::paste::PastedText;
@@ -211,7 +212,7 @@ pub(in crate::editor) fn run_resolved(ed: &mut Editor, resolved: Resolved) -> Af
             ch,
             source,
         } => AfterRead::Done(ed.run_answered(source, |ed| {
-            commands::run_collected(&mut ed.state, &mut ed.view, pending, CommandArg::Char(ch))
+            commands::run_collected(ed, pending, CommandArg::Char(ch))
         })),
         Resolved::Call(call) => AfterRead::Call(call),
     }
@@ -322,9 +323,9 @@ fn end_reads_on_paste(
     view: &EngineView,
     r: LayerRef,
     _text: PastedText,
-) -> Result<(), CommandError> {
+) -> Result<PlannedPaste, CommandError> {
     state.truncate_layers(view, r);
-    Ok(())
+    Ok(PlannedPaste::NONE)
 }
 
 /// Whether `ch` completes a read for `then`: any character for a command or a

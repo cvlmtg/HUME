@@ -19,14 +19,6 @@ pub(crate) fn generic_err(msg: impl std::fmt::Display) -> SteelErr {
     SteelErr::new(ErrorKind::Generic, msg.to_string())
 }
 
-/// Maps a missing optional host capability (`ctx.host.edits()`,
-/// `.completions()`, `.ui()`, …, each `Option<&mut dyn Capability>`) to the
-/// one "not supported by this host" error. See the
-/// [`crate::host::EditorHost`] trait doc.
-pub(crate) fn require_cap<T: ?Sized>(cap: Option<&mut T>) -> Result<&mut T, SteelErr> {
-    cap.ok_or_else(|| generic_err("not supported by this host"))
-}
-
 /// `e`'s message, without the `Error: <kind>: ` its rendering starts with:
 /// for an error carried as text and raised again by another layer.
 pub(crate) fn message(e: &SteelErr) -> String {

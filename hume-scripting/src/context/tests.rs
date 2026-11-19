@@ -134,9 +134,9 @@ fn pop_effect_marks_success_commits_marked_range() {
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx();
-        ctx.push_effect(Effect::GrammarSweep("before".into()));
+        ctx.queue(Effect::GrammarSweep("before".into()));
         ctx.mark_effects();
-        ctx.push_effect(Effect::GrammarSweep("after".into()));
+        ctx.queue(Effect::GrammarSweep("after".into()));
         ctx.pop_effect_marks(true);
     }
     assert!(
@@ -161,14 +161,14 @@ fn pop_effect_marks_failure_keeps_committed_entries_in_order() {
     let mut h = SteelCtxTestHarness::new();
     {
         let mut ctx = h.ctx();
-        ctx.push_effect(Effect::GrammarSweep("a1".into()));
+        ctx.queue(Effect::GrammarSweep("a1".into()));
         ctx.mark_effects(); // B begins
-        ctx.push_effect(Effect::GrammarSweep("b1".into()));
+        ctx.queue(Effect::GrammarSweep("b1".into()));
         ctx.mark_effects(); // C begins, nested inside B
-        ctx.push_effect(Effect::GrammarSweep("c1".into()));
-        ctx.push_effect(Effect::GrammarSweep("c2".into()));
+        ctx.queue(Effect::GrammarSweep("c1".into()));
+        ctx.queue(Effect::GrammarSweep("c2".into()));
         ctx.pop_effect_marks(true); // C succeeds: commits c1, c2
-        ctx.push_effect(Effect::GrammarSweep("b2".into()));
+        ctx.queue(Effect::GrammarSweep("b2".into()));
         ctx.pop_effect_marks(false); // B fails: drops b1/b2, keeps c1/c2
     }
     let names: Vec<&str> = h

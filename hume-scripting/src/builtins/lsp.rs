@@ -21,7 +21,7 @@ use super::args::{
     optional_supersede_key_arg, optional_symbol_arg, optional_token_arg, pair_fields, server_arg,
     string_arg, string_list, strings_arg, supersede_key_arg, symbol_enum_arg, symbol_hash,
 };
-use super::errors::{generic_err, require_cap};
+use super::errors::generic_err;
 use super::hooks::{known_event, register_entry};
 use super::ids::ServerRef;
 use super::wire::tagged_json_arg;
@@ -76,7 +76,7 @@ fn reject_feature_on_standard_method(
     if feature.is_none() {
         return Ok(());
     }
-    match require_cap(ctx.host.lsp())?.lsp_method_feature(method) {
+    match ctx.host.require(|h| h.lsp())?.lsp_method_feature(method) {
         Some(feature) => Err(generic_err(format!(
             "{method} is a standard method of the '{} feature; #:feature is for other methods",
             feature.name()
@@ -118,7 +118,7 @@ fn queue_request(
         })
         .transpose()?;
     let tracked = match optional_token_arg(tracked, "#:tracked")? {
-        Some(token) => require_cap(ctx.host.lsp())?.hold_tracked_position(token),
+        Some(token) => ctx.host.require(|h| h.lsp())?.hold_tracked_position(token),
         None => None,
     };
     ctx.push_effect(Effect::LspRequest(PendingLspRequest {
@@ -133,7 +133,7 @@ fn queue_request(
         supersede,
         require_focus,
         tracked,
-    }));
+    }))?;
     Ok(SteelVal::Void)
 }
 
@@ -278,14 +278,16 @@ pub(crate) fn lsp_notify(
         method,
         params,
         route,
-    }));
+    }))?;
     Ok(SteelVal::Void)
 }
 
 /// `(lsp-servers pane)`: every server attached to `pane`'s buffer, whatever
 /// its state, in order.
 pub(crate) fn lsp_servers(ctx: &mut SteelCtx, bid: BufferId) -> SteelResult {
-    let servers = require_cap(ctx.host.lsp())?
+    let servers = ctx
+        .host
+        .require(|h| h.lsp())?
         .lsp_servers(bid)
         .map_err(generic_err)?;
     Ok(list_of(servers.into_iter().map(ServerRef::into_steel_val)))
@@ -310,7 +312,9 @@ pub(crate) fn lsp_route(
     if let Some(method) = &method {
         reject_feature_on_standard_method(ctx, feature, method)?;
     }
-    let route = require_cap(ctx.host.lsp())?
+    let route = ctx
+        .host
+        .require(|h| h.lsp())?
         .lsp_route(bid, feature, method.as_deref())
         .map_err(generic_err)?;
     let (servers, err) = match route {
@@ -388,7 +392,9 @@ pub(crate) fn register_lsp_notification_hook(
 /// `json-ref`/`json-contains?`.
 pub(crate) fn lsp_capabilities(ctx: &mut SteelCtx, server: SteelVal) -> SteelResult {
     let server = server_arg(&server, "server")?;
-    Ok(require_cap(ctx.host.lsp())?
+    Ok(ctx
+        .host
+        .require(|h| h.lsp())?
         .lsp_capabilities(server.id)
         .map_or(SteelVal::BoolV(false), |v| {
             crate::json::to_steel_handle(v, crate::json::WireOrigin::Local)
@@ -416,7 +422,9 @@ pub(crate) fn lsp_capability(
             return Err(generic_err("give exactly one of #:feature and #:method"));
         }
     };
-    Ok(require_cap(ctx.host.lsp())?
+    Ok(ctx
+        .host
+        .require(|h| h.lsp())?
         .lsp_capability(server.id, query)
         .map_or(SteelVal::BoolV(false), |v| {
             crate::json::to_steel_handle(v, crate::json::WireOrigin::Local)
@@ -425,7 +433,9 @@ pub(crate) fn lsp_capability(
 
 /// `(lsp-server-status)` → list of `(hash 'name 'languages 'root 'state 'pending)`.
 pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
-    let entries = require_cap(ctx.host.lsp())?
+    let entries = ctx
+        .host
+        .require(|h| h.lsp())?
         .lsp_server_status()
         .into_iter()
         .map(|e| {
@@ -451,7 +461,9 @@ pub(crate) fn lsp_server_status(ctx: &mut SteelCtx) -> SteelResult {
 /// `(lsp-supersede-key)`: a new `#:supersede` key, equal only to itself.
 /// `open` kind, so a plugin mints its keys once at its top level.
 pub(crate) fn lsp_supersede_key(ctx: &mut SteelCtx) -> SteelResult {
-    Ok(require_cap(ctx.host.lsp())?
+    Ok(ctx
+        .host
+        .require(|h| h.lsp())?
         .new_supersede_key()
         .into_steel_val())
 }
@@ -462,7 +474,7 @@ pub(crate) fn lsp_supersede_key(ctx: &mut SteelCtx) -> SteelResult {
 /// already queued. Nothing happens when none is pending.
 pub(crate) fn lsp_cancel(ctx: &mut SteelCtx, bid: BufferId, key: SteelVal) -> SteelResult {
     let key = supersede_key_arg(key, "key")?;
-    ctx.push_effect(Effect::LspCancel { bid, key });
+    ctx.push_effect(Effect::LspCancel { bid, key })?;
     Ok(SteelVal::Void)
 }
 
@@ -486,8 +498,8 @@ pub(crate) fn lsp_server_registered(ctx: &mut SteelCtx, name: SteelVal) -> Steel
 /// unregistrations apply, each ranked as `Editor::apply_lsp_server_ops`
 /// applies it.
 fn registered_now(ctx: &mut SteelCtx, name: &ServerName) -> Result<bool, SteelErr> {
-    let mut held = require_cap(ctx.host.lsp())?.lsp_server_claim(name);
-    for queued in ctx.effects.iter() {
+    let mut held = ctx.host.require(|h| h.lsp())?.lsp_server_claim(name);
+    for queued in ctx.queued_effects() {
         let Effect::LspServerOp(op) = &queued.effect else {
             continue;
         };

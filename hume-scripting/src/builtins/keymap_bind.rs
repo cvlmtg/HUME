@@ -64,7 +64,7 @@ fn bind_inner(
         force_extend,
         keymap,
         origin,
-    });
+    })?;
     Ok(SteelVal::Void)
 }
 
@@ -134,7 +134,7 @@ pub(crate) fn unbind_key(
         keys,
         keymap,
         origin,
-    });
+    })?;
     Ok(SteelVal::Void)
 }
 
@@ -149,7 +149,7 @@ fn keymap_name(name: SteelVal) -> Result<String, SteelErr> {
 /// warns when no keymap has that name yet.
 pub(crate) fn attach_keymap(ctx: &mut SteelCtx, bid: BufferId, name: SteelVal) -> SteelResult {
     let name = keymap_name(name)?;
-    ctx.push_effect(Effect::AttachKeymap { buffer: bid, name });
+    ctx.push_effect(Effect::AttachKeymap { buffer: bid, name })?;
     Ok(SteelVal::Void)
 }
 
@@ -159,7 +159,7 @@ pub(crate) fn attach_keymap(ctx: &mut SteelCtx, bid: BufferId, name: SteelVal) -
 /// no keymap has that name.
 pub(crate) fn detach_keymap(ctx: &mut SteelCtx, bid: BufferId, name: SteelVal) -> SteelResult {
     let name = keymap_name(name)?;
-    ctx.push_effect(Effect::DetachKeymap { buffer: bid, name });
+    ctx.push_effect(Effect::DetachKeymap { buffer: bid, name })?;
     Ok(SteelVal::Void)
 }
 

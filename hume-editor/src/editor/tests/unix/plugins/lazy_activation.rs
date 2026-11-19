@@ -207,8 +207,11 @@ fn a_drawer_render_cannot_activate_a_plugin_and_leaves_it_declared() {
         "a refused activation must leave the plugin Declared"
     );
     assert!(
-        ed.state.message_log.entries().any(|e| e.text.contains("drawer render error")
-            && e.text.contains("plugin activation")),
+        ed.state
+            .message_log
+            .entries()
+            .any(|e| e.text.contains("drawer render error")
+                && e.text.contains("a plugin cannot load while rendering")),
         "the render must fail on the refused activation; messages: {:?}",
         ed.state
             .message_log

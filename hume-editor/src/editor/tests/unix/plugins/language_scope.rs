@@ -570,3 +570,31 @@ fn a_scoped_source_is_not_called_again_once_the_buffer_leaves_its_languages() {
     ed.settle();
     assert_eq!(tp_log(&ed), ["called"]);
 }
+
+// ── on-paste ──────────────────────────────────────────────────────────
+
+/// Marks every paste it sees with `!`.
+const PASTE_PLUGIN: &str = r#"
+(register-hook! 'on-paste (lambda (pane pasted previous) (string-append pasted "!")))
+"#;
+
+/// The text of a focused buffer of `language`, in an editor where
+/// `user/tp`, declared for rust, was activated by another buffer, after a
+/// terminal paste of `X` into it.
+fn pasted_into(language: &str) -> String {
+    let (mut ed, _dir, _first) = activated(r#""rust""#, "rust", PASTE_PLUGIN);
+    let bid = opened_buffer(&mut ed);
+    set_language(&mut ed, bid, Some(language));
+    ed.feed_paste("X");
+    text(&ed)
+}
+
+#[test]
+fn a_scoped_paste_handler_rewrites_a_paste_in_its_languages() {
+    assert_eq!(pasted_into("rust"), "X!a\n");
+}
+
+#[test]
+fn a_scoped_paste_handler_leaves_a_paste_in_another_language_alone() {
+    assert_eq!(pasted_into("markdown"), "Xa\n");
+}

@@ -97,7 +97,7 @@ fn every_variant_has_a_name_and_matches_the_known_names_table() {
     let names: Vec<&str> = all_variants()
         .iter()
         .map(|e| e.name())
-        .chain([held.name()])
+        .chain([held.name(), ON_PASTE])
         .collect();
 
     for name in &names {
@@ -155,6 +155,14 @@ fn every_event_declares_the_args_it_passes_and_its_subject() {
         Some(EventShape {
             args,
             held: true,
+            subject: EventSubject::Buffer
+        })
+    );
+    assert_eq!(
+        event_shape(ON_PASTE),
+        Some(EventShape {
+            args: 3,
+            held: false,
             subject: EventSubject::Buffer
         })
     );

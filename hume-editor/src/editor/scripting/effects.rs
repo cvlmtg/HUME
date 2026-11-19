@@ -211,6 +211,8 @@ impl Editor {
     ) -> Result<(), String> {
         self.close_inline_output_bracket();
         self.flush_script_messages();
+        // A script interrupted before it finished a paste it asked for.
+        self.land_parked_paste();
         match result {
             Ok(effects) => {
                 self.apply_script_effects(effects);

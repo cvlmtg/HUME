@@ -12,6 +12,8 @@
 //! session elsewhere" a single field comparison rather than a scan over
 //! every pane.
 
+use std::rc::Rc;
+
 use hume_core::{BufferId, PaneHandle, PaneId};
 use hume_editing::changeset::{Assoc, ChangeSet};
 use hume_editing::edit::TextChange;
@@ -23,8 +25,24 @@ use hume_rope::offset::{CharOffset, ExclusiveRange};
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::error::CommandError;
 use crate::editor::pane_state::PaneEntries;
+use crate::editor::paste_plan::Replaced;
 use crate::editor::replay::DotCapture;
 use crate::editor::replay::{AnswerPlace, SourceTicket};
+
+/// The paste that opens a Paste session, which every `[`/`]` in it pastes
+/// again with another kill-ring entry.
+#[derive(Clone)]
+pub(in crate::editor) struct OpeningPaste {
+    /// Its direction (`true` = `P`/paste-before), so cycling re-pastes the
+    /// same way.
+    pub(in crate::editor) before: bool,
+    /// Where it recorded what it pasted for `.`, which `[`/`]` replace with
+    /// the entry they cycle to; `None` when no change recorded it.
+    pub(in crate::editor) answer: Option<AnswerPlace>,
+    /// What it replaced, which the `on-paste` handlers see again at each
+    /// `[`/`]`.
+    pub(in crate::editor) replaced: Rc<Replaced>,
+}
 
 /// An open `p`/`P` + `[`/`]` ring-cycle session. Fields are private:
 /// [`open_paste`] is the only way to create one.
@@ -34,14 +52,7 @@ pub(in crate::editor) struct PasteSession {
     pane: PaneId,
     /// The buffer this session is editing.
     buffer: BufferId,
-    /// The direction the session was opened with (`true` = `P`/paste-before),
-    /// read by `[`/`]` so cycling re-pastes in the same direction as the
-    /// opening `p`/`P`.
-    before: bool,
-    /// Where the opening paste recorded what it pasted for `.`, which `[`/`]`
-    /// replace with the entry they cycle to; `None` when no change recorded
-    /// it.
-    answer: Option<AnswerPlace>,
+    opening: OpeningPaste,
     group: EditGroup,
 }
 
@@ -54,12 +65,8 @@ impl PasteSession {
         self.buffer
     }
 
-    pub(in crate::editor) fn before(&self) -> bool {
-        self.before
-    }
-
-    pub(in crate::editor) fn answer(&self) -> Option<&AnswerPlace> {
-        self.answer.as_ref()
+    pub(in crate::editor) fn opening(&self) -> &OpeningPaste {
+        &self.opening
     }
 
     pub(in crate::editor) fn group(&self) -> &EditGroup {
@@ -191,24 +198,22 @@ pub(in crate::editor) fn open_insert(
     })
 }
 
-/// Open a Paste session on `(pane, buffer)` over the group `mint_group`
-/// builds; `before` and `answer` are its [`PasteSession`] fields. `Err` when
-/// a session is open ([`check_can_open`]), and then nothing is minted.
+/// Open a Paste session on `(pane, buffer)` for `opening` over the group
+/// `mint_group` builds. `Err` when a session is open ([`check_can_open`]),
+/// and then nothing is minted.
 pub(in crate::editor) fn open_paste(
     insert: Option<&InsertSession>,
     paste: &mut Option<PasteSession>,
     pane: PaneId,
     buffer: BufferId,
-    before: bool,
-    answer: Option<AnswerPlace>,
+    opening: OpeningPaste,
     mint_group: impl FnOnce() -> EditGroup,
 ) -> Result<(), CommandError> {
     check_can_open(open_session(insert, paste))?;
     *paste = Some(PasteSession {
         pane,
         buffer,
-        before,
-        answer,
+        opening,
         group: mint_group(),
     });
     Ok(())

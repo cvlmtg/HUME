@@ -1,7 +1,10 @@
 //! LSP-driven text edits, workspace edits and go-to-location, plus
-//! `goto-revision!`, `insert-key!`, `paste-text!` and `edit-text!`. They
+//! `goto-revision!`, `insert-key!`, `paste-text!` (with the paste its
+//! `on-paste` handlers rewrite) and `edit-text!`. They
 //! share one accessor (`EditorHost::edits`), which gates every
 //! buffer-mutating builtin that isn't a named editor command.
+
+use std::rc::Rc;
 
 use hume_core::{BufferId, PaneHandle};
 use hume_platform::path::AbsolutePath;
@@ -29,6 +32,24 @@ pub struct CharTextEdit {
     pub start: usize,
     pub end: usize,
     pub text: String,
+}
+
+/// Who handles a waiting paste: the hook its handlers registered on, and
+/// the language of the buffer it lands in, which picks the handlers that
+/// see it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PasteAudience {
+    pub event: &'static str,
+    pub language: Option<Rc<str>>,
+}
+
+/// What a waiting paste asks its handlers: the pane it lands in, and per
+/// selection the text to paste and the text it replaces (`None` at a
+/// cursor).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PasteQuestion {
+    pub pane: PaneHandle,
+    pub requests: Vec<(String, Option<String>)>,
 }
 
 /// LSP-driven text edits, workspace edits and go-to-location, accessed
@@ -133,6 +154,26 @@ pub trait EditHost {
     /// the selections as `p` places a register's. `Err` when the paste is
     /// refused (its buffer is read-only, or busy with a pipe).
     fn paste_text(&mut self, pane: FocusedHandle, values: Vec<String>) -> Result<(), String>;
+
+    /// `%start-paste-finish!`: start finishing the paste the script's last
+    /// call parked for its handlers. `false` when none is parked, also
+    /// while one is already finishing.
+    fn start_paste_finish(&mut self) -> bool;
+
+    /// Who handles the paste a `%finish-paste!` is finishing, if any.
+    fn paste_audience(&mut self) -> Option<PasteAudience>;
+
+    /// What the paste a `%finish-paste!` is finishing asks its handlers, if
+    /// any. Copies every request's text: asked once per paste.
+    fn paste_question(&mut self) -> Option<PasteQuestion>;
+
+    /// `%apply-paste!`: land the paste a `%finish-paste!` is finishing with
+    /// `answers`, the handlers' text for each selection in order (`None`:
+    /// its own); `None` when none is finishing. `Err` when the answers
+    /// outnumber the selections, and when the paste cannot land: its buffer
+    /// or pane closed, its text changed or may not change, another edit
+    /// session is in the way, or a `[`/`]` lost the session it cycles.
+    fn apply_paste(&mut self, answers: Vec<Option<String>>) -> Option<Result<(), String>>;
 
     /// `(edit-text! pane edits #:expect-generation gen)`: applies `edits`,
     /// all positioned against the text before the call, to `pane`'s buffer

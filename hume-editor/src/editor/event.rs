@@ -370,6 +370,10 @@ impl EditorEvent {
 /// writing each entry twice. A held entry's count is of the args its
 /// handlers get ahead of `done`.
 ///
+/// A filtering entry names a hook with no variant: the editor calls its
+/// handlers while an action runs and uses what they return, so it is never
+/// queued or held.
+///
 /// A variant not listed here would make `name`'s match non-exhaustive and
 /// fail to compile, so with every variant Steel-visible, this is an
 /// exhaustive match written once. A future internal-only (Rust-only, no
@@ -380,6 +384,7 @@ macro_rules! editor_event_names {
     (
         queued { $($variant:ident => $name:tt ($args:literal, $subject:ident)),+ $(,)? }
         held { $($held_variant:ident => $held_name:tt ($held_args:literal, $held_subject:ident)),+ $(,)? }
+        filtering { $($filter_name:tt ($filter_args:literal, $filter_subject:ident)),+ $(,)? }
     ) => {
         impl EditorEvent {
             /// The Steel symbol name for this event. An exhaustive match
@@ -405,7 +410,7 @@ macro_rules! editor_event_names {
         /// Every Steel-visible event name. Backs `EventHost::known_event_names`,
         /// consulted by `register-hook!` and `declare-plugin!`'s `#:events` to
         /// validate names without `hume-scripting` compiling in `EditorEvent`.
-        const EVENT_NAMES: &[&str] = &[$($name,)+ $($held_name,)+];
+        const EVENT_NAMES: &[&str] = &[$($name,)+ $($held_name,)+ $($filter_name,)+];
 
         /// What each event hands its handlers and what it is about, by
         /// name.
@@ -418,12 +423,19 @@ macro_rules! editor_event_names {
                 $held_name,
                 EventShape { args: $held_args, held: true, subject: EventSubject::$held_subject },
             ),)+
+            $((
+                $filter_name,
+                EventShape { args: $filter_args, held: false, subject: EventSubject::$filter_subject },
+            ),)+
         ];
     };
 }
 
 /// Named so the write path can ask for handlers without an event in hand.
 pub(in crate::editor) const BEFORE_BUFFER_SAVE: &str = "on-before-buffer-save";
+
+/// Its handlers rewrite a paste's text before it lands (`paste_plan`).
+pub(in crate::editor) const ON_PASTE: &str = "on-paste";
 
 editor_event_names! {
     queued {
@@ -449,6 +461,9 @@ editor_event_names! {
     }
     held {
         OnBeforeBufferSave => BEFORE_BUFFER_SAVE (1, Buffer),
+    }
+    filtering {
+        ON_PASTE (3, Buffer),
     }
 }
 

@@ -111,6 +111,7 @@ pub(crate) fn register_entry(
     proc: crate::Rooted,
     keys: Option<Box<[String]>>,
 ) -> Result<(), steel::rerrs::SteelErr> {
+    ctx.check_write()?;
     let takes_done = handler_takes_done(name, shape, proc.value())?;
     let handler = crate::Callback::capture(ctx, proc);
     let activation = ctx.activation();

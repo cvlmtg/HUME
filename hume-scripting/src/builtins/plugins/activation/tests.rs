@@ -986,14 +986,14 @@ fn leaving_a_call_with_a_body_open_above_it_fails_that_body() {
         .insert(id.clone(), PluginState::Loading);
     let mut ctx = h.ctx();
     let depth = ctx
-        .attribution
+        .host
         .enter_call(std::rc::Rc::new(crate::attribution::Owner::User));
-    ctx.attribution.push_body(id.clone());
+    ctx.host.push_body(id.clone());
     ctx.mark_effects();
 
     crate::builtins::commands::leave_command(&mut ctx, SteelVal::IntV(depth as isize)).unwrap();
 
-    assert_eq!(ctx.attribution.len(), depth);
+    assert_eq!(ctx.host.attribution().len(), depth);
     let failed: Vec<&EntryId> = ctx.failed_activations.iter().map(|(id, _)| id).collect();
     assert_eq!(failed, [&id]);
     drop(ctx);

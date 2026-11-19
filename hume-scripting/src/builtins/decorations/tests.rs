@@ -40,7 +40,7 @@ fn sign(line: isize, text: &str, scope: &str) -> SteelVal {
 }
 
 /// Every decoration setter on a host with no `DecorationHost` capability
-/// (`NullHost`, the harness default) surfaces `require_cap`'s one message.
+/// (`NullHost`, the harness default) surfaces `SessionHost::require`'s one message.
 ///
 /// A setter written as `if let Some(decorations) = ... { ... } Ok(Void)`
 /// would silently no-op, and `.unwrap_err()` would panic on its `Ok`.

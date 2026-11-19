@@ -12,7 +12,7 @@ use hume_rope::position_encoding::{checked_wire_range_to_char_range, checked_wir
 use crate::builtins::SteelResult;
 use crate::builtins::args::{char_range_value, list_items, list_of, string_arg, symbol_hash};
 use crate::builtins::buffers::live_text;
-use crate::builtins::errors::{generic_err, require_cap};
+use crate::builtins::errors::generic_err;
 use crate::builtins::ids::pane_or_false;
 use crate::builtins::wire::{tagged_json_arg, wire_position, wire_range};
 
@@ -109,7 +109,8 @@ fn decode_places(ctx: &mut SteelCtx, locs: SteelVal) -> Result<Vec<LocationPlace
         .iter()
         .map(|entry| tagged_json_arg(entry, "locs"))
         .collect::<Result<Vec<_>, _>>()?;
-    require_cap(ctx.host.lsp())?
+    ctx.host
+        .require(|h| h.lsp())?
         .lsp_location_places(&handles)
         .map_err(generic_err)
 }

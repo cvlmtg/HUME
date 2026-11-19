@@ -966,3 +966,322 @@ fn lazy_plugin_activated_by_unlisted_method_traces_unhandled() {
         "m/x has no handler after activation; it must be traced: {log:?}"
     );
 }
+
+/// A plugin declared on `on-paste` activates on the first paste, and its
+/// handler rewrites that same paste.
+#[test]
+fn a_paste_activates_a_plugin_declared_on_on_paste() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(""),
+    );
+    ed.feed_paste("X");
+    assert_eq!(text(&ed), "X!ab\n");
+}
+
+/// A paste a script asks for activates a plugin declared on `on-paste`
+/// too, before the script goes on.
+#[test]
+fn a_scripted_paste_activates_a_plugin_declared_on_on_paste() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))
+           (define-command! "probe" "" (lambda (pane) (paste-text! pane "X")))"#,
+        &on_paste_plugin(""),
+    );
+    ed.execute_keymap_command("probe", Count::typed(1), false);
+    assert_eq!(text(&ed), "X!ab\n");
+}
+
+/// The plugin body that registers the handler answering `pasted` + "!",
+/// after running `body`.
+fn on_paste_plugin(body: &str) -> String {
+    format!(
+        r#"{body}
+           (register-hook! 'on-paste (lambda (pane pasted previous) (string-append pasted "!")))"#
+    )
+}
+
+/// A plugin a paste activates runs before the handlers, and may change
+/// the editor.
+#[test]
+fn a_plugin_activated_by_a_paste_can_run_an_editor_command() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(r#"(log! 'warning (to-string (call! "move-right" (focused-pane))))"#),
+    );
+    ed.feed_paste("X");
+    assert_eq!(text(&ed), "X!ab\n");
+    assert!(
+        log_entries(&ed).contains(&(Severity::Warning, "#true")),
+        "{:?}",
+        log_entries(&ed)
+    );
+    assert_eq!(error_log(&ed), Vec::<String>::new());
+}
+
+#[test]
+fn a_paste_lands_at_the_cursor_it_was_planned_for_after_its_plugin_moves_it() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(
+            "(goto-location! (focused-pane) (hash 'target (focused-pane) 'char-offset 1))",
+        ),
+    );
+    ed.feed_key(key('i'));
+    ed.feed_paste("X");
+    assert_eq!(text(&ed), "X!ab\n");
+}
+
+#[test]
+fn a_paste_lands_in_its_buffer_after_its_plugin_leaves_it() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(
+            r#"(let ((other (car (filter (lambda (b) (equal? (buffer-text b) "xyz\n"))
+                                        (buffers)))))
+                 (goto-location! (focused-pane) (hash 'target other 'char-offset 0)))"#,
+        ),
+    );
+    let planned = ed.focused_buffer_id();
+    let other = ed.open_scratch(BufferText::from("xyz\n"));
+    ed.feed_key(key('i'));
+    ed.feed_paste("X");
+    assert_eq!(ed.focused_buffer_id(), other);
+    assert_eq!(ed.state.buffers.get(planned).text().to_string(), "X!ab\n");
+    assert_eq!(ed.state.buffers.get(other).text().to_string(), "xyz\n");
+}
+
+#[test]
+fn a_plugin_activated_by_a_paste_cannot_paste() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(r#"(paste-text! (focused-pane) "Z")"#),
+    );
+    ed.feed_paste("X");
+    assert_eq!(text(&ed), "Xab\n");
+    assert!(
+        has_error(
+            &ed,
+            "cannot paste while another paste waits for its on-paste handlers"
+        ),
+        "{:?}",
+        error_log(&ed)
+    );
+}
+
+#[test]
+fn a_p_lands_after_its_plugin_runs_an_editor_command() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(r#"(call! "move-right" (focused-pane))"#),
+    );
+    seed_ring(&mut ed, &["X"]);
+    ed.feed_key(key('p'));
+    assert_eq!(text(&ed), "aX!b\n");
+    assert_eq!(error_log(&ed), Vec::<String>::new());
+    ed.feed_key(key('u'));
+    assert_eq!(text(&ed), "ab\n");
+}
+
+#[test]
+fn a_p_lands_in_its_buffer_after_its_plugin_leaves_it() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(
+            r#"(let ((other (car (filter (lambda (b) (equal? (buffer-text b) "xyz\n"))
+                                        (buffers)))))
+                 (goto-location! (focused-pane) (hash 'target other 'char-offset 0)))"#,
+        ),
+    );
+    let planned = ed.focused_buffer_id();
+    let other = ed.open_scratch(BufferText::from("xyz\n"));
+    seed_ring(&mut ed, &["X"]);
+    ed.feed_key(key('p'));
+    assert_eq!(ed.focused_buffer_id(), other);
+    assert_eq!(ed.state.buffers.get(planned).text().to_string(), "aX!b\n");
+    assert_eq!(ed.state.buffers.get(other).text().to_string(), "xyz\n");
+    assert!(ed.state.paste_session.is_none());
+    assert_eq!(error_log(&ed), Vec::<String>::new());
+}
+
+#[test]
+fn dot_repeats_a_p_whose_plugin_tried_to_paste() {
+    let (mut ed, _dir) = setup_lazy_editor_on(
+        "-[a]> b\n",
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(r#"(call! "paste-after" (focused-pane))"#),
+    );
+    seed_ring(&mut ed, &["X"]);
+    ed.feed_key(key('P'));
+    assert_eq!(text(&ed), "Xa b\n");
+    assert!(
+        has_error(
+            &ed,
+            "cannot paste while another paste waits for its on-paste handlers"
+        ),
+        "{:?}",
+        error_log(&ed)
+    );
+    select_marked(&mut ed, "Xa -[b]>\n");
+    ed.feed_key(key('.'));
+    assert_eq!(text(&ed), "Xa Xb\n");
+}
+
+#[test]
+fn a_ring_cycle_a_plugin_tries_during_a_p_leaves_the_ring_alone() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(r#"(call! "paste-ring-older" (focused-pane))"#),
+    );
+    seed_ring(&mut ed, &["old", "new"]);
+    ed.feed_key(key('p'));
+    assert_eq!(text(&ed), "anewb\n");
+    ed.feed_key(key('['));
+    assert_eq!(text(&ed), "aoldb\n");
+}
+
+#[test]
+fn dot_repeats_an_insert_paste_whose_plugin_tried_to_paste() {
+    let (mut ed, _dir) = setup_lazy_editor_on(
+        "-[a]> b\n",
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(r#"(paste-text! (focused-pane) "Z")"#),
+    );
+    ed.feed_key(key('i'));
+    ed.feed_paste("X");
+    ed.feed_key(key_esc());
+    assert_eq!(text(&ed), "Xa b\n");
+    select_marked(&mut ed, "Xa -[b]>\n");
+    ed.feed_key(key('.'));
+    assert_eq!(text(&ed), "Xa Xb\n");
+}
+
+/// Splits the pane, then pastes with `paste` on a plugin whose load closes
+/// the pane the paste was planned for.
+fn pasted_into_a_pane_its_plugin_closes(paste: impl FnOnce(&mut Editor)) -> Editor {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))"#,
+        &on_paste_plugin(r#"(call! "pane-close" (focused-pane))"#),
+    );
+    ed.execute_keymap_command("pane-split", Count::typed(1), false);
+    seed_ring(&mut ed, &["X"]);
+    paste(&mut ed);
+    ed
+}
+
+#[test]
+fn a_terminal_paste_into_a_pane_its_plugin_closes_is_dropped() {
+    let ed = pasted_into_a_pane_its_plugin_closes(|ed| ed.feed_paste("X"));
+    assert_eq!(text(&ed), "ab\n");
+    assert!(
+        has_error(&ed, "paste dropped: its pane closed"),
+        "{:?}",
+        error_log(&ed)
+    );
+}
+
+#[test]
+fn a_p_into_a_pane_its_plugin_closes_is_dropped() {
+    let ed = pasted_into_a_pane_its_plugin_closes(|ed| ed.feed_key(key('p')));
+    assert_eq!(text(&ed), "ab\n");
+    assert!(
+        has_error(&ed, "paste dropped: its pane closed"),
+        "{:?}",
+        error_log(&ed)
+    );
+}
+
+/// A script's paste whose plugin edits the buffer as it activates is
+/// dropped, and `paste-text!` raises for it.
+#[test]
+fn a_scripted_paste_whose_plugin_edits_its_buffer_raises() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:events '(on-paste))
+           (define-command! "probe" ""
+             (lambda (pane)
+               (with-handler
+                 (lambda (e) (log! 'warning (error-text e)))
+                 (paste-text! pane "X"))))"#,
+        &on_paste_plugin(
+            r#"(edit-text! (focused-pane) (list (hash 'start-char 0 'end-char 0 'text "E")))"#,
+        ),
+    );
+    ed.execute_keymap_command("probe", Count::typed(1), false);
+    assert_eq!(text(&ed), "Eab\n");
+    assert!(
+        log_entries(&ed)
+            .iter()
+            .any(|(severity, text)| *severity == Severity::Warning
+                && text.contains("paste dropped: its buffer changed")),
+        "{:?}",
+        log_entries(&ed)
+    );
+}
+
+/// A plugin body may register hooks, but the handlers of a paste it asks
+/// for may not.
+#[test]
+fn a_handler_of_a_paste_a_plugin_body_asks_for_cannot_register_a_hook() {
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:commands '("tp-go"))
+           (register-hook! 'on-paste
+             (lambda (pane pasted previous)
+               (register-hook! 'on-buffer-save (lambda (bid) #t))
+               "Y"))
+           (define-command! "probe" "" (lambda (pane) (call! "tp-go" pane)))"#,
+        r#"(paste-text! (focused-pane) "X")
+           (define-command! "tp-go" "" (lambda (pane) #t))"#,
+    );
+    ed.execute_keymap_command("probe", Count::typed(1), false);
+    assert!(
+        !ed.scripting.as_ref().unwrap().has_hook_handlers(
+            "on-buffer-save",
+            None,
+            Audience::Seeing(None)
+        ),
+        "{:?}",
+        error_log(&ed)
+    );
+    assert_eq!(text(&ed), "Xab\n");
+    assert!(
+        has_error(
+            &ed,
+            "register-hook!: the editor cannot be changed while an on-paste handler runs"
+        ),
+        "{:?}",
+        error_log(&ed)
+    );
+}
+
+#[test]
+fn a_handler_cannot_run_a_command_whose_plugin_has_not_loaded() {
+    use hume_scripting::attribution::{EntryId, PluginId};
+
+    let (mut ed, _dir) = setup_lazy_editor(
+        r#"(declare-plugin! "user/tp" #:commands '("tp-go"))
+           (register-hook! 'on-paste
+             (lambda (pane pasted previous) (call! "tp-go" pane) "Y"))"#,
+        r#"(define-command! "tp-go" "" (lambda (pane) #t))"#,
+    );
+    ed.feed_paste("X");
+    assert!(
+        matches!(
+            ed.scripting
+                .as_ref()
+                .unwrap()
+                .plugin_status(&EntryId::main(PluginId::User {
+                    user: "user".to_string(),
+                    repo: "tp".to_string(),
+                })),
+            Some(PluginStatus::Declared)
+        ),
+        "{:?}",
+        error_log(&ed)
+    );
+    assert_eq!(text(&ed), "Xab\n");
+    assert!(
+        has_error(&ed, "a plugin cannot load while an on-paste handler runs"),
+        "{:?}",
+        error_log(&ed)
+    );
+}

@@ -234,9 +234,7 @@ pub(crate) fn enter_command(ctx: &mut SteelCtx, name: String) -> SteelResult {
         return Ok(SteelVal::BoolV(false));
     };
     let proc = proc.steel_val();
-    let depth = ctx
-        .attribution
-        .enter_call(std::rc::Rc::clone(command.owner()));
+    let depth = ctx.host.enter_call(std::rc::Rc::clone(command.owner()));
     Ok(SteelVal::ListV(
         vec![proc, SteelVal::IntV(depth as isize)].into(),
     ))
@@ -248,7 +246,7 @@ pub(crate) fn enter_command(ctx: &mut SteelCtx, name: String) -> SteelResult {
 /// handler, and fails as a session's end fails it.
 pub(crate) fn leave_command(ctx: &mut SteelCtx, depth: SteelVal) -> SteelResult {
     let depth = super::args::usize_arg(depth, "depth")?;
-    let open = ctx.attribution.drain_above(depth);
+    let open = ctx.host.leave_frames_above(depth);
     if !open.is_empty() {
         let reason =
             generic_err("the plugin body was still running when the call! that started it ended");
@@ -368,6 +366,7 @@ pub(crate) fn command_callable(ctx: &mut SteelCtx, name: String) -> SteelResult 
 /// Only valid inside a `SteelBacked` command or hook invocation.
 pub(crate) fn set_register_prefix(ctx: &mut SteelCtx, name: String) -> SteelResult {
     let reg = super::registers::register_arg(&name)?;
+    ctx.check_write()?;
     ctx.current_register_prefix = Some(reg);
     Ok(SteelVal::Void)
 }

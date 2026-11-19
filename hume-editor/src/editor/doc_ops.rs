@@ -265,8 +265,8 @@ fn apply_grouped_from(
 /// Propagates the resulting CS (mapping current text → new text) to all other
 /// panes. `stores.session` must hold a Paste-kind session on
 /// `(pane_id, buf_id)`. The caller must have opened it via
-/// `commands::paste`'s `do_paste` first. Panics otherwise. `Err` when the
-/// text may not change ([`text_gate`]).
+/// `commands::paste`'s `land_register_paste` first. Panics otherwise. `Err`
+/// when the text may not change ([`text_gate`]).
 pub(in crate::editor) fn apply_doc_edit_regrouped(
     buffers: &mut BufferStore,
     stores: &mut PositionStores<'_>,
