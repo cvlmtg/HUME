@@ -4,14 +4,6 @@ use super::*;
 
 const URL: &str = "https://bar.baz";
 
-/// The plugin's editor on `a.md` holding `marked`'s text, its open
-/// announced, selected as `marked` marks it.
-fn editing(marked: &str) -> Preview {
-    let mut p = preview();
-    p.open_marked("a.md", marked);
-    p
-}
-
 fn pasted_over(marked: &str, pasted: &str) -> String {
     let mut p = editing(marked);
     seed_ring(&mut p.ed, &[pasted]);
@@ -104,12 +96,7 @@ fn a_url_over_text_ending_in_a_backslash_replaces_it() {
 
 #[test]
 fn a_url_in_another_language_pastes_as_is() {
-    let mut p = preview();
-    p.open("a.md", "x\n");
-    p.ed.settle();
-    p.open("a.txt", "foo\n");
-    p.ed.settle();
-    select_marked(&mut p.ed, "-[foo]>\n");
+    let mut p = editing_plain("-[foo]>\n");
     seed_ring(&mut p.ed, &[URL]);
     p.ed.feed_key(key('p'));
     assert_eq!(text(&p.ed), "https://bar.baz\n");

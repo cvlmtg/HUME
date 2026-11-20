@@ -162,20 +162,7 @@ fn signs(ed: &Editor, bid: BufferId) -> Vec<(usize, String, String)> {
 
 /// `line_backgrounds_for(SOURCE, bid)`, remapped to line numbers and sorted.
 fn line_bgs(ed: &Editor, bid: BufferId) -> Vec<(usize, String)> {
-    line_bgs_in(ed, bid, SOURCE)
-}
-
-fn line_bgs_in(ed: &Editor, bid: BufferId, source: &str) -> Vec<(usize, String)> {
-    let mut v: Vec<_> = ed
-        .state
-        .config
-        .decorations
-        .line_backgrounds_for(source, bid)
-        .iter()
-        .map(|e| (e.line.index(), scope_name(ed, e.scope).to_string()))
-        .collect();
-    v.sort_by_key(|(line, _)| *line);
-    v
+    line_background_pairs(ed, SOURCE, bid)
 }
 
 /// One virtual line remapped for assertions: `(line, before, text, scope, segments)`.
@@ -687,7 +674,7 @@ fn render_probe_expectations(
         "the new-side span covers its range of the live buffer"
     );
     assert_eq!(
-        line_bgs_in(ed, bid, OTHER_SOURCE),
+        line_background_pairs(ed, OTHER_SOURCE, bid),
         vec![(1, "diff.delta.line".to_string())]
     );
     assert!(
@@ -761,7 +748,7 @@ fn render_diff_with_no_hunks_clears_the_callers_source() {
     type_cmd(&mut ed, ":render-clear");
     assert!(vlines_in(&ed, bid, OTHER_SOURCE).is_empty());
     assert!(highlights_in(&ed, bid, OTHER_SOURCE).is_empty());
-    assert!(line_bgs_in(&ed, bid, OTHER_SOURCE).is_empty());
+    assert!(line_background_pairs(&ed, OTHER_SOURCE, bid).is_empty());
 }
 
 /// [`setup`] with `'inline` on, then the [`render_probe_source`] commands.
@@ -831,7 +818,7 @@ fn another_sources_drawing_hides_the_own_inline_diff_until_released() {
     assert_eq!(vlines(&ed, bid), own_vlines, "release draws it back");
     assert!(vlines_in(&ed, bid, OTHER_SOURCE).is_empty());
     assert!(highlights_in(&ed, bid, OTHER_SOURCE).is_empty());
-    assert!(line_bgs_in(&ed, bid, OTHER_SOURCE).is_empty());
+    assert!(line_background_pairs(&ed, OTHER_SOURCE, bid).is_empty());
 }
 
 #[test]

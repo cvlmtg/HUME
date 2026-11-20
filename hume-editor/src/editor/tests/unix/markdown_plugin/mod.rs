@@ -99,6 +99,27 @@ fn preview() -> Preview {
     preview_with(None, true)
 }
 
+/// The plugin's editor on `a.md` holding `marked`'s text, its open
+/// announced, selected as `marked` marks it.
+fn editing(marked: &str) -> Preview {
+    let mut p = preview();
+    p.open_marked("a.md", marked);
+    p
+}
+
+/// The plugin's editor, activated by a Markdown buffer, on `a.txt` holding
+/// `marked`'s text, selected as `marked` marks it.
+fn editing_plain(marked: &str) -> Preview {
+    let mut p = preview();
+    p.open("a.md", "x\n");
+    p.ed.settle();
+    let (text, _) = test_fixtures::testing::parse_state(marked);
+    p.open("a.txt", &text.to_string());
+    p.ed.settle();
+    select_marked(&mut p.ed, marked);
+    p
+}
+
 impl Preview {
     /// Draws every frame at `width` x `height` cells.
     fn sized(self, width: u16, height: u16) -> Self {
@@ -210,19 +231,9 @@ impl Preview {
         self.conceals(bid).iter().map(|c| c.start).collect()
     }
 
-    /// `(line, scope)` of each line background, sorted by line.
+    /// `(line, scope)` of each line background, sorted.
     fn bands(&self, bid: BufferId) -> Vec<(usize, String)> {
-        let mut v: Vec<_> = self
-            .ed
-            .state
-            .config
-            .decorations
-            .line_backgrounds_for(SOURCE, bid)
-            .iter()
-            .map(|e| (e.line.index(), scope_name(&self.ed, e.scope).to_owned()))
-            .collect();
-        v.sort();
-        v
+        line_background_pairs(&self.ed, SOURCE, bid)
     }
 
     /// `(start, end, scope)` of each extra highlight, sorted.

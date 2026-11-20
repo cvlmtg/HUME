@@ -37,9 +37,7 @@ fn typing_narrows_the_paths_to_the_typed_start() {
 fn typing_matches_a_path_fuzzily() {
     let mut p = inserting("a.md", "[x](-[\n]>");
     trigger_completion(&mut p.ed);
-    for ch in ['d', 'm'] {
-        p.ed.feed_key(key(ch));
-    }
+    p.ed.feed_keys([key('d'), key('m')]);
     p.ed.settle();
     assert_eq!(menu_labels(&p.ed), ["todo.md"]);
 }

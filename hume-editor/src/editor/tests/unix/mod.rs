@@ -165,6 +165,20 @@ fn extra_highlight_triples(
     v
 }
 
+/// `(line, scope)` of each line background `source` holds for `bid`, sorted.
+fn line_background_pairs(ed: &Editor, source: &str, bid: BufferId) -> Vec<(usize, String)> {
+    let mut v: Vec<_> = ed
+        .state
+        .config
+        .decorations
+        .line_backgrounds_for(source, bid)
+        .iter()
+        .map(|e| (e.line.index(), scope_name(ed, e.scope).to_owned()))
+        .collect();
+    v.sort();
+    v
+}
+
 /// Evaluates `init` as an `init.scm` under `dirs` and asserts the load of
 /// `core:<plugin>` is contained: `eval_init` returns `Ok`, the plugin is
 /// `Failed`, and an `Error` message names it and contains each of `expected`.

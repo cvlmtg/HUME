@@ -2,14 +2,6 @@
 
 use super::*;
 
-/// The plugin's editor on `a.md` holding `marked`'s text, selected as
-/// `marked` marks it.
-fn editing(marked: &str) -> Preview {
-    let mut p = preview();
-    p.open_marked("a.md", marked);
-    p
-}
-
 /// The state after Enter in Insert mode, entered before each selection.
 fn entered(marked: &str) -> String {
     let mut p = editing(marked);
@@ -216,12 +208,7 @@ fn two_cursors_in_one_list_each_start_an_item() {
 
 #[test]
 fn enter_and_o_in_another_language_break_the_line_as_usual() {
-    let mut p = preview();
-    p.open("a.md", "x\n");
-    p.ed.settle();
-    p.open("a.txt", "- foo\n");
-    p.ed.settle();
-    select_marked(&mut p.ed, "- foo-[\n]>");
+    let mut p = editing_plain("- foo-[\n]>");
     p.ed.feed_keys([key('i'), key_enter()]);
     assert_eq!(state(&p.ed), "- foo\n-[\n]>");
     p.ed.feed_keys([key_esc(), key('k'), key('o')]);
