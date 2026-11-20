@@ -15,6 +15,7 @@ HUME follows the select-then-act model: first select what you want to change, th
 - **Extensible to the core.** Fuzzy pickers, language server support, live git diff and the undo history graph are plugins written in Scheme, the same language as your config. They ship with the editor: enable them with one line, customize them, or rewrite them to your taste.
 - **Installs from inside the editor.** Language servers, tree-sitter grammars, themes and plugins: each is a single command away, no manual downloads.
 - **See it before you change it.** Selections come first, so every edit starts from something visible on screen. Common changes take fewer keys and cause fewer surprises.
+- **Markdown rendered as you write.** Headings, lists, tables and code blocks are drawn right in the buffer you edit. Small helpers handle the busywork: lists continue themselves, pasted URLs become links, and link paths complete.
 - **Paste that does the obvious thing.** `p` reaches for what you most likely meant, and a kill ring keeps your recent deletes and yanks within reach.
 - **Comfortable with real text.** Emoji, accents and other multi-byte characters count as single characters.
 - **Easy to pick up.** HUME ships with an interactive `:tutor` and the manual teaches you how to migrate from your editor.
