@@ -448,11 +448,10 @@ builtins! {
     plain "selection-start-char" buffers::selection_start_char(sel: SteelVal);
     plain "selection-end-char" buffers::selection_end_char(sel: SteelVal);
     plain "selection-primary?" buffers::selection_primary(sel: SteelVal);
-    // json-list, json-with and the two predicates are fixed-arity;
-    // json-ref, json-contains? and json-ref-or take a variadic path and are
+    // json-list and the two predicates are fixed-arity; json-ref,
+    // json-contains? and json-ref-or take a variadic path and are
     // `rest` entries below.
     plain "json-list" json::json_list(handle: SteelVal);
-    plain "json-with" json::json_with(handle: SteelVal, edits: SteelVal);
     plain "json-array?" json::is_json_array(val: SteelVal);
     plain "json-object?" json::is_json_object(val: SteelVal);
     // Context-free text transforms: no host/buffer needed.

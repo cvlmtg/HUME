@@ -5,7 +5,6 @@
 (require "lib/text.scm")
 (require "lib/links.scm")
 (require "lib/paths.scm")
-(require "lib/lsp-paths.scm")
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
@@ -64,10 +63,6 @@
   #:target 'buffer #:token-chars "/.-")
 
 (set-completion-triggers! "markdown" "markdown:paths" (list #\( #\/))
-
-(define-command! "lsp-completion/markdown"
-  "Given a pane, a language server and its completion answer, the answer with every link path the server wrote from its workspace root rewritten relative to the buffer's file. core:lsp calls it for each Markdown completion answer."
-  md-lsp-paths/rewrite)
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

@@ -32,11 +32,7 @@ pub(in crate::editor) struct CompletionItem {
     /// never changes the menu's layout while it is open.
     pub(super) resolution: Option<Resolution>,
     pub(super) sort_text: String,
-    /// The server's own `filterText`. Without one the item is filtered by
-    /// its label ([`Self::filter_text`]), which a server may spell without
-    /// the start of the text its edit range replaces (marksman's
-    /// `scripts/README.md` for `/scripts/README.md`).
-    pub(super) filter_text: Option<String>,
+    pub(super) filter_text: String,
     pub(super) insert_text: String,
     pub(super) text_edit: Option<lsp_types::TextEdit>,
     pub(super) additional_text_edits: Vec<lsp_types::TextEdit>,
@@ -75,10 +71,10 @@ impl CandidateKey {
 
 impl CompletionItem {
     /// Builds a non-LSP item: every minibuffer completer's constructor.
-    /// It is filtered and sorted by `label`: filtered because what the user
-    /// sees is what a `MatchKind::String` source matches against, sorted
-    /// because it's the only tiebreak key a `String` source's items need
-    /// (alphabetical). A `MatchKind::Delegated`
+    /// `filter_text`/`sort_text` are both always `label`: `filter_text`
+    /// because what the user sees is what a `MatchKind::String` source
+    /// matches against, `sort_text` because it's the only tiebreak key a
+    /// `String` source's items need (alphabetical). A `MatchKind::Delegated`
     /// source's own order is instead preserved by `rank`'s Delegated arm,
     /// which skips the sortText tiebreak key entirely rather than relying on
     /// every Delegated constructor leaving it empty by convention. Every
@@ -86,7 +82,7 @@ impl CompletionItem {
     /// `additionalTextEdits`, `raw` absent. Nothing here is a wire concern.
     pub(super) fn plain(label: String, insert_text: String) -> Self {
         Self {
-            filter_text: None,
+            filter_text: label.clone(),
             sort_text: label.clone(),
             label,
             insert_text,
@@ -145,10 +141,7 @@ impl CompletionItem {
             .and_then(|f| lsp_types::InsertTextFormat::deserialize(f).ok())
             == Some(lsp_types::InsertTextFormat::SNIPPET);
         let sort_text = string_or_label("sortText");
-        let filter_text = v
-            .get("filterText")
-            .and_then(|x| x.as_str())
-            .map(str::to_string);
+        let filter_text = string_or_label("filterText");
         let insert_text = string_or_label("insertText");
         let insert_text = if is_snippet {
             strip_snippet(&insert_text)
@@ -280,20 +273,6 @@ impl CompletionItem {
     /// (`Buffer`-target only).
     pub(in crate::editor) fn insert_text(&self) -> &str {
         &self.insert_text
-    }
-
-    /// What accepting this item writes: its `textEdit`'s new text over the
-    /// edit range, else `insert_text` over the source's token.
-    pub(super) fn inserted_text(&self) -> &str {
-        self.text_edit
-            .as_ref()
-            .map_or(&self.insert_text, |te| &te.new_text)
-    }
-
-    /// The text the menu matches what was typed against: the server's
-    /// `filterText`, else the label.
-    pub(super) fn filter_text(&self) -> &str {
-        self.filter_text.as_deref().unwrap_or(&self.label)
     }
 
     /// The item's own documentation, else a resolve's.

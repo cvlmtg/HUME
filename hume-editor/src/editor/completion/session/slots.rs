@@ -293,30 +293,17 @@ fn score_slot<A: Ord + Copy>(
         {
             continue;
         }
-        let score_against = |matcher: &mut FuzzyMatcher, filter: &str, pattern: &FuzzyPattern| {
-            match match_kind {
-                MatchKind::Fuzzy => matcher.score(pattern, item.filter_text()),
-                MatchKind::String { case_sensitive } => {
-                    super::prefix_matches(item.filter_text(), filter, case_sensitive).then_some(0)
-                }
-                // The source already produced a finished, ordered result:
-                // never excluded here; the rank key's tiebreak chain (skipping
-                // sortText for a `Delegated` slot; see `rank_with`'s own sort
-                // key) preserves that order via the final index-ascending key.
-                MatchKind::Delegated => Some(0),
+        let score = match match_kind {
+            MatchKind::Fuzzy => ctx.matcher.score(pattern, &item.filter_text),
+            MatchKind::String { case_sensitive } => {
+                super::prefix_matches(&item.filter_text, filter, case_sensitive).then_some(0)
             }
+            // The source already produced a finished, ordered result:
+            // never excluded here; the rank key's tiebreak chain (skipping
+            // sortText for a `Delegated` slot; see `rank_with`'s own sort
+            // key) preserves that order via the final index-ascending key.
+            MatchKind::Delegated => Some(0),
         };
-        let mut score = score_against(ctx.matcher, filter, pattern);
-        // A label is spelled either from the edit range's start (`foo.bar`)
-        // or from the item's own word (`scripts/README.md` over
-        // `/scripts`), so with no `filterText` it may match either text.
-        if item.token_group.is_some()
-            && item.filter_text.is_none()
-            && let Some((word, word_pattern, word_start)) = &base
-            && word_start > item_anchor
-        {
-            score = score.max(score_against(ctx.matcher, word, word_pattern));
-        }
         if let Some(score) = score {
             ctx.rank_scratch.push((score, priority, s, i as u32));
             anchor = Some(anchor.map_or(*item_anchor, |cur| cur.min(*item_anchor)));
@@ -687,7 +674,7 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
         &mut self,
         sources: &SourceRegistry,
         hidden: Option<&rustc_hash::FxHashSet<(u32, u32)>>,
-        mut token_of: impl FnMut(Id, &Invocation<S>) -> Option<SlotTokens<A>>,
+        mut token_of: impl FnMut(&Invocation<S>) -> Option<SlotTokens<A>>,
     ) -> Option<A> {
         let Self {
             slots,
@@ -705,7 +692,7 @@ impl<Id: SourceId, S> SlotSet<Id, S> {
         let mut anchor: Option<A> = None;
         for (s, slot) in slots.iter().enumerate() {
             let Some(inv) = &slot.shown else { continue };
-            let Some(tokens) = token_of(slot.source, inv) else {
+            let Some(tokens) = token_of(inv) else {
                 continue;
             };
             let (_, match_kind, priority) = slot.source.facts(sources);

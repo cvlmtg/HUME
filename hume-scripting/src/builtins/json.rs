@@ -1,8 +1,7 @@
 //! `(json-parse str)` (general-purpose JSON string decoding for Steel) and
-//! the `JsonHandle` builtins every handle-shaped crossing
-//! (`hume-scripting/src/json.rs`) is read and edited through: `json-ref`,
-//! `json-contains?`, `json-list`, `json-array?`, `json-object?` and
-//! `json-with`.
+//! the `JsonHandle` accessor builtins (`json-ref`, `json-contains?`,
+//! `json-list`, `json-array?`, `json-object?`) every handle-shaped crossing
+//! (`hume-scripting/src/json.rs`) reads through.
 //!
 //! `json-parse` is not LSP-specific: any plugin data pipeline that embeds a
 //! JSON blob as a Scheme string literal (rather than reconstructing the same
@@ -18,7 +17,7 @@ use steel::rvals::SteelVal;
 use crate::json::{JsonHandle, Seg, WireOrigin, downcast_json_handle, to_steel_handle};
 
 use super::SteelResult;
-use super::args::{pair_fields, string_arg};
+use super::args::string_arg;
 use super::errors::generic_err;
 
 /// `(json-parse str)` -> the decoded value, via the same handle funnel
@@ -119,37 +118,6 @@ pub(crate) fn json_list(handle: SteelVal) -> SteelResult {
     let handle = handle_arg(&handle)?;
     let items = handle.list_items().map_err(generic_err)?;
     Ok(SteelVal::ListV(items.into()))
-}
-
-/// `(json-with j edits)`: a copy of handle `j` with each `(path . string)`
-/// of the list `edits` written, keeping `j`'s origin, so an edited server
-/// answer still decodes its positions in that server's encoding. Raises on
-/// an entry that is not a pair of a path list and a string, and where
-/// `JsonHandle::with_strings` refuses the place.
-pub(crate) fn json_with(handle: SteelVal, edits: SteelVal) -> SteelResult {
-    let handle = handle_arg(&handle)?;
-    let SteelVal::ListV(entries) = edits else {
-        steel::stop!(TypeMismatch => "edits: expected a list of (path . string) pairs");
-    };
-    let edits = entries
-        .into_iter()
-        .map(|entry| {
-            let (path, text) = pair_fields(entry, "edits", "a (path . string) pair")?;
-            let SteelVal::ListV(segs) = path else {
-                steel::stop!(TypeMismatch => "edits: a path must be a list of keys and indices");
-            };
-            let path = path_arg(&segs.into_iter().collect::<Vec<_>>())?;
-            let SteelVal::StringV(text) = text else {
-                steel::stop!(TypeMismatch => "edits: the value at {} must be a string",
-                    crate::json::path_repr(&path));
-            };
-            Ok((path, text.to_string()))
-        })
-        .collect::<Result<Vec<_>, steel::rerrs::SteelErr>>()?;
-    Ok(handle
-        .with_strings(&edits)
-        .map_err(generic_err)?
-        .into_steel_val())
 }
 
 /// `(json-array? v)`: total predicate, `#f` for any non-handle value.

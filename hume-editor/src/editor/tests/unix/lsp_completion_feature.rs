@@ -992,38 +992,6 @@ fn snippet_item_lands_as_stripped_plain_text() {
     );
 }
 
-/// marksman's shape for a link path: no `filterText`, a label without the
-/// `/` its edit range starts with.
-#[test]
-fn a_label_without_its_edit_ranges_leading_slash_is_offered() {
-    let tmp = tempfile::tempdir().unwrap();
-    let (rig, _guard) = core_lsp_rig(
-        tmp.path(),
-        "[x](/scrip-[)]>\n",
-        serde_json::json!({ "capabilities": full_completion_caps() }),
-        |backend, _sid| {
-            backend.respond_to(
-                "textDocument/completion",
-                serde_json::json!({"isIncomplete": false, "items": [{
-                    "label": "scripts/README.md",
-                    "textEdit": {
-                        "range": {"start": {"line": 0, "character": 4},
-                                  "end": {"line": 0, "character": 10}},
-                        "newText": "/scripts/README.md"
-                    }
-                }]}),
-            );
-        },
-    );
-    let mut ed = rig.ed;
-    ed.feed_key(key('i'));
-    ed.settle();
-    ed.feed_key(key_ctrl(' '));
-    settle(&mut ed);
-
-    assert_eq!(menu_labels(&ed), vec!["scripts/README.md"]);
-}
-
 // ── Selection-time documentation resolve ─────────────────────────────────────
 
 /// The selected candidate's documentation text, as the menu's open session

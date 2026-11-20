@@ -44,23 +44,6 @@ fn registry(sources: &[(&str, i64)]) -> SourceRegistry {
     reg
 }
 
-/// A word source, `word`, beside a path-shaped one, `dir`, whose token also
-/// takes `.` and `/`.
-fn word_and_dir_registry() -> SourceRegistry {
-    let mut reg = registry(&[("word", 0)]);
-    reg.register_buffer(BufferSourceEntry {
-        name: "dir".into(),
-        match_kind: MatchKind::Fuzzy,
-        priority: 0,
-        proc: hume_scripting::Callback::for_test(SteelVal::Void),
-        resolve: false,
-        cancel: Some(hume_scripting::Callback::for_test(SteelVal::Void)),
-        token_chars: "./".into(),
-        visibility: Default::default(),
-    });
-    reg
-}
-
 fn id_of(reg: &SourceRegistry, name: &str) -> BufferSourceId {
     reg.buffer_id_of(name).expect("registered")
 }
@@ -127,7 +110,6 @@ fn live(text: &BufferText, head: usize) -> Option<LiveDoc<'_>> {
     Some(LiveDoc {
         text,
         head: CharOffset::new(head),
-        word_chars: "",
     })
 }
 
@@ -178,7 +160,7 @@ fn change(
 /// text: the path-shaped one sees "./fo", the word one "fo".
 #[test]
 fn each_slot_ranks_against_its_own_token() {
-    let reg = word_and_dir_registry();
+    let reg = registry(&[("word", 0), ("dir", 0)]);
     let (mut session, text) = buffer_session("./fo\n");
     invoke_and_answer(
         &mut session,
@@ -211,7 +193,7 @@ fn each_slot_ranks_against_its_own_token() {
 /// contribute.
 #[test]
 fn the_menu_anchors_at_the_leftmost_ranked_slots_token_start() {
-    let reg = word_and_dir_registry();
+    let reg = registry(&[("word", 0), ("dir", 0)]);
     let (mut session, text) = buffer_session("./fo\n");
     invoke_and_answer(
         &mut session,
@@ -285,38 +267,6 @@ fn a_higher_priority_duplicate_hides_the_lower_priority_plain_item() {
     );
 }
 
-/// A higher-priority item that matches the same text but inserts other text
-/// is not a duplicate: hiding the plain item would lose what it inserts.
-#[test]
-fn an_item_inserting_other_text_does_not_hide_a_plain_item() {
-    let reg = registry(&[("lo", 0), ("hi", 10)]);
-    let (mut session, text) = buffer_session("\n");
-    invoke_and_answer(
-        &mut session,
-        &reg,
-        id_of(&reg, "lo"),
-        &text,
-        0,
-        &["README.md"],
-    );
-    let id = buffer_invoke(&mut session, id_of(&reg, "hi"), &text, 0);
-    assert!(session.contribute(
-        &reg,
-        id,
-        vec![item_with_edits(
-            "README.md",
-            Some(edit_over((0, 0), (0, 0), "/README.md")),
-            Vec::new(),
-        )],
-        false,
-        AnswerEnd::Final,
-    ));
-    session.rank(&reg, live(&text, 0));
-    let mut sources = ranked_sources(&session, &reg);
-    sources.sort();
-    assert_eq!(sources, vec!["hi", "lo"]);
-}
-
 #[test]
 fn equal_priority_duplicates_are_not_deduplicated() {
     let reg = registry(&[("a", 0), ("b", 0)]);
@@ -386,7 +336,7 @@ fn item_with_edits(
         documentation: None,
         resolution: None,
         sort_text: label.into(),
-        filter_text: None,
+        filter_text: label.into(),
         insert_text: label.into(),
         text_edit,
         additional_text_edits,
@@ -518,149 +468,6 @@ fn an_item_whose_edit_range_is_reversed_takes_no_token_start_from_it() {
         session.menu_anchor(&text).map(ClusterStart::offset),
         Some(CharOffset::new(6))
     );
-}
-
-/// A `Fuzzy` source over "[x](/scrip" whose token is the word "scrip",
-/// answering `label` with an edit range over "/scrip" and `filter_text`
-/// as the server's own `filterText`.
-fn slash_session(
-    label: &str,
-    filter_text: Option<&str>,
-) -> (BufferSession, SourceRegistry, BufferText) {
-    let reg = registry(&[("s", 0)]);
-    let (mut session, text) = buffer_session("[x](/scrip\n");
-    let mut answer = item_with_edits(label, Some(edit_over((0, 4), (0, 10), "/x")), Vec::new());
-    answer.filter_text = filter_text.map(str::to_string);
-    let id = session.invoke(
-        id_of(&reg, "s"),
-        Invocation::buffer(text.rope().clone(), CharOffset::new(5)),
-    );
-    assert!(session.contribute(&reg, id, vec![answer], false, AnswerEnd::Final));
-    (session, reg, text)
-}
-
-/// A label may leave out the start of the text the edit replaces: with no
-/// `filterText`, the label also matches the source's own word.
-#[test]
-fn a_label_without_the_edit_ranges_leading_slash_still_matches() {
-    let (mut session, reg, text) = slash_session("scripts/README.md", None);
-    session.rank(&reg, live(&text, 10));
-    assert_eq!(ranked_labels(&session, &reg), vec!["scripts/README.md"]);
-    assert_eq!(
-        session.menu_anchor(&text).map(ClusterStart::offset),
-        Some(CharOffset::new(4)),
-        "the menu anchors where accepting the item starts writing"
-    );
-}
-
-/// A `filterText` the server sent is what it says the edit range's text
-/// should match.
-#[test]
-fn a_servers_filter_text_is_matched_from_its_edit_range_start() {
-    let (mut session, reg, text) = slash_session("x", Some("scripts/README.md"));
-    session.rank(&reg, live(&text, 10));
-    assert!(ranked_labels(&session, &reg).is_empty());
-}
-
-// ── Answers kept past the source's word ──────────────────────────────────────
-
-/// A `Fuzzy` source over "[x]()" with the cursor inside the parentheses,
-/// answering a path whose edit range starts there and a plain `READ`.
-fn link_session() -> (BufferSession, SourceRegistry, BufferText) {
-    let reg = registry(&[("s", 0)]);
-    let (mut session, text) = buffer_session("[x]()\n");
-    let mut path = item_with_edits(
-        "../../README.md",
-        Some(edit_over((0, 4), (0, 4), "../../README.md")),
-        Vec::new(),
-    );
-    path.filter_text = Some("../../README.md".into());
-    let id = session.invoke(
-        id_of(&reg, "s"),
-        Invocation::buffer(text.rope().clone(), CharOffset::new(4)),
-    );
-    assert!(session.contribute(&reg, id, vec![path, item("READ")], false, AnswerEnd::Final));
-    (session, reg, text)
-}
-
-/// Types `typed` at `at`, one character per edit, as Insert mode does.
-fn type_at(
-    session: &mut BufferSession,
-    reg: &SourceRegistry,
-    mut text: BufferText,
-    at: usize,
-    typed: &str,
-) -> BufferText {
-    for (i, ch) in typed.chars().enumerate() {
-        let pos = at + i;
-        (text, _) = change(session, reg, text, (pos, pos, &ch.to_string()), pos + 1);
-    }
-    text
-}
-
-#[test]
-fn a_ranged_item_starting_with_what_was_typed_keeps_the_answer() {
-    let (mut session, reg, text) = link_session();
-    let text = type_at(&mut session, &reg, text, 4, ".");
-    session.rank(&reg, live(&text, 5));
-    assert_eq!(
-        ranked_labels(&session, &reg),
-        vec!["../../README.md"],
-        "the plain item's word broke at the `.`"
-    );
-}
-
-#[test]
-fn a_path_typed_past_the_word_keeps_the_answer() {
-    let (mut session, reg, text) = link_session();
-    let text = type_at(&mut session, &reg, text, 4, "../../RE");
-    session.rank(&reg, live(&text, 12));
-    assert_eq!(ranked_labels(&session, &reg), vec!["../../README.md"]);
-}
-
-#[test]
-fn a_space_no_item_starts_with_drops_the_answer() {
-    let (mut session, reg, text) = link_session();
-    type_at(&mut session, &reg, text, 4, "../ ");
-    assert!(session.is_spent());
-}
-
-#[test]
-fn a_closing_parenthesis_no_item_starts_with_drops_the_answer() {
-    let (mut session, reg, text) = link_session();
-    type_at(&mut session, &reg, text, 4, "..)");
-    assert!(session.is_spent());
-}
-
-/// Backspacing over the `(` leaves the link: the text from where the item
-/// starts is still `.`, but that start has lost what came before it.
-#[test]
-fn deleting_the_character_before_an_items_start_drops_the_answer() {
-    let (mut session, reg, text) = link_session();
-    let text = type_at(&mut session, &reg, text, 4, ".");
-    change(&mut session, &reg, text, (3, 4, ""), 3);
-    assert!(session.is_spent());
-}
-
-/// rust-analyzer's items start at the word and are filtered by name, so
-/// typing `(` after one still ends the answer.
-#[test]
-fn an_item_starting_at_the_word_is_dropped_past_it() {
-    let reg = registry(&[("s", 0)]);
-    let (mut session, text) = buffer_session("foo\n");
-    let mut name = item_with_edits(
-        "foobar",
-        Some(edit_over((0, 0), (0, 3), "foobar")),
-        Vec::new(),
-    );
-    name.filter_text = Some("foobar".into());
-    let id = session.invoke(
-        id_of(&reg, "s"),
-        Invocation::buffer(text.rope().clone(), CharOffset::new(0)),
-    );
-    assert!(session.contribute(&reg, id, vec![name], false, AnswerEnd::Final));
-    type_at(&mut session, &reg, text, 3, "(");
-    assert!(session.is_spent());
 }
 
 #[test]

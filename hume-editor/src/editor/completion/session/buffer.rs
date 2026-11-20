@@ -46,9 +46,8 @@ pub(in crate::editor) struct BufferSpan {
     /// The distinct edit-range starts of this answer's items, ascending and
     /// carried like `start`; an item's `token_group` indexes it. The server
     /// says where an item's token starts, which need not be where the
-    /// source's own token rule puts `start`. A start is `None` once the
-    /// character before it was deleted, as `crossed` records for `start`.
-    starts: Vec<Option<CharOffset>>,
+    /// source's own token rule puts `start`.
+    starts: Vec<CharOffset>,
 }
 
 impl BufferSpan {
@@ -81,7 +80,7 @@ impl BufferSpan {
                 .map(|g| g as u32);
         }
         doc.cs_since.map_positions(&mut distinct, Assoc::Before);
-        *starts = distinct.into_iter().map(Some).collect();
+        *starts = distinct;
     }
 }
 
@@ -127,17 +126,7 @@ impl Invocation<BufferSpan> {
             *crossed = true;
         }
         *start = cursor.map_anchor(*start, Assoc::Before).pos;
-        // The same check per item start, through one cursor: the starts
-        // ascend, so their `[s-1, s]` pairs never step backward.
-        let mut cursor = PosMapCursor::new(cs.ops());
-        for item_start in starts.iter_mut() {
-            let Some(s) = *item_start else { continue };
-            let crossed = s > CharOffset::new(0)
-                && cursor
-                    .map_anchor(s.retreat(1), Assoc::Before)
-                    .anchor_deleted;
-            *item_start = (!crossed).then(|| cursor.map_anchor(s, Assoc::Before).pos);
-        }
+        cs.map_positions(starts, Assoc::Before);
         // `compose` takes `self` by value; swap the accumulated changeset
         // out (rather than cloning its whole op list, including every
         // typed-text `Insert` op, just to feed it in) and compose in place.
@@ -145,10 +134,10 @@ impl Invocation<BufferSpan> {
         doc.cs_since = prev.compose(cs.clone());
     }
 
-    /// Whether the source's own token `start..head` is still the one this
-    /// invocation answered for: not crossed, the cursor still at or past its
-    /// start, and every character between them in the source's token class.
-    fn word_holds(&self, text: &BufferText, head: CharOffset, chars: WordChars<'_>) -> bool {
+    /// Whether the token `start..head` is still the one this invocation
+    /// answered for: not crossed, the cursor still at or past its start, and
+    /// every character between them in the source's token class.
+    fn holds(&self, text: &BufferText, head: CharOffset, chars: WordChars<'_>) -> bool {
         let BufferSpan { start, crossed, .. } = &self.span;
         !*crossed
             && *start <= head
@@ -157,37 +146,13 @@ impl Invocation<BufferSpan> {
                 .chars()
                 .all(|c| chars.classify(c) == CharClass::Word)
     }
-
-    /// Whether an item with its own edit range still has a filter text that
-    /// starts with what was typed from that range's start, ignoring ASCII
-    /// case: the server's word, which may run past the source's (a path's
-    /// `.` and `/`).
-    fn items_hold(&self, text: &BufferText, head: CharOffset) -> bool {
-        let typed: Vec<Option<String>> = self
-            .span
-            .starts
-            .iter()
-            .map(|&start| {
-                start
-                    .filter(|&s| s <= head)
-                    .map(|s| token_text(text, s, head))
-            })
-            .collect();
-        self.items().iter().any(|item| {
-            item.token_group
-                .and_then(|g| typed.get(g as usize)?.as_deref())
-                .is_some_and(|typed| super::prefix_matches(item.filter_text(), typed, false))
-        })
-    }
 }
 
-/// The document a `Buffer` session's tokens are read against when ranking:
-/// the live text, the primary cursor's head, and the buffer's `word-chars`
-/// each source's token class is built over.
+/// The document a `Buffer` session's tokens are read against when ranking
+/// the live text and the primary cursor's head.
 pub(in crate::editor) struct LiveDoc<'a> {
     pub(in crate::editor) text: &'a BufferText,
     pub(in crate::editor) head: CharOffset,
-    pub(in crate::editor) word_chars: &'a str,
 }
 
 /// What [`BufferSession::reconcile`] found.
@@ -230,10 +195,10 @@ pub(in crate::editor) struct BufferSession {
     menu_anchor: Option<Tracked<ClusterStart>>,
     /// `(slot, item)` pairs a lower-priority slot's plain item (see
     /// [`CompletionItem::is_plain`]) is hidden because a strictly-higher-
-    /// priority slot already shows an item with the same `filter_text` and
-    /// [`CompletionItem::inserted_text`], rebuilt by [`Self::recompute_dedup`]
-    /// only when the shown item *set* changes (an answer lands, a slot is
-    /// dropped), not every keystroke; [`Self::rank`] only ever reads it.
+    /// priority slot already shows an item with the same `filter_text`,
+    /// rebuilt by [`Self::recompute_dedup`] only when the shown item *set*
+    /// changes (an answer lands, a slot is dropped), not every keystroke;
+    /// [`Self::rank`] only ever reads it.
     dedup_hidden: rustc_hash::FxHashSet<(u32, u32)>,
     /// The selected item [`Self::doc_request`] last considered. It is not
     /// considered again until the selection leaves it: a request that failed
@@ -419,7 +384,7 @@ impl BufferSession {
         // so `recompute_dedup` runs only then.
         let dropped = self.core.drop_shown_where(|source, inv| {
             let token_chars = sources.buffer_get(source).token_chars_over(word_chars);
-            !inv.word_holds(text, head, WordChars::new(&token_chars)) && !inv.items_hold(text, head)
+            !inv.holds(text, head, WordChars::new(&token_chars))
         });
         if dropped {
             self.recompute_dedup(sources);
@@ -436,10 +401,9 @@ impl BufferSession {
     /// Rebuilds [`Self::dedup_hidden`] from the current shown items: a
     /// plain item ([`CompletionItem::is_plain`]) is hidden when a strictly-
     /// higher-priority slot's shown answer has an item with the same
-    /// `filter_text` that inserts the same text. An item carrying edits is
-    /// never hidden: accepting it does something a duplicate-*looking* plain
-    /// item from another source wouldn't, so it stays regardless of what else
-    /// duplicates its label.
+    /// `filter_text`. An item carrying edits is never hidden: accepting it
+    /// does something a duplicate-*looking* plain item from another source
+    /// wouldn't, so it stays regardless of what else duplicates its label.
     /// Priority is a static, per-source fact, so this only ever needs to
     /// run when the shown item *set* changes ([`Self::contribute`] landing
     /// an answer, [`Self::reconcile`] dropping a slot), not on every
@@ -448,21 +412,20 @@ impl BufferSession {
         self.dedup_hidden.clear();
         let slots = self.core.slots_mut();
         // The highest priority among every shown item (plain or not, any
-        // slot) carrying a given filter and inserted text: O(total items), not
-        // the O(items²) an all-pairs scan across slots costs (a 20k-word
+        // slot) carrying a given `filter_text`: O(total items), not the
+        // O(items²) an all-pairs scan across slots costs (a 20k-word
         // buffer-words slot against a 1k-item LSP slot is ~20M string
         // compares per landed answer with the naive version). A slot's own
         // priority never exceeds its own contribution to this map, so
         // below, a strict `>` against it already excludes comparing a slot
         // against itself; no separate index check needed.
-        let mut max_priority: rustc_hash::FxHashMap<(&str, &str), i64> =
-            rustc_hash::FxHashMap::default();
+        let mut max_priority: rustc_hash::FxHashMap<&str, i64> = rustc_hash::FxHashMap::default();
         for slot in slots.iter() {
             let Some(inv) = &slot.shown else { continue };
             let priority = sources.buffer_get(slot.source).priority;
             for item in inv.items() {
                 max_priority
-                    .entry((item.filter_text(), item.inserted_text()))
+                    .entry(item.filter_text.as_str())
                     .and_modify(|p| *p = (*p).max(priority))
                     .or_insert(priority);
             }
@@ -475,7 +438,7 @@ impl BufferSession {
                     continue;
                 }
                 let outranked = max_priority
-                    .get(&(item.filter_text(), item.inserted_text()))
+                    .get(item.filter_text.as_str())
                     .is_some_and(|&p| p > priority);
                 if outranked {
                     self.dedup_hidden.insert((s as u32, i as u32));
@@ -495,7 +458,7 @@ impl BufferSession {
     pub(in crate::editor) fn rank(&mut self, sources: &SourceRegistry, live: Option<LiveDoc<'_>>) {
         let anchor = self
             .core
-            .rank_with(sources, Some(&self.dedup_hidden), |source, inv| {
+            .rank_with(sources, Some(&self.dedup_hidden), |inv| {
                 let doc = live.as_ref()?;
                 // An answer that landed since the last reconcile may start
                 // after the cursor; its items are skipped rather than
@@ -503,18 +466,9 @@ impl BufferSession {
                 let token = |start: CharOffset| {
                     (start <= doc.head).then(|| (token_text(doc.text, start, doc.head), start))
                 };
-                // An answer kept only by its ranged items has no word of its
-                // own left for the other items to match.
-                let token_chars = sources.buffer_get(source).token_chars_over(doc.word_chars);
-                let word_holds = inv.word_holds(doc.text, doc.head, WordChars::new(&token_chars));
                 Some(SlotTokens {
-                    base: token(inv.span.start).filter(|_| word_holds),
-                    groups: inv
-                        .span
-                        .starts
-                        .iter()
-                        .map(|&start| start.and_then(token))
-                        .collect(),
+                    base: token(inv.span.start),
+                    groups: inv.span.starts.iter().map(|&start| token(start)).collect(),
                 })
             });
         self.menu_anchor = anchor

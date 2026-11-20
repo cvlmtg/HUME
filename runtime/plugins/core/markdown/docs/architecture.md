@@ -61,7 +61,7 @@
 
 | File | Role |
 |---|---|
-| `manifest.scm` | Lazy activation on the language and the four commands |
+| `manifest.scm` | Lazy activation on the language and the three commands |
 | `plugin.scm` | Config, the hooks, the commands, the `on-paste` handler and the `markdown:paths` completion source |
 | `lib/state.scm` | Per-buffer state keyed by `(buffer-key pane)` (preview on or off, the generation of the last parsed tree), the grammars warned about, and `md-preview/box-insert!` |
 | `lib/queries.scm` | The block and inline queries, capture names and accessors, grouping by name, the conceal constructor and order |
@@ -73,7 +73,6 @@
 | `lib/text.scm` | `md-preview/elements` over a popup's text and the result `format-text/markdown` returns |
 | `lib/links.scm` | `md-links/paste-link`, the `on-paste` handler's text: see [`links.md`](links.md#link-paste) |
 | `lib/paths.scm` | `md-paths/items`, the completion source's answer: see [`links.md`](links.md#link-paths) |
-| `lib/lsp-paths.scm` | `md-lsp-paths/rewrite`, a language server's completion response with its paths made relative: see [`links.md`](links.md#language-server-paths) |
 
 `blocks.scm`, `table.scm` and `inline.scm` call no editor function: lines come in as
 procedures.

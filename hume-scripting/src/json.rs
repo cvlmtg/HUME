@@ -243,20 +243,6 @@ fn walk<'v, 's>(
     Ok(current)
 }
 
-/// [`walk`] over a mutable tree: the value at `path`, `None` if a step
-/// does not resolve.
-fn walk_mut<'v>(
-    start: &'v mut serde_json::Value,
-    path: &[Seg],
-) -> Option<&'v mut serde_json::Value> {
-    path.iter()
-        .try_fold(start, |current, seg| match (current, seg) {
-            (serde_json::Value::Object(map), Seg::Key(k)) => map.get_mut(k.as_ref()),
-            (serde_json::Value::Array(arr), Seg::Index(i)) => arr.get_mut(*i),
-            _ => None,
-        })
-}
-
 /// The wrong-kind/missing-key/out-of-range text `resolve` raises, given the
 /// value a failed step started from, the segment that failed, and the path
 /// so far. Re-matches `(current, seg)` to classify *why* [`step`] returned
@@ -289,7 +275,7 @@ fn miss_reason(current: &serde_json::Value, seg: &Seg, so_far: &[Seg]) -> String
 
 /// Renders a path the way `json-ref`'s error text names it: `$` for the
 /// root, then `.key` / `[index]` per step, e.g. `$.items[2].label`.
-pub(crate) fn path_repr(segs: &[Seg]) -> String {
+fn path_repr(segs: &[Seg]) -> String {
     use std::fmt::Write;
 
     let mut s = String::from("$");
@@ -491,43 +477,6 @@ impl JsonHandle {
         Some(JsonHandle {
             root: Arc::clone(&self.root),
             path: self.path.iter().chain(path.iter()).cloned().collect(),
-            origin: self.origin,
-        })
-    }
-
-    /// `(json-with j edits)`'s implementation: a copy of this handle's value
-    /// with each `(path, text)` edit's string written at `path`, rooted
-    /// afresh and keeping this handle's origin. Only a string is written,
-    /// and only over a string or a missing key of an object: a string holds
-    /// no wire position, so every position in the copy is still counted in
-    /// the origin's encoding. `Err` names the first edit's path that is not
-    /// such a place.
-    pub(crate) fn with_strings(&self, edits: &[(Vec<Seg>, String)]) -> Result<JsonHandle, String> {
-        let mut value = self.value().clone();
-        for (path, text) in edits {
-            let full = || -> Vec<Seg> { self.path.iter().chain(path).cloned().collect() };
-            let (Seg::Key(key), parent) = path
-                .split_last()
-                .ok_or_else(|| "expected at least one path segment".to_owned())?
-            else {
-                return Err(format!(
-                    "expected a key, not an index, at {}",
-                    path_repr(&full())
-                ));
-            };
-            let target = walk_mut(&mut value, parent)
-                .and_then(serde_json::Value::as_object_mut)
-                .ok_or_else(|| format!("no object to write {} into", path_repr(&full())))?;
-            match target.get(key.as_ref()) {
-                None | Some(serde_json::Value::String(_)) => {
-                    target.insert(key.to_string(), serde_json::Value::String(text.clone()));
-                }
-                Some(_) => return Err(format!("{} is not a string", path_repr(&full()))),
-            }
-        }
-        Ok(JsonHandle {
-            root: Arc::new(value),
-            path: Arc::from(Vec::new()),
             origin: self.origin,
         })
     }

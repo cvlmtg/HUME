@@ -82,7 +82,7 @@ fn a_string_kind_is_dropped_not_faked_as_a_default() {
     assert_eq!(item.kind, None);
     // Undefaulted text fields fall back to `label`.
     assert_eq!(item.sort_text, "foo");
-    assert_eq!(item.filter_text(), "foo");
+    assert_eq!(item.filter_text, "foo");
     assert_eq!(item.insert_text, "foo");
 }
 
@@ -122,7 +122,7 @@ fn a_bare_string_decodes_as_a_plain_item_with_that_label() {
     let item = from_json(v).expect("a bare string is a well-formed item");
     assert_eq!(&*item.label, "foobar");
     assert_eq!(item.sort_text, "foobar");
-    assert_eq!(item.filter_text(), "foobar");
+    assert_eq!(item.filter_text, "foobar");
     assert_eq!(item.insert_text, "foobar");
     assert_eq!(item.kind, None);
     assert!(
