@@ -39,6 +39,8 @@ In a list, `Enter` starts the next item: a bullet gets the same bullet, a number
 
 `Enter` on an item with nothing after its marker ends the list instead: the marker goes, and the items after it are renumbered to close the gap. On an empty quote line, it ends the quote.
 
+With a Markdown [language server](../lsp.md#install-a-server) installed (`:lsp-install markdown` installs marksman), the symbol keys jump between sections. `z s` lists the file's headings to pick one, and `z S` searches the headings of every Markdown file in the project as you type. marksman reads the files you haven't opened only when the project's folder is a git repository or holds a `.marksman.toml` file.
+
 The preview draws ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block as written.
 
 The colors and bands come from the [theme](../themes.md#scopes-hume-adds); to change them without editing it, [style the scopes from your config](../themes.md#styling-scopes-from-your-config).
