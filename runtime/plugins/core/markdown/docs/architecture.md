@@ -26,8 +26,8 @@
   and the popup wraps the drawn text, so a table wider than the box breaks its grid.
 - **Link paste:** any paste that replaces selected text with a URL or an existing path makes
   a link, whichever key or command pasted it. The kill ring keeps the bare text.
-- **Link paths** complete relative to the Markdown file's own folder, the way a renderer
-  resolves them, never the working directory.
+- **Link paths**, pasted or completed, are read from the Markdown file's own folder, the way
+  a renderer resolves them, never the working directory.
 - **Lists:** off a list or quote line, Enter, `o` and `O` fall back to the editor's own
   behaviour (see [`lists.md`](lists.md)).
 - **Rust surface:** `set-conceals!`, `syntax-captures` with `#:ranges`, the

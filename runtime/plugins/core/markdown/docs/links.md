@@ -6,21 +6,26 @@ The `on-paste` handler returns `[previous](destination)` when:
 
 - `previous` is text the paste replaces: not `#f` (a paste at a cursor replaces nothing)
   and on one line;
-- `pasted` is a URL: a scheme, `://`, and no whitespace, the whole text matching. Or the
-  buffer has a file and `pasted` names a file or folder that exists, joined onto the file's
-  folder: `path-join` keeps an absolute `pasted` as it is. A buffer without a file links
-  no path, since the working directory is not where its file will be;
+- `pasted` is a URL (a scheme, `://`, and no whitespace, the whole text matching) or a path
+  (below);
 - `previous` holds no `[` or `]` and does not end with `\`, any of which would keep the
   result from reading as a link. A whole link (`[text](destination)`) holds both, so
   pasting over one replaces it, the way a link's destination is updated;
 - `previous` is not a URL: pasting over one replaces it, the way a pasted URL is updated.
+  A file name is not checked, since it is common link text.
 
-`destination` is `pasted`, between `<` and `>` for a path holding whitespace or a
-parenthesis, which a bare CommonMark destination cannot hold unescaped. Only a URL counts
-as a `previous` to replace: a path pasted over a file name makes a link, since a file name
-is common link text.
 Otherwise it returns `#f` and the paste goes in unchanged. The patterns are all lowercase,
 so `regex` matches them in either case, and they write `[^\s]` for `\S` for that reason.
+
+A path is a one-line `pasted` naming a file or folder that exists, read from the buffer's
+file's folder the way a completed path is (see [Link paths](#link-paths)): `path-join` keeps
+an absolute `pasted` as it is. A buffer without a file links no path. A relative one would
+be read from the working directory, which is not where the file will be, and telling an
+absolute one apart takes `stdlib/path-absolute?`, whose first call loads a core:stdlib
+entry, which no plugin may do while an `on-paste` handler runs. `destination` is a URL as
+pasted, and a path between `<` and `>` when it holds whitespace or a parenthesis, which a
+bare CommonMark destination cannot hold unescaped.
+
 A link paste leaves the whole link selected, so a second `p` replaces the link with the bare
 text: smart paste's repeat check compares the selection with the pasted text, and the link
 differs from it.

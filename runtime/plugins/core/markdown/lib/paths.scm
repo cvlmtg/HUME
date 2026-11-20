@@ -1,6 +1,6 @@
 ;;; core:markdown — paths.scm. See docs/links.md.
 
-(provide md-paths/complete!)
+(provide md-paths/complete! md-paths/resolve)
 
 (define md-paths/file-kind 17)
 
@@ -12,6 +12,10 @@
           [(char=? (string-ref prefix (- i 1)) #\/) i]
           [else (loop (- i 1))])))
 
+(define (md-paths/resolve pane destination)
+  (let ([file (buffer-path pane)])
+    (and file (path-join (parent-name file) destination))))
+
 (define (md-paths/in-destination? pane prefix)
   (let* ([head (call! "stdlib/cursor-char-offset" (buffer-selections pane))]
          [start (and head (- head (string-length prefix)))])
@@ -21,15 +25,12 @@
 
 ;;; See docs/links.md's "Link paths".
 (define (md-paths/complete! id pane prefix)
-  (let ([path (buffer-path pane)])
-    (if (and path
-             (not (starts-with? prefix "/"))
-             (md-paths/in-destination? pane prefix))
-        (let* ([cut (md-paths/dir-end prefix)]
-               [dir-part (substring prefix 0 cut)]
-               [name (substring prefix cut (string-length prefix))]
-               [names (path-entries (path-join (parent-name path) dir-part)
-                                    (if (starts-with? name ".") "." ""))])
+  (let* ([cut (md-paths/dir-end prefix)]
+         [dir-part (substring prefix 0 cut)]
+         [folder (and (not (starts-with? prefix "/")) (md-paths/resolve pane dir-part))])
+    (if (and folder (md-paths/in-destination? pane prefix))
+        (let* ([name (substring prefix cut (string-length prefix))]
+               [names (path-entries folder (if (starts-with? name ".") "." ""))])
           (completion-emit!
             id
             (map (lambda (entry)

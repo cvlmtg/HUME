@@ -1,5 +1,7 @@
 ;;; core:markdown — links.scm. See docs/links.md.
 
+(require "paths.scm")
+
 (provide md-links/paste-link)
 
 (define md-links/url-pattern (regex "^[a-z][a-z0-9+.-]*://[^\\s]+$"))
@@ -17,14 +19,15 @@
        (not (string-contains? previous "\n"))
        (not (md-links/matches? previous md-links/breaks-link-pattern))
        (not (md-links/matches? previous md-links/url-pattern))
-       (let ([destination (or (and (md-links/matches? pasted md-links/url-pattern) pasted)
-                              (md-links/path-destination pane pasted))])
+       (let ([destination (md-links/destination pane pasted)])
          (and destination (string-append "[" previous "](" destination ")")))))
 
-(define (md-links/path-destination pane pasted)
-  (let ([file (buffer-path pane)])
-    (and file
-         (path-exists? (path-join (parent-name file) pasted))
-         (if (md-links/matches? pasted md-links/needs-angles-pattern)
-             (string-append "<" pasted ">")
-             pasted))))
+(define (md-links/destination pane pasted)
+  (if (md-links/matches? pasted md-links/url-pattern)
+      pasted
+      (let ([path (and (not (string-contains? pasted "\n")) (md-paths/resolve pane pasted))])
+        (and path
+             (path-exists? path)
+             (if (md-links/matches? pasted md-links/needs-angles-pattern)
+                 (string-append "<" pasted ">")
+                 pasted)))))

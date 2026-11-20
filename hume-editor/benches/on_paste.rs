@@ -45,6 +45,7 @@ fn bench_on_paste(c: &mut Criterion) {
             PasteHandlers::Unchanged(1),
             long.as_str(),
         ),
+        ("markdown/10k", PasteHandlers::Markdown, long.as_str()),
     ];
     let mut group = c.benchmark_group("on_paste");
     group.sample_size(20);

@@ -143,6 +143,29 @@ impl Preview {
         select_marked(&mut self.ed, marked);
     }
 
+    /// Opens `marked`'s text as a scratch buffer set to Markdown, and
+    /// selects as `marked` marks it.
+    fn open_unsaved_marked(&mut self, marked: &str) {
+        let (text, _) = test_fixtures::testing::parse_state(marked);
+        let bid = open_other_buffer(&mut self.ed, &text.to_string());
+        let markdown = self.ed.state.config.languages.intern("markdown");
+        self.ed
+            .set_buffer_language(bid, Some(markdown))
+            .expect_open();
+        self.ed.settle();
+        select_marked(&mut self.ed, marked);
+    }
+
+    /// Makes the folders `<tmp>/notes/sub/` and writes each of `files`,
+    /// empty, under `<tmp>/notes/`.
+    fn write_notes(&self, files: &[&str]) {
+        let notes = self.tmp.path().join("notes");
+        std::fs::create_dir_all(notes.join("sub")).unwrap();
+        for file in files {
+            std::fs::write(notes.join(file), "").unwrap();
+        }
+    }
+
     /// Draws frames until the focused buffer's tree matches its text: a
     /// parse runs on a worker thread, and a query made before the first one
     /// lands finds nothing.

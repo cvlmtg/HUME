@@ -4,11 +4,15 @@ use super::*;
 
 const URL: &str = "https://bar.baz";
 
-fn pasted_over(marked: &str, pasted: &str) -> String {
-    let mut p = editing(marked);
+/// `p`'s text after `p` pastes `pasted`.
+fn paste(mut p: Preview, pasted: &str) -> String {
     seed_ring(&mut p.ed, &[pasted]);
     p.ed.feed_key(key('p'));
     text(&p.ed)
+}
+
+fn pasted_over(marked: &str, pasted: &str) -> String {
+    paste(editing(marked), pasted)
 }
 
 #[test]
@@ -96,10 +100,7 @@ fn a_url_over_text_ending_in_a_backslash_replaces_it() {
 
 #[test]
 fn a_url_in_another_language_pastes_as_is() {
-    let mut p = editing_plain("-[foo]>\n");
-    seed_ring(&mut p.ed, &[URL]);
-    p.ed.feed_key(key('p'));
-    assert_eq!(text(&p.ed), "https://bar.baz\n");
+    assert_eq!(paste(editing_plain("-[foo]>\n"), URL), "https://bar.baz\n");
 }
 
 /// The plugin's editor on `notes/a.md` holding `marked`'s text, selected as
@@ -107,20 +108,13 @@ fn a_url_in_another_language_pastes_as_is() {
 /// `(draft).md` and the folder `sub/`.
 fn editing_in_notes(marked: &str) -> Preview {
     let mut p = preview();
-    let notes = p.tmp.path().join("notes");
-    std::fs::create_dir_all(notes.join("sub")).unwrap();
-    for file in ["todo.md", "my notes.md", "(draft).md"] {
-        std::fs::write(notes.join(file), "").unwrap();
-    }
+    p.write_notes(&["todo.md", "my notes.md", "(draft).md"]);
     p.open_marked("notes/a.md", marked);
     p
 }
 
 fn pasted_in_notes(marked: &str, pasted: &str) -> String {
-    let mut p = editing_in_notes(marked);
-    seed_ring(&mut p.ed, &[pasted]);
-    p.ed.feed_key(key('p'));
-    text(&p.ed)
+    paste(editing_in_notes(marked), pasted)
 }
 
 #[test]
@@ -149,12 +143,10 @@ fn a_path_reaching_above_the_buffers_folder_makes_a_link() {
 
 #[test]
 fn an_absolute_path_makes_a_link_as_pasted() {
-    let mut p = editing_in_notes("see -[foo]> here\n");
+    let p = editing_in_notes("see -[foo]> here\n");
     let path = p.tmp.path().join("notes/todo.md");
     let path = path.to_str().unwrap();
-    seed_ring(&mut p.ed, &[path]);
-    p.ed.feed_key(key('p'));
-    assert_eq!(text(&p.ed), format!("see [foo]({path}) here\n"));
+    assert_eq!(paste(p, path), format!("see [foo]({path}) here\n"));
 }
 
 #[test]
@@ -190,29 +182,11 @@ fn a_path_over_a_file_name_makes_a_link() {
     );
 }
 
-/// A new scratch buffer set to Markdown, holding `marked`'s text and
-/// selected as `marked` marks it, beside `<tmp>/notes/todo.md`.
-fn editing_unsaved(marked: &str) -> Preview {
-    let mut p = preview();
-    let notes = p.tmp.path().join("notes");
-    std::fs::create_dir_all(&notes).unwrap();
-    std::fs::write(notes.join("todo.md"), "").unwrap();
-    p.ed.execute_typed("new", None).unwrap();
-    p.ed.execute_typed("set", Some("buffer language=markdown"))
-        .unwrap();
-    p.ed.settle();
-    let (text, _) = test_fixtures::testing::parse_state(marked);
-    type_text(&mut p.ed, text.to_string().trim_end_matches('\n'));
-    select_marked(&mut p.ed, marked);
-    p
-}
-
 #[test]
 fn a_path_in_an_unsaved_buffer_replaces_the_selection() {
-    let mut p = editing_unsaved("see -[foo]> here\n");
+    let mut p = editing_in_notes("-[x]>\n");
+    p.open_unsaved_marked("see -[foo]> here\n");
     let path = p.tmp.path().join("notes/todo.md");
     let path = path.to_str().unwrap();
-    seed_ring(&mut p.ed, &[path]);
-    p.ed.feed_key(key('p'));
-    assert_eq!(text(&p.ed), format!("see {path} here\n"));
+    assert_eq!(paste(p, path), format!("see {path} here\n"));
 }

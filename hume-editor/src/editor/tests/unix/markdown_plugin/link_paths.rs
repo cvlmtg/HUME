@@ -7,11 +7,7 @@ use super::*;
 /// `todo.md`, `.hidden` and `sub/b.md`.
 fn inserting(name: &str, marked: &str) -> Preview {
     let mut p = preview();
-    let notes = p.tmp.path().join("notes");
-    std::fs::create_dir_all(notes.join("sub")).unwrap();
-    for file in ["todo.md", ".hidden", "sub/b.md"] {
-        std::fs::write(notes.join(file), "").unwrap();
-    }
+    p.write_notes(&["todo.md", ".hidden", "sub/b.md"]);
     p.open_marked(&format!("notes/{name}"), marked);
     p.ed.feed_key(key('i'));
     p
@@ -135,11 +131,7 @@ fn an_opening_parenthesis_in_plain_text_opens_no_menu() {
 fn a_buffer_with_no_file_lists_no_paths() {
     let mut p = inserting("a.md", "-[x]>\n");
     p.ed.feed_key(key_esc());
-    let bid = open_other_buffer(&mut p.ed, "[x](\n");
-    let markdown = p.ed.state.config.languages.intern("markdown");
-    p.ed.set_buffer_language(bid, Some(markdown)).expect_open();
-    p.ed.settle();
-    select_marked(&mut p.ed, "[x](-[\n]>");
+    p.open_unsaved_marked("[x](-[\n]>");
     p.ed.feed_key(key('i'));
     trigger_completion(&mut p.ed);
     assert_eq!(menu_labels(&p.ed), Vec::<String>::new());
