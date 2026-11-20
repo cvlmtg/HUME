@@ -112,14 +112,10 @@
                      (md-lists/items lines groups line-info)
                      heads)])
     (if (null? (filter (lambda (item) (not (and item (md-lists/empty? item)))) items))
-        (edit-text! pane
-                    (append (map md-lists/ended-edit items)
-                            (car (md-lists/renumber groups (md-lists/removed-events items)
-                                                    line-of line-info))))
-        (let ([plan (md-lists/renumber groups (md-lists/events items 'after) line-of line-info)])
-          (edit-text! pane (car plan))
+        (edit-text! pane (map md-lists/ended-edit items))
+        (let ([numbers (cdr (md-lists/renumber groups (md-lists/events items 'after) line-of line-info))])
           (insert-key! pane "enter")
-          (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items (cdr plan))))))))
+          (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items numbers)))))))
 
 ;;; See docs/lists.md's "Order of edits".
 (define (md-lists/open! pane below?)
@@ -132,26 +128,10 @@
                          (buffer-selections pane)))]
          [groups (md-lists/groups pane (map (lambda (line) (cons line (+ line 1))) sources))]
          [items (md-lists/items sources groups line-info)]
-         [plan (md-lists/renumber groups (md-lists/events items (if below? 'after 'before))
-                                  line-of line-info)]
-         [opened (map (lambda (line) (if below? (+ line 1) line)) sources)]
-         [moves (map (lambda (edit)
-                       (let* ([start (hash-ref edit 'start-char)] [line (line-of start)])
-                         (list line (- start (car (line-info line))) edit)))
-                     (car plan))])
+         [numbers (cdr (md-lists/renumber groups (md-lists/events items (if below? 'after 'before))
+                                          line-of line-info))])
     (call! (if below? "open-line-below" "open-line-above") pane)
-    (edit-text! pane
-                (append
-                  (map (lambda (move)
-                         (let* ([line (car move)]
-                                [edit (list-ref move 2)]
-                                [shift (length (filter (lambda (at) (<= at line)) opened))]
-                                [start (+ (line->char-offset pane (+ line shift)) (list-ref move 1))])
-                           (hash 'start-char start
-                                 'end-char (+ start (- (hash-ref edit 'end-char) (hash-ref edit 'start-char)))
-                                 'text (hash-ref edit 'text))))
-                       moves)
-                  (md-lists/prefix-edits pane (md-lists/prefixes items (cdr plan)))))))
+    (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items numbers)))))
 
 ;;; See docs/lists.md's "Renumbering after an edit".
 (define (md-lists/renumber-edited! pane changes)

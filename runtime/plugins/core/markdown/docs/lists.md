@@ -59,12 +59,11 @@ A deletion rather than a replacement leaves the cursor at the end of what is kep
 
 ## Renumbering
 
-`md-lists/renumber` takes events, each a marker and a kind:
+`md-lists/renumber` takes events, each a marker and a kind. Enter, `o` and `O` give one per
+new item, to number it:
 
 - `'after`: a new item after the line's last marker (Enter, `o`);
-- `'before`: a new item before it (`O`);
-- `'remove`: the marker is gone, one event for each marker an ended list deletes, so ending
-  `1. - ` renumbers the outer list too.
+- `'before`: a new item before it (`O`).
 
 An edit gives three more (see [Renumbering after an edit](#renumbering-after-an-edit)):
 
@@ -87,7 +86,8 @@ two of its items have no `'anchor` event and those share one number. The walk th
 edit in it, and each new item takes that number.
 
 The result is the renumbering edits and, per event, its new item's number. A bullet gets
-`#f`, and so does an event with no marker: a quote line's, or a plain line's.
+`#f`, and so does an event with no marker: a quote line's, or a plain line's. The commands
+use the numbers and the edit pass the edits.
 
 ## Renumbering after an edit
 
@@ -96,8 +96,9 @@ last item it left: changing `3.` to `1.` turns the `4.` after it into `2.`, and 
 `2.` turns the `3.` after it into `2.`. The items before it keep theirs. The pass runs from
 the `on-text-changed` handler, right after the keystroke, and `syntax-captures` parses the
 edited text on the spot. While typing, the renumbering joins the Insert session's undo
-group. A Normal-mode edit such as `r1`, or a `.`, has already made its undo step, so the
-renumbering is a second one. The handler skips a read-only buffer
+group. A Normal-mode edit such as `r1`, and a `.` or a macro, which replay a whole Enter
+or `o` before the pass runs, have already made their undo step, so the renumbering is a
+second one. The handler skips a read-only buffer
 and an event whose hunks are `#f`.
 
 `md-lists/line-markers` reads the ordered markers at the start of a line, past blanks,
@@ -105,7 +106,11 @@ and an event whose hunks are `#f`.
 column, the numbers its old lines hold there differ from those its new lines hold. Typing
 in an item's text, deleting a word, or rewriting a line around its marker leaves them equal,
 so that hunk is dropped before the tree is read. Both sides go through the same reader, so a
-line it misreads counts the same on both.
+line it misreads counts the same on both. Edits on touching lines arrive as one hunk, as
+Enter at two adjacent items gives, so a kept hunk is split by `diff-lines` into the lines it
+changed: the item between the two new ones then counts on instead of anchoring. A hunk with
+no lines on one side, a pure insertion or deletion, is one change already and is kept whole,
+since `diff-lines` reads an empty text as one empty line.
 
 The list query runs over each kept hunk's new lines, reaching back to the last non-blank
 line before them and on through the first one after them, so a list that now starts after
@@ -113,7 +118,7 @@ a blanked item or a blank line comes back with them. For each list it returns, a
 changed one of the list's marker columns gives `md-lists/list-events`:
 
 - an `'anchor` for each of the list's markers on the hunk's new lines: an edited number, a
-  pasted item, an item outdented into the list;
+  pasted item, an item Enter, `o` or `O` added, an item outdented into the list;
 - with none there, a `'resume` on the list's last item before the hunk: deleted items, or an
   item indented into a nested list;
 - with no item before the hunk either, a `'start` on its first item after, carrying `n`,
@@ -143,16 +148,20 @@ first changes the tree:
   quote and splits the list.
 - `o` and `O` leave a blank line.
 
-**Enter** applies the renumbering first, since Insert mode is already on. `insert-key!` then
-breaks every line as Enter does, with smart indent, auto-pairs and the autoindent record.
-A last `edit-text!` replaces the blanks before each continued cursor with its prefix.
-Selections keep their count and order through the break, so the prefixes are matched to
-them by index.
+A command writes only its new items' prefixes, numbered by one `md-lists/renumber` walk over
+its events, so several cursors in one list number together. The items after them, and the
+items after an ended list, are renumbered by the [pass after the edit](#renumbering-after-an-edit),
+which runs at the settle after the key, while the Insert session the command opened is still
+open, so it joins the same undo group.
+
+**Enter:** `insert-key!` breaks every line as Enter does, with smart indent, auto-pairs and
+the autoindent record. A last `edit-text!` replaces the blanks before each continued cursor
+with its prefix. Selections keep their count and order through the break, so the prefixes
+are matched to them by index. Ending a list is one `edit-text!` of the ended prefixes.
 
 **`o` and `O`** start in Normal mode, and an edit made before `open-line-below` or
-`open-line-above` would be an undo step of its own. So the open runs first. The planned
-renumbering is then moved to the new text: each line shifts down by the lines opened at or
-above it, and keeps its column. One `edit-text!` applies it with the prefixes.
+`open-line-above` would be an undo step of its own. So the open runs first, and one
+`edit-text!` writes the prefixes.
 
 ## Task boxes
 

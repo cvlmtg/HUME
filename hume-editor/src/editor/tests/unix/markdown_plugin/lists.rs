@@ -2,18 +2,29 @@
 
 use super::*;
 
-/// The state after Enter in Insert mode, entered before each selection.
+/// The state after Enter in Insert mode, entered before each selection,
+/// once the hooks the edit fires have run.
 fn entered(marked: &str) -> String {
     let mut p = editing(marked);
     p.ed.feed_keys([key('i'), key_enter()]);
+    p.ed.settle();
     state(&p.ed)
 }
 
-/// The state after `key` in Normal mode.
+/// The state after `key` in Normal mode, once the hooks the edit fires
+/// have run.
 fn opened(marked: &str, key_char: char) -> String {
     let mut p = editing(marked);
     p.ed.feed_key(key(key_char));
+    p.ed.settle();
     state(&p.ed)
+}
+
+/// Feeds each of `keys` and settles after it, as the run loop does.
+fn feed_settled(p: &mut Preview, keys: impl IntoIterator<Item = KeyEvent>) {
+    for k in keys {
+        p.ed.feed_event(k);
+    }
 }
 
 #[test]
@@ -208,22 +219,31 @@ fn o_on_a_plain_line_opens_a_plain_line() {
 #[test]
 fn one_undo_after_enter_brings_back_the_list() {
     let mut p = editing("1. a-[\n]>2. b\n");
-    p.ed.feed_keys([key('i'), key_enter(), key_esc(), key('u')]);
+    feed_settled(&mut p, [key('i'), key_enter(), key_esc(), key('u')]);
     assert_eq!(text(&p.ed), "1. a\n2. b\n");
 }
 
 #[test]
 fn one_undo_after_o_brings_back_the_list() {
     let mut p = editing("-[1]>. a\n2. b\n");
-    p.ed.feed_keys([key('o'), key_esc(), key('u')]);
+    feed_settled(&mut p, [key('o'), key_esc(), key('u')]);
     assert_eq!(text(&p.ed), "1. a\n2. b\n");
 }
 
 #[test]
 fn dot_repeats_o_with_its_list_item() {
     let mut p = editing("-[1]>. a\n2. b\n");
-    p.ed.feed_keys([key('o'), key('x'), key_esc(), key('.')]);
+    feed_settled(&mut p, [key('o'), key('x'), key_esc(), key('.')]);
     assert_eq!(text(&p.ed), "1. a\n2. x\n3. x\n4. b\n");
+}
+
+#[test]
+fn a_dot_repeated_open_undoes_its_renumbering_first() {
+    let mut p = editing("-[1]>. a\n2. b\n");
+    feed_settled(&mut p, [key('o'), key('x'), key_esc(), key('.'), key('u')]);
+    assert_eq!(text(&p.ed), "1. a\n2. x\n3. x\n3. b\n");
+    feed_settled(&mut p, [key('u')]);
+    assert_eq!(text(&p.ed), "1. a\n2. x\n3. b\n");
 }
 
 #[test]
