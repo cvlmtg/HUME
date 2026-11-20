@@ -63,7 +63,7 @@
 
 | File | Role |
 |---|---|
-| `manifest.scm` | Lazy activation on the language and the six commands |
+| `manifest.scm` | Lazy activation on the language and the commands |
 | `plugin.scm` | Config, the hooks, the commands, the `on-paste` handler, the `markdown:paths` completion source and the list keymap |
 | `lib/state.scm` | Per-buffer state keyed by `(buffer-key pane)` (preview on or off, the generation of the last parsed tree), the grammars warned about, and `md-preview/box-insert!` |
 | `lib/queries.scm` | The block, inline and list queries, capture names and accessors, matches grouped by name and into runs (see [Matches](#matches)), the conceal constructor and order |
@@ -92,9 +92,10 @@ procedures.
   the first one included.
 - The toggle command, when it turns the preview on.
 
-`on-buffer-open` only checks the grammars: the first frame and the first parse follow it.
-`on-buffer-close` drops the buffer's state, so a pending render does nothing, and clears
-the three sources if the buffer stays open (its language changed away from `markdown`).
+`on-buffer-open` draws nothing: it checks the grammars and attaches the list keymap, and the
+first frame and the first parse follow it. `on-buffer-close` drops the buffer's state, so a
+pending render does nothing, and if the buffer stays open (its language changed away from
+`markdown`) clears the three sources and detaches the list keymap.
 
 A render runs the block query over the `markdown` layers, then the inline query over the
 `markdown.inline` layers. The inline query covers the same ranges plus every line of each

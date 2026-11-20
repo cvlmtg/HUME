@@ -26,17 +26,15 @@
     (if text (list (md-preview/conceal start end text #f #f)) '())))
 
 (define (md-preview/inline-elements matches line-of line-info)
-  (foldl (lambda (run out)
+  (call! "stdlib/concat"
+    (map (lambda (run)
            (let* ([c (car run)] [name (car c)])
-             (append
-               (cond
-                 [(equal? name "span")
-                  (md-preview/hidden-revealing (md-preview/children run) (md-preview/line-span line-of c))]
-                 [(equal? name "link") (md-preview/link-text c (car (md-preview/children run)))]
-                 [(equal? name "autolink") (md-preview/autolink c)]
-                 [(equal? name "escape") (md-preview/escape c)]
-                 [(equal? name "entity") (md-preview/entity c line-of line-info)]
-                 [else (error (string-append "markdown: unknown inline capture " name))])
-               out)))
-         '()
-         (md-preview/runs matches)))
+             (cond
+               [(equal? name "span")
+                (md-preview/hidden-revealing (md-preview/children run) (md-preview/line-span line-of c))]
+               [(equal? name "link") (md-preview/link-text c (car (md-preview/children run)))]
+               [(equal? name "autolink") (md-preview/autolink c)]
+               [(equal? name "escape") (md-preview/escape c)]
+               [(equal? name "entity") (md-preview/entity c line-of line-info)]
+               [else (error (string-append "markdown: unknown inline capture " name))])))
+         (md-preview/runs matches))))

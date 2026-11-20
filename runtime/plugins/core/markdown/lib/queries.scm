@@ -7,6 +7,7 @@
          md-preview/conceal md-preview/hidden-revealing
          md-preview/conceal-before? md-preview/group md-preview/runs-of md-preview/runs md-preview/children
          md-preview/child md-preview/captured
+         md-preview/group-by md-preview/unchecked-box md-preview/checked-box
          md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text
          md-lists/query)
 
@@ -37,11 +38,11 @@
 (define (md-preview/skip-blanks text col)
   (md-preview/skip-while text col md-preview/blank?))
 
-;;; The column of each `>` in `capture`, which lies on the line `text` starting at `start`, in order.
-(define (md-preview/quote-cols capture start text)
+;;; The column of each `>` in `capture`, which lies on the line `text` starting at `start`, in order, before `tail`.
+(define (md-preview/quote-cols capture start text tail)
   (let ([from (- (md-preview/capture-start capture) start)])
     (let loop ([col (- (min (string-length text) (- (md-preview/capture-end capture) start)) 1)]
-               [cols '()])
+               [cols tail])
       (cond
         [(< col from) cols]
         [(char=? (string-ref text col) #\>) (loop (- col 1) (cons col cols))]
@@ -81,12 +82,16 @@
     (or (< a-start b-start)
         (and (= a-start b-start) (> (hash-ref a 'end-char) (hash-ref b 'end-char))))))
 
-(define (md-preview/group matches)
-  (foldl (lambda (run groups)
-           (let ([name (car (car run))])
-             (hash-insert groups name (cons run (or (hash-try-get groups name) '())))))
+;;; `items` in a hash by `(key item)`, each key's items in order.
+(define (md-preview/group-by key items)
+  (foldl (lambda (item groups)
+           (let ([k (key item)])
+             (hash-insert groups k (cons item (or (hash-try-get groups k) '())))))
          (hash)
-         (reverse (md-preview/runs matches))))
+         (reverse items)))
+
+(define (md-preview/group matches)
+  (md-preview/group-by (lambda (run) (car (car run))) (md-preview/runs matches)))
 
 (define (md-preview/runs-of groups name)
   (or (hash-try-get groups name) '()))
@@ -127,12 +132,23 @@
       "(setext_heading " underline ") @" (md-preview/setext n) "\n"
       "(setext_heading (paragraph (inline) @" (md-preview/setext-text n) ") " underline ")\n")))
 
+(define md-preview/unchecked-box "task-unchecked")
+(define md-preview/checked-box "task-checked")
+
+(define md-preview/bullet-markers "[(list_marker_minus) (list_marker_plus) (list_marker_star)]")
+(define md-preview/ordered-markers "[(list_marker_dot) (list_marker_parenthesis)]")
+
+(define (md-preview/item-pattern markers name)
+  (string-append
+    "(list_item " markers " @" name "\n"
+    "           . [(task_list_marker_unchecked) @" md-preview/unchecked-box
+    " (task_list_marker_checked) @" md-preview/checked-box "]?)\n"))
+
 (define md-preview/block-query
   (string-append
     (apply string-append (map md-preview/atx-patterns md-preview/atx-levels))
     (apply string-append (map md-preview/setext-patterns md-preview/setext-levels))
-    "(list_item [(list_marker_minus) (list_marker_plus) (list_marker_star)] @bullet\n"
-    "           . [(task_list_marker_unchecked) @task-unchecked (task_list_marker_checked) @task-checked]?)\n"
+    (md-preview/item-pattern md-preview/bullet-markers "bullet")
     "(block_quote) @quote\n"
     "(block_quote_marker) @quote-marker\n"
     "(block_continuation) @continuation\n"
@@ -161,9 +177,7 @@
 
 (define md-lists/query
   (string-append
-    "(list (list_item [(list_marker_minus) (list_marker_plus) (list_marker_star)] @bullet\n"
-    "                 . [(task_list_marker_unchecked) @task-unchecked (task_list_marker_checked) @task-checked]?))\n"
-    "(list (list_item [(list_marker_dot) (list_marker_parenthesis)] @ordered\n"
-    "                 . [(task_list_marker_unchecked) @task-unchecked (task_list_marker_checked) @task-checked]?))\n"
-    "(list (list_item [(list_marker_dot) (list_marker_parenthesis)] @ordered)) @list\n"
+    (md-preview/item-pattern md-preview/bullet-markers "bullet")
+    (md-preview/item-pattern md-preview/ordered-markers "ordered")
+    "(list (list_item " md-preview/ordered-markers " @ordered)) @list\n"
     "[(block_quote_marker) (block_continuation)] @quote-prefix\n"))

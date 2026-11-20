@@ -54,8 +54,8 @@
     md-preview/setext-levels))
 
 (define md-preview/boxes
-  (hash "task-unchecked" (cons "☐" "markup.list.unchecked")
-        "task-checked" (cons "☑" "markup.list.checked")))
+  (hash md-preview/unchecked-box (cons "☐" "markup.list.unchecked")
+        md-preview/checked-box (cons "☑" "markup.list.checked")))
 
 (define (md-preview/lists! groups emit!)
   (for-each
@@ -90,7 +90,7 @@
       (lambda (c)
         (let ([info (line-info (line-of (md-preview/capture-start c)))])
           (for-each (lambda (col) (bar! (+ (car info) col)))
-                    (md-preview/quote-cols c (car info) (cdr info)))))
+                    (md-preview/quote-cols c (car info) (cdr info) '()))))
       (append (md-preview/captured groups "quote-marker")
               (md-preview/captured groups "continuation")
               (md-preview/captured groups "fence-continuation")))

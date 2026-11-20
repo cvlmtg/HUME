@@ -6,11 +6,12 @@ stays open with another language. `markdown/enter` handles Enter, `markdown/open
 `markdown/open-above` handle `o` and `O`, and `markdown/toggle-task` handles `G X`. With
 `'continue-lists` off, only `G X` is bound.
 
-The list query (`md-lists/query`) runs over the lines the cursors are on for Enter, `o` and
-`O`, and over every line a selection touches for `G X`. Its marker patterns are rooted at
-`list`, so every marker of a list on those lines comes back, however far the list runs. A
-task box comes in a match with the marker before it, as `@task-checked` or
-`@task-unchecked`, and an ordered marker also in one with the list holding it. A line in a
+The list query (`md-lists/query`) runs over the lines Enter's cursors are on, the lines `o`
+and `O` open from, and every line a selection touches for `G X`. Its marker patterns are
+rooted at `list_item`, as the block query's bullet pattern is, and a task box comes in a
+match with the marker before it, as `@task-checked` or `@task-unchecked`. An ordered marker
+also comes in a match with the list holding it, rooted at `list`, so every ordered marker of
+a list on those lines comes back for renumbering, however far the list runs. A line in a
 fenced block that is not Markdown has no marker, so Enter, `o` and `O` act there as they
 always do.
 

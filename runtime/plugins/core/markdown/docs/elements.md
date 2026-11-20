@@ -4,9 +4,6 @@ What each element of the preview is drawn from and drawn as, and the node shapes
 
 ## Block elements
 
-Each element is one or two capture names in `queries.scm` and one function in
-`blocks.scm`.
-
 | Element | Node | Drawn as |
 |---|---|---|
 | ATX heading | the `atx_hN_marker` of an `atx_heading` | The marker becomes a Braille glyph of N dots and `▌` (`⠈▌`, `⠘▌`, `⠸▌`, `⠹▌`, `⠻▌`, `⠿▌`), scope `markup.heading.N.marker`; the space after it stays. The `inline` gets `markup.heading.N.text`, the line `markup.heading.N.line` |

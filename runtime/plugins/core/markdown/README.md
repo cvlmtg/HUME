@@ -9,7 +9,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 (load-plugin! "core:markdown" #:config (hash 'preview #t 'rule-width 40))
 ```
 
-- **Depends on:** `core:stdlib`, for config validation, list joins and the cursor offset link-path completion reads.
+- **Depends on:** `core:stdlib`, for config validation, list joins, the primary selection `G X` reads and the cursor offset link-path completion reads.
 - **Activates on:** the first `markdown` buffer, or any of its seven commands
   (`manifest.scm`), the first Markdown popup's `format-text/markdown` call included. The
   manifest lists no events: a `#:languages` manifest may list no buffer event.

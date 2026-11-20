@@ -106,12 +106,10 @@
                         (md-preview/bucket (map (lambda (r) (md-preview/extent (car r))) rows)
                                            conceals
                                            md-preview/char-start))]
-         [alignments (foldl (lambda (d found)
-                              (append found
-                                      (map (lambda (c) (md-preview/alignment c line-of line-info))
-                                           (cdr d))))
-                            '()
-                            delimiters)]
+         [alignments (call! "stdlib/concat"
+                       (map (lambda (d)
+                              (map (lambda (c) (md-preview/alignment c line-of line-info)) (cdr d)))
+                            delimiters))]
          [widths (foldl (lambda (r widths)
                           (md-preview/widen widths (map (lambda (c) (list-ref c 2)) (cdr r))))
                         (map (lambda (_) 0) alignments)
@@ -161,12 +159,11 @@
                              (not (member above bottoms))
                              above)))
                     layouts)])
-    (foldl append
-           '()
-           (map (lambda (t top bottom)
-                  (append (md-preview/edge t top "┌" "┬" "┐" line-info)
-                          (md-preview/edge t bottom "└" "┴" "┘" line-info)))
-                layouts tops bottoms))))
+    (call! "stdlib/concat"
+      (map (lambda (t top bottom)
+             (append (md-preview/edge t top "┌" "┬" "┐" line-info)
+                     (md-preview/edge t bottom "└" "┴" "┘" line-info)))
+           layouts tops bottoms))))
 
 (define (md-preview/within-tables spans reveals conceals)
   (let loop ([spans spans] [reveals reveals] [cs conceals] [out '()])
@@ -179,18 +176,20 @@
       [else (loop spans reveals (cdr cs) (cons (car cs) out))])))
 
 (define (md-preview/table-elements runs inline ranges line-of line-info line-count)
-  (let* ([spans (map (lambda (run) (md-preview/extent (car run))) runs)]
-         [inline (sort inline md-preview/conceal-before?)]
-         [layouts (map (lambda (run conceals)
-                         (let* ([kinds (md-preview/group (cdr run))]
-                                [rows (lambda (name)
-                                        (map (lambda (row) (cons (car row) (md-preview/children row)))
-                                             (md-preview/runs-of kinds name)))])
-                           (md-preview/layout (car run) (rows "table-row") (rows "table-delimiter-row")
-                                              conceals line-of line-info)))
-                       runs
-                       (md-preview/bucket spans inline md-preview/char-start))])
-    (hash 'conceals (foldl (lambda (t out) (append (hash-ref t 'conceals) out))
-                           (md-preview/edges layouts ranges line-info line-count)
-                           layouts)
-          'inline (md-preview/within-tables spans (map (lambda (t) (hash-ref t 'reveal)) layouts) inline))))
+  (if (null? runs)
+      (hash 'conceals '() 'inline inline)
+      (let* ([spans (map (lambda (run) (md-preview/extent (car run))) runs)]
+             [inline (sort inline md-preview/conceal-before?)]
+             [layouts (map (lambda (run conceals)
+                             (let* ([kinds (md-preview/group (cdr run))]
+                                    [rows (lambda (name)
+                                            (map (lambda (row) (cons (car row) (md-preview/children row)))
+                                                 (md-preview/runs-of kinds name)))])
+                               (md-preview/layout (car run) (rows "table-row") (rows "table-delimiter-row")
+                                                  conceals line-of line-info)))
+                           runs
+                           (md-preview/bucket spans inline md-preview/char-start))])
+        (hash 'conceals (call! "stdlib/concat"
+                          (cons (md-preview/edges layouts ranges line-info line-count)
+                                (map (lambda (t) (hash-ref t 'conceals)) layouts)))
+              'inline (md-preview/within-tables spans (map (lambda (t) (hash-ref t 'reveal)) layouts) inline)))))

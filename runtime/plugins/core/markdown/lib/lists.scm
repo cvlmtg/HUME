@@ -34,8 +34,8 @@
          (= (md-preview/skip-blanks text to) (string-length text))
          (let ([mark (string-ref text (+ from 1))])
            (cond
-             [(md-preview/blank? mark) (list "task-unchecked" (+ start from) (+ start to))]
-             [(member mark '(#\x #\X)) (list "task-checked" (+ start from) (+ start to))]
+             [(md-preview/blank? mark) (list md-preview/unchecked-box (+ start from) (+ start to))]
+             [(member mark '(#\x #\X)) (list md-preview/checked-box (+ start from) (+ start to))]
              [else #f])))))
 
 ;;; See docs/lists.md's "Prefixes".
@@ -43,8 +43,9 @@
   (let* ([start (car info)]
          [text (cdr info)]
          [markers (map car marked)]
-         [bars (call! "stdlib/concat"
-                      (map (lambda (c) (md-preview/quote-cols c start text)) quote-prefixes))]
+         [bars (foldl (lambda (c tail) (md-preview/quote-cols c start text tail))
+                      '()
+                      (reverse quote-prefixes))]
          [item (hash 'start start 'text text 'markers markers 'bars bars 'marker #f 'task #f)])
     (if (pair? marked)
         (let* ([last-marked (last marked)]
@@ -146,19 +147,12 @@
 
 ;;; See docs/lists.md's "Renumbering".
 (define (md-lists/renumber groups events line-of line-info)
-  (let* ([indexed (let loop ([es events] [i 0] [out '()])
-                    (if (null? es)
-                        (reverse out)
-                        (loop (cdr es) (+ i 1) (cons (cons i (car es)) out))))]
+  (let* ([indexed (map cons (range 0 (length events)) events)]
          [marker-of (lambda (e) (car (cdr e)))]
          [numbered (filter (lambda (e) (let ([m (marker-of e)]) (and m (equal? (car m) "ordered"))))
                            indexed)]
          [kind-of (lambda (e) (cdr (cdr e)))]
-         [at-marker (foldl (lambda (e table)
-                             (let ([s (md-preview/capture-start (marker-of e))])
-                               (hash-insert table s (cons e (or (hash-try-get table s) '())))))
-                           (hash)
-                           (reverse numbered))]
+         [at-marker (md-preview/group-by (lambda (e) (md-preview/capture-start (marker-of e))) numbered)]
          [numbers (box (hash))]
          [edits (box '())])
     (define (number m) (string->number (md-lists/digits m line-of line-info)))
@@ -177,24 +171,25 @@
                                   'end-char (+ s (string-length digits))
                                   'text (number->string counter))
                             (unbox edits)))))))
-    (for-each
-      (lambda (run)
-        (let walk ([items (md-preview/children run)] [counter #f])
-          (unless (null? items)
-            (let* ([m (car items)]
-                   [at (or (hash-try-get at-marker (md-preview/capture-start m)) '())]
-                   [of-kind (lambda (k) (filter (lambda (e) (equal? (kind-of e) k)) at))]
-                   [befores (of-kind 'before)]
-                   [removes (of-kind 'remove)]
-                   [afters (of-kind 'after)]
-                   [counter (if (pair? befores) (assign! befores (or counter (number m))) counter)]
-                   [counter (cond
-                              [(pair? removes) (or counter (number m))]
-                              [counter (renumber! m counter) (+ counter 1)]
-                              [else #f])]
-                   [counter (if (pair? afters) (assign! afters (or counter (+ (number m) 1))) counter)])
-              (walk (cdr items) counter)))))
-      (md-preview/runs-of groups "list"))
+    (unless (null? numbered)
+      (for-each
+        (lambda (run)
+          (let walk ([items (md-preview/children run)] [counter #f])
+            (unless (null? items)
+              (let* ([m (car items)]
+                     [at (or (hash-try-get at-marker (md-preview/capture-start m)) '())]
+                     [of-kind (lambda (k) (filter (lambda (e) (equal? (kind-of e) k)) at))]
+                     [befores (of-kind 'before)]
+                     [removes (of-kind 'remove)]
+                     [afters (of-kind 'after)]
+                     [counter (if (pair? befores) (assign! befores (or counter (number m))) counter)]
+                     [counter (cond
+                                [(pair? removes) (or counter (number m))]
+                                [counter (renumber! m counter) (+ counter 1)]
+                                [else #f])]
+                     [counter (if (pair? afters) (assign! afters (or counter (+ (number m) 1))) counter)])
+                (walk (cdr items) counter)))))
+        (md-preview/runs-of groups "list")))
     (cons (unbox edits)
           (map (lambda (e) (hash-try-get (unbox numbers) (car e))) indexed))))
 
@@ -222,7 +217,7 @@
   (and item (hash-ref item 'task)))
 
 (define (md-lists/checked? item)
-  (equal? (car (hash-ref item 'task)) "task-checked"))
+  (equal? (car (hash-ref item 'task)) md-preview/checked-box))
 
 ;;; See docs/lists.md's "Task boxes".
 (define (md-lists/task-edits items primary-items)

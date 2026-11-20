@@ -40,8 +40,12 @@
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
+(define md-lists/keymap "markdown/lists")
+
 (register-hook! 'on-buffer-open
-  (lambda (pane) (md-preview/warn-missing-grammars!)))
+  (lambda (pane)
+    (md-preview/warn-missing-grammars!)
+    (attach-keymap! pane md-lists/keymap)))
 
 (register-hook! 'on-viewport-change
   (lambda (pane range headers) (md-preview/render! pane)))
@@ -56,7 +60,8 @@
   (lambda (pane)
     (md-preview/remove-buffer! pane)
     (when (buffer-live? pane)
-      (md-preview/clear! pane))))
+      (md-preview/clear! pane)
+      (detach-keymap! pane md-lists/keymap))))
 
 ;; ── Links ─────────────────────────────────────────────────────────────────────
 
@@ -70,13 +75,12 @@
 
 ;; ── Lists ─────────────────────────────────────────────────────────────────────
 
-(define md-lists/keymap "markdown/lists")
-
-(define (md-lists/groups pane lines)
+(define (md-lists/groups pane spans)
   (md-preview/group
     (if (language-has-grammar? "markdown")
         (syntax-captures pane "markdown" md-lists/query
-                         #:ranges (map (lambda (l) (hash 'start-line l 'end-line (+ l 1))) lines))
+                         #:ranges (map (lambda (span) (hash 'start-line (car span) 'end-line (cdr span)))
+                                       spans))
         '())))
 
 (define (md-lists/prefix-edits pane prefixes)
@@ -103,7 +107,7 @@
          [line-info (cdr reader)]
          [heads (map selection-head (buffer-selections pane))]
          [lines (map line-of heads)]
-         [groups (md-lists/groups pane lines)]
+         [groups (md-lists/groups pane (map (lambda (line) (cons line (+ line 1))) lines))]
          [items (map (lambda (item head) (and item (md-lists/past-prefix? item head) item))
                      (md-lists/items lines groups line-info)
                      heads)])
@@ -126,7 +130,7 @@
                     (map (lambda (sel)
                            (line-of (if below? (- (selection-end-char sel) 1) (selection-start-char sel))))
                          (buffer-selections pane)))]
-         [groups (md-lists/groups pane sources)]
+         [groups (md-lists/groups pane (map (lambda (line) (cons line (+ line 1))) sources))]
          [items (md-lists/items sources groups line-info)]
          [plan (md-lists/renumber groups (md-lists/events items (if below? 'after 'before))
                                   line-of line-info)]
@@ -168,17 +172,19 @@
          [line-of (car reader)]
          [line-info (cdr reader)]
          [sels (buffer-selections pane)]
-         [covered (lambda (sel)
-                    (range (line-of (selection-start-char sel))
-                           (+ (line-of (- (selection-end-char sel) 1)) 1)))]
-         [lines (md-lists/distinct (call! "stdlib/concat" (map covered sels)))]
-         [items (md-lists/items lines (md-lists/groups pane lines) line-info)]
-         [primary-lines (covered (car (filter selection-primary? sels)))]
-         [primary-items (map cdr (filter (lambda (line-item) (member (car line-item) primary-lines))
-                                         (map cons lines items)))]
-         [edits (md-lists/task-edits items primary-items)])
-    (unless (null? edits)
-      (edit-text! pane edits))))
+         [span-of (lambda (sel)
+                    (cons (line-of (selection-start-char sel))
+                          (+ (line-of (- (selection-end-char sel) 1)) 1)))]
+         [spans (map span-of sels)]
+         [lines (md-lists/distinct
+                  (call! "stdlib/concat" (map (lambda (span) (range (car span) (cdr span))) spans)))]
+         [items (md-lists/items lines (md-lists/groups pane spans) line-info)]
+         [primary (span-of (call! "stdlib/primary-selection" sels))]
+         [primary-items (map cdr (filter (lambda (line-item)
+                                           (and (>= (car line-item) (car primary))
+                                                (< (car line-item) (cdr primary))))
+                                         (map cons lines items)))])
+    (edit-text! pane (md-lists/task-edits items primary-items))))
 
 (define-command! "markdown/toggle-task"
   "Check or uncheck the task boxes on the lines each selection touches: when the first box on the primary selection's lines, or else the first box of all, is checked, uncheck them all, and otherwise check them all."
@@ -191,14 +197,6 @@
   (bind-key! 'insert "enter" "markdown/enter" #:keymap md-lists/keymap)
   (bind-key! 'normal "o" "markdown/open-below" #:keymap md-lists/keymap)
   (bind-key! 'normal "O" "markdown/open-above" #:keymap md-lists/keymap))
-
-(register-hook! 'on-buffer-open
-  (lambda (pane) (attach-keymap! pane md-lists/keymap)))
-
-(register-hook! 'on-buffer-close
-  (lambda (pane)
-    (when (buffer-live? pane)
-      (detach-keymap! pane md-lists/keymap))))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 
