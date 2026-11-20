@@ -106,16 +106,18 @@
          [line-of (car reader)]
          [line-info (cdr reader)]
          [heads (map selection-head (buffer-selections pane))]
-         [lines (map line-of heads)]
-         [groups (md-lists/groups pane (map (lambda (line) (cons line (+ line 1))) lines))]
-         [items (map (lambda (item head) (and item (md-lists/past-prefix? item head) item))
-                     (md-lists/items lines groups line-info)
-                     heads)])
-    (if (null? (filter (lambda (item) (not (and item (md-lists/empty? item)))) items))
-        (edit-text! pane (map md-lists/ended-edit items))
-        (let ([numbers (cdr (md-lists/renumber groups (md-lists/events items 'after) line-of line-info))])
-          (insert-key! pane "enter")
-          (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items numbers)))))))
+         [lines (map line-of heads)])
+    (if (findf (lambda (line) (md-lists/may-start-prefix? (cdr (line-info line)))) lines)
+        (let* ([groups (md-lists/groups pane (map (lambda (line) (cons line (+ line 1))) lines))]
+               [items (map (lambda (item head) (and item (md-lists/past-prefix? item head) item))
+                           (md-lists/items lines groups line-info)
+                           heads)])
+          (if (null? (filter (lambda (item) (not (and item (md-lists/empty? item)))) items))
+              (edit-text! pane (map md-lists/ended-edit items))
+              (let ([numbers (cdr (md-lists/renumber groups (md-lists/events items 'after) line-of line-info))])
+                (insert-key! pane "enter")
+                (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items numbers))))))
+        (insert-key! pane "enter"))))
 
 ;;; See docs/lists.md's "Order of edits".
 (define (md-lists/open! pane below?)

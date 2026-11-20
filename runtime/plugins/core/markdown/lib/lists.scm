@@ -3,7 +3,8 @@
 (require "queries.scm")
 (require "state.scm")
 
-(provide md-lists/distinct md-lists/items md-lists/past-prefix? md-lists/empty? md-lists/ended-edit
+(provide md-lists/distinct md-lists/may-start-prefix? md-lists/items md-lists/past-prefix? md-lists/empty?
+         md-lists/ended-edit
          md-lists/events md-lists/renumber md-lists/prefixes
          md-lists/edited-hunks md-lists/edited-spans md-lists/edited-events md-lists/task-edits)
 
@@ -17,6 +18,14 @@
 
 (define (md-lists/past-bars bars text)
   (md-preview/skip-blanks text (+ (apply max bars) 1)))
+
+;;; Whether `text` starts, past blanks, with a character a list or quote marker starts with: every
+;;; line with a prefix does.
+(define (md-lists/may-start-prefix? text)
+  (let ([col (md-preview/skip-blanks text 0)])
+    (and (< col (string-length text))
+         (let ([c (string-ref text col)])
+           (or (char-digit? c) (and (memv c '(#\> #\- #\* #\+)) #t))))))
 
 ;;; See docs/lists.md's "Prefixes".
 (define (md-lists/item info marked quote-prefixes)
@@ -149,10 +158,13 @@
     (define (events-at m) (or (hash-try-get at-marker (md-preview/capture-start m)) '()))
     (define (of-kind at k) (filter (lambda (e) (equal? (kind-of e) k)) at))
     (define (uniform items)
-      (let ([kept (map number (filter (lambda (m) (null? (of-kind (events-at m) 'anchor))) items))])
-        (and (>= (length kept) 2)
-             (null? (filter (lambda (n) (not (= n (car kept)))) kept))
-             (car kept))))
+      (let loop ([items items] [same #f] [count 0])
+        (cond
+          [(null? items) (and (>= count 2) same)]
+          [(pair? (of-kind (events-at (car items)) 'anchor)) (loop (cdr items) same count)]
+          [else (let ([n (number (car items))])
+                  (and (or (not same) (= n same))
+                       (loop (cdr items) n (+ count 1))))])))
     (define (assign! es counter)
       (foldl (lambda (e n)
                (md-preview/box-insert! numbers (car e) n)

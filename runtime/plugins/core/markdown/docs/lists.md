@@ -16,6 +16,10 @@ a list on those lines comes back for renumbering, however far the list runs. A l
 fenced block that is not Markdown has no marker, so Enter, `o` and `O` act there as they
 always do.
 
+Enter skips the query when no cursor's line starts, past blanks, with a digit, `-`, `*`, `+`
+or `>` (`md-lists/may-start-prefix?`): only such a line can hold a prefix, so the query
+would find no item, and Enter breaks the line at once.
+
 ## Prefixes
 
 `md-lists/item` reads one line:
