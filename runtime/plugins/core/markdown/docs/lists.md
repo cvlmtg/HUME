@@ -4,7 +4,7 @@ Enter, `o`, `O` and `G X` in a Markdown buffer go through the `"markdown/lists"`
 The `on-buffer-open` hook attaches it, and `on-buffer-close` detaches it from a buffer that
 stays open with another language. `markdown/enter` handles Enter, `markdown/open-below` and
 `markdown/open-above` handle `o` and `O`, and `markdown/toggle-task` handles `G X`. With
-`'continue-lists` off, only `G X` is bound.
+`'continue-lists` off, only `G X` is bound and no `on-text-changed` handler is registered.
 
 The list query (`md-lists/query`) runs over the lines Enter's cursors are on, the lines `o`
 and `O` open from, every line a selection touches for `G X`, and the lines an edit changed
@@ -22,8 +22,9 @@ always do.
 
 - **Item line:** a list marker starts on it. Its prefix runs from the start of the line past
   the last marker, past a task box right after it, and past the blanks that follow. The
-  grammar reads a box with nothing after it, as in `- [ ] `, as text, so `md-preview/task-box`
-  (`queries.scm`, which the preview also draws boxes with) finds that box in the line instead.
+  box comes from `md-preview/task-box` (`queries.scm`), which the preview also draws boxes
+  with and which reads a box the grammar misses from the line
+  ([Node shapes](elements.md#node-shapes)).
 - **Quote in an item:** a `>` follows the last marker, as in `- > foo`. The line is a quote
   line inside the item: its prefix runs past the last such `>` and the blanks that follow, and
   it has no last marker of its own.
@@ -63,14 +64,15 @@ A deletion rather than a replacement leaves the cursor at the end of what is kep
 - `'after`: a new item after the line's last marker (Enter, `o`);
 - `'before`: a new item before it (`O`);
 - `'remove`: the marker is gone, one event for each marker an ended list deletes, so ending
-  `1. - ` renumbers the outer list too;
+  `1. - ` renumbers the outer list too.
+
+An edit gives three more (see [Renumbering after an edit](#renumbering-after-an-edit)):
+
 - `'anchor`: the marker's number was edited, so it keeps that number and the items after it
-  count on from it (see [Renumbering after an edit](#renumbering-after-an-edit)).
-
-An edit gives two more (see [Renumbering after an edit](#renumbering-after-an-edit)):
-
+  count on from it;
 - `'resume`: the items after the marker count on from it, past the removed items between;
-- `('start . n)`: the marker takes `n`, the number of the removed first item before it.
+- `'start`, carrying a number `n`: the marker takes `n`, the number of the removed first
+  item before it.
 
 Only ordered markers count. Each list that holds an event is walked in order. The walk starts
 at its first event: an item before it keeps its number, and each later slot, new items
@@ -113,7 +115,7 @@ marker columns gives `md-lists/list-events`:
   pasted item, an item outdented into the list;
 - with none there, a `'resume` on the list's last item before the hunk: deleted items, or an
   item indented into a nested list;
-- with no item before the hunk either, a `('start . n)` on its first item after, `n` being
+- with no item before the hunk either, a `'start` on its first item after, carrying `n`,
   the first number the hunk's old lines held at that column, so deleting `1.` from `1.`,
   `2.`, `3.` leaves `1.`, `2.`.
 

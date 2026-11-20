@@ -9,7 +9,7 @@ What each element of the preview is drawn from and drawn as, and the node shapes
 | ATX heading | the `atx_hN_marker` of an `atx_heading` | The marker becomes a Braille glyph of N dots and `▌` (`⠈▌`, `⠘▌`, `⠸▌`, `⠹▌`, `⠻▌`, `⠿▌`), scope `markup.heading.N.marker`; the space after it stays. The `inline` gets `markup.heading.N.text`, the line `markup.heading.N.line` |
 | Setext heading | `setext_heading` with `setext_hN_underline` | No conceal: the `inline` gets `markup.heading.N.text`, every line of the heading `markup.heading.N.line` |
 | Bullet | `list_marker_minus`, `_plus`, `_star` | Its first char becomes `•`, unscoped, keeping its syntax color. Ordered markers stay raw |
-| Task | `task_list_marker_unchecked`, `_checked` after a bullet in its `list_item`, or a box with nothing after it (`- [ ] `), which the grammar reads as text and `md-preview/task-box` reads from the line | Bullet and box become `☐` or `☑`, scope `markup.list.unchecked` or `markup.list.checked`. An ordered item's box stays raw |
+| Task | `task_list_marker_unchecked`, `_checked` after a bullet in its `list_item`, or a box with nothing after it (`- [ ] `), read from the line (see [Node shapes](#node-shapes)) | Bullet and box become `☐` or `☑`, scope `markup.list.unchecked` or `markup.list.checked`. An ordered item's box stays raw |
 | Quote marker | `block_quote_marker`, and each `>` in a `block_continuation` | `┃`, scope `markup.quote`; the space after it stays |
 | Lazy quote line | a `block_quote` line with no marker | `┃ ` inserted at the first non-blank char |
 | Rule | `thematic_break` | `─` × `'rule-width`, scope `punctuation.special` |
@@ -73,7 +73,8 @@ Checked against the pinned grammar fixtures (`tests/fixtures/grammars`):
   Ordered items carry a `list_marker_dot` or `list_marker_parenthesis`, which the preview
   leaves raw and [`lists.md`](lists.md#renumbering) renumbers.
   `task_list_marker_unchecked` follows the marker directly; the space after the box
-  belongs to the paragraph.
+  belongs to the paragraph. A box with nothing after it, as in `- [ ] `, is text, so
+  `md-preview/task-box` finds it in the line instead.
 - **Headings:** `atx_hN_marker` is the `#` run alone. The text is an `inline` child,
   absent for an empty heading, and holds any closing `#` run. Every `atx_heading` is the
   first child of a `section`, inside a quote too; a `setext_heading` is a child of the

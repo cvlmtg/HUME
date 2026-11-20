@@ -16,7 +16,7 @@ fn inserting(name: &str, marked: &str) -> Preview {
 /// Asks for completion, types `typed`, and accepts the item it leaves first.
 fn accept_after_typing(p: &mut Preview, typed: &str) {
     trigger_completion(&mut p.ed);
-    p.ed.feed_keys(typed.chars().map(key));
+    type_chars(&mut p.ed, typed);
     p.ed.settle();
     p.ed.feed_key(key_enter());
 }
@@ -41,7 +41,7 @@ fn typing_narrows_the_paths_to_the_typed_start() {
 fn typing_matches_a_path_fuzzily() {
     let mut p = inserting("a.md", "[x](-[\n]>");
     trigger_completion(&mut p.ed);
-    p.ed.feed_keys([key('d'), key('m')]);
+    type_chars(&mut p.ed, "dm");
     p.ed.settle();
     assert_eq!(menu_labels(&p.ed), ["todo.md"]);
 }

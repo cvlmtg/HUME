@@ -40,7 +40,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 
 | Doc | Covers |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | Decisions, limitations, file layout, rendering, popups, widening by query roots, overlapping conceals, fenced blocks |
+| [`docs/architecture.md`](docs/architecture.md) | Decisions, limitations, file layout, rendering, popups, widening by query roots, overlapping conceals, matches, fenced blocks |
 | [`docs/elements.md`](docs/elements.md) | Block elements, inline elements, tables, node shapes |
 | [`docs/links.md`](docs/links.md) | Link paste and link-path completion |
 | [`docs/lists.md`](docs/lists.md) | List and quote continuation, ending a list, renumbering, task boxes |

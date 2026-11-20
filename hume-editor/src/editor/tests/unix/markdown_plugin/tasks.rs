@@ -112,8 +112,7 @@ fn a_plain_line_is_left_alone() {
 
 #[test]
 fn continue_lists_off_still_toggles_a_box() {
-    let mut p = preview_with(Some("(hash 'continue-lists #f)"), true);
-    p.open_marked("a.md", "- [ ] -[a]>\n");
+    let mut p = editing_without_lists("- [ ] -[a]>\n");
     p.ed.feed_keys([key('G'), key('X')]);
     assert_eq!(state(&p.ed), "- [x] -[a]>\n");
 }

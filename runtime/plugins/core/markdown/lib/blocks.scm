@@ -38,8 +38,8 @@
                                        (md-preview/heading-scope n ".marker")
                                        #f))
             (emit! 'bands (hash 'line (line-of start) 'scope (md-preview/heading-scope n ".line")))))
-        (md-preview/captured groups (md-preview/heading n)))
-      (md-preview/heading-texts! groups (md-preview/heading-text n) n emit!))
+        (md-preview/captured groups (md-preview/level-capture "heading" n)))
+      (md-preview/heading-texts! groups (md-preview/level-capture "heading-text" n) n emit!))
     md-preview/atx-levels))
 
 (define (md-preview/setext-headings! groups line-of emit!)
@@ -49,8 +49,8 @@
         (lambda (c)
           (emit! 'bands (md-preview/band (md-preview/line-span line-of c)
                                          (md-preview/heading-scope n ".line"))))
-        (md-preview/captured groups (md-preview/setext n)))
-      (md-preview/heading-texts! groups (md-preview/setext-text n) n emit!))
+        (md-preview/captured groups (md-preview/level-capture "setext" n)))
+      (md-preview/heading-texts! groups (md-preview/level-capture "setext-text" n) n emit!))
     md-preview/setext-levels))
 
 (define md-preview/boxes
@@ -62,7 +62,7 @@
     (lambda (run)
       (let* ([marker (car run)]
              [start (md-preview/capture-start marker)]
-             [info (line-info (line-of start))]
+             [info (md-preview/capture-line marker line-of line-info)]
              [task (md-preview/task-box marker (md-preview/child run) (car info) (cdr info))])
         (emit! 'conceals
                (if task
@@ -73,8 +73,8 @@
 
 (define (md-preview/quotes! groups ranges line-of line-info emit!)
   (let ([marked (box (hash))])
-    (define (bar! at)
-      (md-preview/box-insert! marked (line-of at) #t)
+    (define (bar! line at)
+      (md-preview/box-insert! marked line #t)
       (emit! 'conceals (md-preview/conceal at (+ at 1) "┃" "markup.quote" #f)))
     (define (lazy-bar! line)
       (unless (hash-contains? (unbox marked) line)
@@ -86,8 +86,9 @@
               (emit! 'conceals (md-preview/conceal at at "┃ " "markup.quote" #f)))))))
     (for-each
       (lambda (c)
-        (let ([info (line-info (line-of (md-preview/capture-start c)))])
-          (for-each (lambda (col) (bar! (+ (car info) col)))
+        (let* ([line (line-of (md-preview/capture-start c))]
+               [info (line-info line)])
+          (for-each (lambda (col) (bar! line (+ (car info) col)))
                     (md-preview/quote-cols c (car info) (cdr info) '()))))
       (append (md-preview/captured groups "quote-marker")
               (md-preview/captured groups "continuation")

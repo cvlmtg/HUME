@@ -99,10 +99,25 @@ fn preview() -> Preview {
     preview_with(None, true)
 }
 
+/// The plugin's editor on `a.md` holding `text`, rendered.
+fn rendered(text: &str) -> (Preview, BufferId) {
+    let mut p = preview();
+    let bid = p.open("a.md", text);
+    p.render();
+    (p, bid)
+}
+
 /// The plugin's editor on `a.md` holding `marked`'s text, its open
 /// announced, selected as `marked` marks it.
 fn editing(marked: &str) -> Preview {
     let mut p = preview();
+    p.open_marked("a.md", marked);
+    p
+}
+
+/// [`editing`] with `'continue-lists` off.
+fn editing_without_lists(marked: &str) -> Preview {
+    let mut p = preview_with(Some("(hash 'continue-lists #f)"), true);
     p.open_marked("a.md", marked);
     p
 }
@@ -350,19 +365,15 @@ fn highlight(start: usize, end: usize, scope: &str) -> (usize, usize, String) {
 
 #[test]
 fn plugin_activates_on_a_markdown_buffer_with_no_events_clause() {
-    let mut p = preview();
-    let bid = p.open("a.md", "# Title\n");
-    p.render();
+    let (p, bid) = rendered("# Title\n");
     assert_eq!(p.conceal_starts(bid), [0]);
 }
 
 #[test]
 fn atx_heading_marker_becomes_its_level_with_band_and_text_highlight() {
-    let mut p = preview();
     // Line starts: 0, 4, 9, 15, 22, 30; each marker is followed by one
     // space and a one-letter text.
-    let bid = p.open("a.md", "# a\n## b\n### c\n#### d\n##### e\n###### f\n");
-    p.render();
+    let (p, bid) = rendered("# a\n## b\n### c\n#### d\n##### e\n###### f\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -395,10 +406,8 @@ fn atx_heading_marker_becomes_its_level_with_band_and_text_highlight() {
 
 #[test]
 fn setext_heading_gets_band_and_bold_only() {
-    let mut p = preview();
     // "Title\n" 0..6, "=====\n" 6..12, "\n" 12, "Sub\n" 13..17, "---\n" 17..21.
-    let bid = p.open("a.md", "Title\n=====\n\nSub\n---\n");
-    p.render();
+    let (p, bid) = rendered("Title\n=====\n\nSub\n---\n");
     assert_eq!(p.conceals(bid), []);
     assert_eq!(
         p.bands(bid),
@@ -422,11 +431,9 @@ fn setext_heading_gets_band_and_bold_only() {
 
 #[test]
 fn bullet_becomes_a_dot() {
-    let mut p = preview();
     // "- a\n" 0..4, "* b\n" 4..8, "+ c\n" 8..12, "1. d\n" 12..17: the
     // ordered marker stays raw.
-    let bid = p.open("a.md", "- a\n* b\n+ c\n1. d\n");
-    p.render();
+    let (p, bid) = rendered("- a\n* b\n+ c\n1. d\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -439,11 +446,9 @@ fn bullet_becomes_a_dot() {
 
 #[test]
 fn nested_bullets_become_dots() {
-    let mut p = preview();
     // "- a\n" 0..4, "  - b\n" 4..10, "    - c\n" 10..18: each `-` becomes
     // the dot, its indentation stays.
-    let bid = p.open("a.md", "- a\n  - b\n    - c\n");
-    p.render();
+    let (p, bid) = rendered("- a\n  - b\n    - c\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -456,11 +461,9 @@ fn nested_bullets_become_dots() {
 
 #[test]
 fn task_boxes_become_checkboxes() {
-    let mut p = preview();
     // "- [ ] a\n" 0..8, "- [x] b\n" 8..16: bullet and box become one glyph,
     // the space after the box stays.
-    let bid = p.open("a.md", "- [ ] a\n- [x] b\n");
-    p.render();
+    let (p, bid) = rendered("- [ ] a\n- [x] b\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -472,11 +475,9 @@ fn task_boxes_become_checkboxes() {
 
 #[test]
 fn empty_task_boxes_become_checkboxes() {
-    let mut p = preview();
     // "- [ ] \n" 0..7, "- [x]\n" 7..13: the grammar reads a box with nothing
     // after it as text, and it still becomes one glyph with its bullet.
-    let bid = p.open("a.md", "- [ ] \n- [x]\n");
-    p.render();
+    let (p, bid) = rendered("- [ ] \n- [x]\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -488,19 +489,15 @@ fn empty_task_boxes_become_checkboxes() {
 
 #[test]
 fn an_ordered_items_task_box_stays_raw() {
-    let mut p = preview();
-    let bid = p.open("a.md", "1. [ ] a\n");
-    p.render();
+    let (p, bid) = rendered("1. [ ] a\n");
     assert_eq!(p.conceals(bid), []);
 }
 
 #[test]
 fn quote_marker_becomes_a_bar() {
-    let mut p = preview();
     // "> a\n" 0..4, "> > b\n" 4..10: one `>` per quote level, the space
     // after each kept.
-    let bid = p.open("a.md", "> a\n> > b\n");
-    p.render();
+    let (p, bid) = rendered("> a\n> > b\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -513,11 +510,9 @@ fn quote_marker_becomes_a_bar() {
 
 #[test]
 fn quote_line_without_a_marker_gets_an_inserted_bar() {
-    let mut p = preview();
     // "> a\n" 0..4, the lazy line "b\n" 4..6, "- > c\n" 6..12, the lazy
     // line "  d\n" 12..16 whose text starts at 14.
-    let bid = p.open("a.md", "> a\nb\n- > c\n  d\n");
-    p.render();
+    let (p, bid) = rendered("> a\nb\n- > c\n  d\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -532,10 +527,8 @@ fn quote_line_without_a_marker_gets_an_inserted_bar() {
 
 #[test]
 fn lazy_line_of_a_nested_quote_gets_one_bar() {
-    let mut p = preview();
     // "> > a\n" 0..6, the lazy line "b\n" 6..8, inside both quotes.
-    let bid = p.open("a.md", "> > a\nb\n");
-    p.render();
+    let (p, bid) = rendered("> > a\nb\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -567,10 +560,8 @@ fn horizontal_rule_is_rule_width_dashes() {
 
 #[test]
 fn fence_lines_hide_their_fence_chars_and_info_string_and_band_the_block() {
-    let mut p = preview();
     // "```rust\n" 0..8, "fn f() {}\n" 8..18, "```\n" 18..22.
-    let bid = p.open("a.md", "```rust\nfn f() {}\n```\n");
-    p.render();
+    let (p, bid) = rendered("```rust\nfn f() {}\n```\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -585,11 +576,9 @@ fn fence_lines_hide_their_fence_chars_and_info_string_and_band_the_block() {
 
 #[test]
 fn an_unclosed_fence_runs_to_the_end_of_the_document() {
-    let mut p = preview();
     // "```rust\n" 0..8, "fn f() {}\n" 8..18, "# h\n" 18..22: no closing fence,
     // so the heading line is code.
-    let bid = p.open("a.md", "```rust\nfn f() {}\n# h\n");
-    p.render();
+    let (p, bid) = rendered("```rust\nfn f() {}\n# h\n");
     assert_eq!(
         p.conceals(bid),
         [hidden(0, 3).revealing(0, 22), hidden(3, 7).revealing(0, 22)]
@@ -600,11 +589,9 @@ fn an_unclosed_fence_runs_to_the_end_of_the_document() {
 
 #[test]
 fn markdown_fence_sets_conceals_for_its_two_fence_lines_only() {
-    let mut p = preview();
     // "```markdown\n" 0..12, "# h\n" 12..16, "**b**\n" 16..22, "- c\n"
     // 22..26, "```\n" 26..30.
-    let bid = p.open("a.md", "```markdown\n# h\n**b**\n- c\n```\n");
-    p.render();
+    let (mut p, bid) = rendered("```markdown\n# h\n**b**\n- c\n```\n");
     let markdown = p.ed.state.config.languages.intern("markdown");
     assert!(
         p.ed.state
@@ -633,11 +620,9 @@ fn markdown_fence_sets_conceals_for_its_two_fence_lines_only() {
 
 #[test]
 fn a_table_inside_a_markdown_fence_draws_no_border() {
-    let mut p = preview();
     // "```markdown\n" 0..12, "| a |\n" 12..18, "|---|\n" 18..24, "```\n"
     // 24..28.
-    let bid = p.open("a.md", "```markdown\n| a |\n|---|\n```\n");
-    p.render();
+    let (p, bid) = rendered("```markdown\n| a |\n|---|\n```\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -651,11 +636,9 @@ fn a_table_inside_a_markdown_fence_draws_no_border() {
 
 #[test]
 fn quote_lines_inside_a_code_block_get_no_inserted_bar() {
-    let mut p = preview();
     // "> ```\n" 0..6, "> code\n" 6..13, "> ```\n" 13..19. Every line has its
     // marker, so none gets an inserted bar.
-    let bid = p.open("a.md", "> ```\n> code\n> ```\n");
-    p.render();
+    let (p, bid) = rendered("> ```\n> code\n> ```\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -670,12 +653,10 @@ fn quote_lines_inside_a_code_block_get_no_inserted_bar() {
 
 #[test]
 fn every_line_of_a_code_block_inside_a_quote_gets_its_bar() {
-    let mut p = preview();
     // "> ```\n" 0..6, "> a\n" 6..10, "> b\n" 10..14, "> ```\n" 14..20: the
     // markers of the lines after the first content line lie inside the
     // block's content.
-    let bid = p.open("a.md", "> ```\n> a\n> b\n> ```\n");
-    p.render();
+    let (p, bid) = rendered("> ```\n> a\n> b\n> ```\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -691,12 +672,10 @@ fn every_line_of_a_code_block_inside_a_quote_gets_its_bar() {
 
 #[test]
 fn a_quoted_code_block_inside_a_markdown_fence_sets_no_bar() {
-    let mut p = preview();
     // "````markdown\n" 0..13, "> ```\n" 13..19, "> x\n" 19..23, "> ```\n"
     // 23..29, "````\n" 29..34: the quote and its code block are the
     // injected layer's.
-    let bid = p.open("a.md", "````markdown\n> ```\n> x\n> ```\n````\n");
-    p.render();
+    let (p, bid) = rendered("````markdown\n> ```\n> x\n> ```\n````\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -711,13 +690,11 @@ fn a_quoted_code_block_inside_a_markdown_fence_sets_no_bar() {
 
 #[test]
 fn emphasis_strikethrough_and_code_span_delimiters_are_hidden_revealing_over_their_construct() {
-    let mut p = preview();
     // One paragraph: "x *a*\n" 0..6, "**b\n" 6..10, "c** ~~d~~ `e`\n"
     // 10..24. `*a*` lies on line 0, the strong emphasis on lines 1 and 2,
     // the strikethrough (two nested ones, a delimiter each side) and the
     // code span on line 2.
-    let bid = p.open("a.md", "x *a*\n**b\nc** ~~d~~ `e`\n");
-    p.render();
+    let (p, bid) = rendered("x *a*\n**b\nc** ~~d~~ `e`\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -741,10 +718,8 @@ fn emphasis_strikethrough_and_code_span_delimiters_are_hidden_revealing_over_the
 
 #[test]
 fn strong_emphasis_around_emphasis_hides_every_delimiter() {
-    let mut p = preview();
     // "***a***\n" 0..8: both spans take line 0, so every `*` reveals over it.
-    let bid = p.open("a.md", "***a***\n");
-    p.render();
+    let (p, bid) = rendered("***a***\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -760,11 +735,9 @@ fn strong_emphasis_around_emphasis_hides_every_delimiter() {
 
 #[test]
 fn inline_link_shows_its_text_only() {
-    let mut p = preview();
     // `[t](http://x "ti")` 0..18 keeps `t` at 1; `![i](y)` 19..26 keeps
     // `i` at 21.
-    let bid = p.open("a.md", "[t](http://x \"ti\") ![i](y)\n");
-    p.render();
+    let (p, bid) = rendered("[t](http://x \"ti\") ![i](y)\n");
     assert_eq!(
         p.conceals(bid),
         [hidden(0, 1), hidden(2, 18), hidden(19, 21), hidden(22, 26)]
@@ -773,10 +746,8 @@ fn inline_link_shows_its_text_only() {
 
 #[test]
 fn reference_links_show_their_text_only() {
-    let mut p = preview();
     // `[t][r]` 0..6 keeps `t` at 1; `[c][]` 7..12 keeps `c` at 8.
-    let bid = p.open("a.md", "[t][r] [c][]\n\n[r]: u\n[c]: v\n");
-    p.render();
+    let (p, bid) = rendered("[t][r] [c][]\n\n[r]: u\n[c]: v\n");
     assert_eq!(
         p.conceals(bid),
         [hidden(0, 1), hidden(2, 6), hidden(7, 8), hidden(9, 12)]
@@ -785,20 +756,16 @@ fn reference_links_show_their_text_only() {
 
 #[test]
 fn shortcut_link_stays_raw() {
-    let mut p = preview();
     // `[s]` 0..3 has a definition and stays raw; `[t](u)` 4..10 is the
     // inline link beside it.
-    let bid = p.open("a.md", "[s] [t](u)\n\n[s]: v\n");
-    p.render();
+    let (p, bid) = rendered("[s] [t](u)\n\n[s]: v\n");
     assert_eq!(p.conceals(bid), [hidden(4, 5), hidden(6, 10)]);
 }
 
 #[test]
 fn autolink_hides_its_brackets() {
-    let mut p = preview();
     // `<http://a.b>` 0..12, `<me@x.y>` 13..21.
-    let bid = p.open("a.md", "<http://a.b> <me@x.y>\n");
-    p.render();
+    let (p, bid) = rendered("<http://a.b> <me@x.y>\n");
     assert_eq!(
         p.conceals(bid),
         [hidden(0, 1), hidden(11, 12), hidden(13, 14), hidden(20, 21)]
@@ -807,10 +774,8 @@ fn autolink_hides_its_brackets() {
 
 #[test]
 fn backslash_escape_hides_the_backslash() {
-    let mut p = preview();
     // `\*x\*`: backslashes at 0 and 3.
-    let bid = p.open("a.md", "\\*x\\*\n");
-    p.render();
+    let (p, bid) = rendered("\\*x\\*\n");
     assert_eq!(p.conceals(bid), [hidden(0, 1), hidden(3, 4)]);
 }
 
@@ -877,11 +842,9 @@ fn unknown_or_control_entities_stay_raw() {
 
 #[test]
 fn todo_footnote_note_and_dash_task_set_no_link_conceal() {
-    let mut p = preview();
     // "[TODO] [^1] [x](u)\n" 0..19 with the inline link at 12..18, "\n"
     // 19, "> [!NOTE]\n" 20..30, "\n" 30, "- [-] item\n" 31..42.
-    let bid = p.open("a.md", "[TODO] [^1] [x](u)\n\n> [!NOTE]\n\n- [-] item\n");
-    p.render();
+    let (p, bid) = rendered("[TODO] [^1] [x](u)\n\n> [!NOTE]\n\n- [-] item\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -895,12 +858,10 @@ fn todo_footnote_note_and_dash_task_set_no_link_conceal() {
 
 #[test]
 fn nested_constructs_set_without_an_overlap_error() {
-    let mut p = preview();
     // "[**b** x](u\* \"&amp;\")\n" 0..23: bold inside the link text, an
     // escape (11..13) and an entity (15..20) inside the hidden tail 8..22.
     // "[![i](y)](u)\n" 23..36: an image as the link's whole text.
-    let bid = p.open("a.md", "[**b** x](u\\* \"&amp;\")\n[![i](y)](u)\n");
-    p.render();
+    let (p, bid) = rendered("[**b** x](u\\* \"&amp;\")\n[![i](y)](u)\n");
     assert_eq!(
         p.conceals(bid),
         [
@@ -943,12 +904,10 @@ fn revealing(conceals: Vec<Conceal>, start: usize, end: usize) -> Vec<Conceal> {
 
 #[test]
 fn table_cells_are_padded_to_the_widest_cell_after_inline_conceals() {
-    let mut p = preview();
     // "| a | **bb** |\n" 0..15, "|---|---|\n" 15..25, "| ccc | d |\n"
     // 25..37. Shown widths: `a` 1, `bb` 2 (its four `*` hidden), `ccc` 3,
     // `d` 1, so the columns are 3 and 2 wide.
-    let bid = p.open("a.md", "| a | **bb** |\n|---|---|\n| ccc | d |\n");
-    p.render();
+    let (p, bid) = rendered("| a | **bb** |\n|---|---|\n| ccc | d |\n");
     assert_eq!(
         p.conceals(bid),
         revealing(
@@ -973,11 +932,9 @@ fn table_cells_are_padded_to_the_widest_cell_after_inline_conceals() {
 
 #[test]
 fn bold_inside_a_link_inside_a_table_cell_sets_without_an_overlap_error() {
-    let mut p = preview();
     // "| [**b**](u) | x |\n" 0..19, "|---|---|\n" 19..29. The link
     // `[**b**](u)` is 2..12 and shows `b`, so both columns are 1 wide.
-    let bid = p.open("a.md", "| [**b**](u) | x |\n|---|---|\n");
-    p.render();
+    let (p, bid) = rendered("| [**b**](u) | x |\n|---|---|\n");
     assert_eq!(
         p.conceals(bid),
         revealing(
@@ -1001,11 +958,9 @@ fn bold_inside_a_link_inside_a_table_cell_sets_without_an_overlap_error() {
 
 #[test]
 fn a_table_inside_a_quote_keeps_its_quote_bars() {
-    let mut p = preview();
     // "> | a | b |\n" 0..12, "> |---|---|\n" 12..24, "> | c | d |\n" 24..36: the
     // table's cells start after each line's marker.
-    let bid = p.open("a.md", "> | a | b |\n> |---|---|\n> | c | d |\n");
-    p.render();
+    let (p, bid) = rendered("> | a | b |\n> |---|---|\n> | c | d |\n");
     let quote = |at| replaced(at, at + 1, "┃", Some("markup.quote"));
     assert_eq!(
         p.conceals(bid),
@@ -1026,10 +981,8 @@ fn a_table_inside_a_quote_keeps_its_quote_bars() {
 
 #[test]
 fn delimiter_row_becomes_a_box_rule() {
-    let mut p = preview();
     // "| a | b |\n" 0..10, "|---|---|\n" 10..20: two columns one cell wide.
-    let bid = p.open("a.md", "| a | b |\n|---|---|\n");
-    p.render();
+    let (p, bid) = rendered("| a | b |\n|---|---|\n");
     assert_eq!(
         p.conceals(bid),
         revealing(
@@ -1079,14 +1032,12 @@ fn alignment_comes_from_delimiter_colons() {
 
 #[test]
 fn empty_cell_escaped_pipe_inline_conceal_and_entity_inside_a_cell() {
-    let mut p = preview();
     // "| a |  | c\|d |\n" 0..16: cells `a` (2), a blank one (5..7), `c\|d`
     // (9..13) with its backslash at 10. "|---|---|---|\n" 16..30.
     // "|*e*||&amp;|\n" 30..43: cells `*e*` (31..34), an empty one at 35,
     // `&amp;` (36..41). Shown widths: `a` and `e` 1, both blanks 0, `c|d`
     // 3 and `&` 1.
-    let bid = p.open("a.md", "| a |  | c\\|d |\n|---|---|---|\n|*e*||&amp;|\n");
-    p.render();
+    let (p, bid) = rendered("| a |  | c\\|d |\n|---|---|---|\n|*e*||&amp;|\n");
     assert_eq!(
         p.conceals(bid),
         revealing(
@@ -1113,11 +1064,9 @@ fn empty_cell_escaped_pipe_inline_conceal_and_entity_inside_a_cell() {
 
 #[test]
 fn a_row_of_one_empty_cell_gets_its_borders() {
-    let mut p = preview();
     // "| a |\n" 0..6, "|---|\n" 6..12, "||\n" 12..15: the last row's one
     // cell is empty, at 13, and its column is 1 wide.
-    let bid = p.open("a.md", "| a |\n|---|\n||\n");
-    p.render();
+    let (p, bid) = rendered("| a |\n|---|\n||\n");
     assert_eq!(
         p.conceals(bid),
         revealing(
@@ -1136,11 +1085,9 @@ fn a_row_of_one_empty_cell_gets_its_borders() {
 
 #[test]
 fn rows_without_outer_pipes_get_inserted_edge_conceals() {
-    let mut p = preview();
     // "a | b\n" 0..6, "--|--:\n" 6..13, "c | dd\n" 13..20. The second
     // column is 2 wide and right-aligned, so `b` gets one cell before it.
-    let bid = p.open("a.md", "a | b\n--|--:\nc | dd\n");
-    p.render();
+    let (p, bid) = rendered("a | b\n--|--:\nc | dd\n");
     assert_eq!(
         p.conceals(bid),
         revealing(
@@ -1161,11 +1108,9 @@ fn rows_without_outer_pipes_get_inserted_edge_conceals() {
 
 #[test]
 fn a_row_with_fewer_cells_gets_its_missing_ones_as_blanks() {
-    let mut p = preview();
     // "| a | b |\n" 0..10, "|---|---|\n" 10..20, "| c |\n" 20..26: the last
     // row's edge draws the missing second column, one cell wide.
-    let bid = p.open("a.md", "| a | b |\n|---|---|\n| c |\n");
-    p.render();
+    let (p, bid) = rendered("| a | b |\n|---|---|\n| c |\n");
     assert_eq!(
         p.conceals(bid),
         revealing(
@@ -1185,12 +1130,10 @@ fn a_row_with_fewer_cells_gets_its_missing_ones_as_blanks() {
 
 #[test]
 fn every_table_conceal_reveals_over_the_whole_table() {
-    let mut p = preview();
     // "x\n" 0..2, "\n" 2, the table "| a |\n|---|\n| *b* |\n" 3..23 on lines
     // 2..=4, "\n" 23, "y\n" 24..26: both borders, the cell bars, the rule
     // and the emphasis delimiters at 17 and 19.
-    let bid = p.open("a.md", "x\n\n| a |\n|---|\n| *b* |\n\ny\n");
-    p.render();
+    let (p, bid) = rendered("x\n\n| a |\n|---|\n| *b* |\n\ny\n");
     let table = Some((3, 23));
     assert_eq!(
         p.conceals(bid)
@@ -1203,12 +1146,10 @@ fn every_table_conceal_reveals_over_the_whole_table() {
 
 #[test]
 fn table_borders_land_on_empty_neighbour_lines_with_the_tables_indent() {
-    let mut p = preview();
     // "- item\n" 0..7, "\n" 7, "  | a |\n" 8..16, "  |---|\n" 16..24,
     // "  | b |\n" 24..32, "\n" 32, "z\n" 33..35. The table sits in the list
     // item, 2 cells in, on lines 2..=4.
-    let bid = p.open("a.md", "- item\n\n  | a |\n  |---|\n  | b |\n\nz\n");
-    p.render();
+    let (p, bid) = rendered("- item\n\n  | a |\n  |---|\n  | b |\n\nz\n");
     let mut expected = vec![replaced(0, 1, "•", None)];
     expected.extend(revealing(
         vec![
@@ -1228,12 +1169,10 @@ fn table_borders_land_on_empty_neighbour_lines_with_the_tables_indent() {
 
 #[test]
 fn table_border_is_skipped_next_to_text_and_at_the_buffer_edges() {
-    let mut p = preview();
     // "| a |\n|---|\n" 0..12 on the first line, "# h\n" 12..16 below it,
     // "\n" 16, "x\n" 17..19 above the second table "| b |\n|---|\n"
     // 19..31, which ends the buffer.
-    let bid = p.open("a.md", "| a |\n|---|\n# h\n\nx\n| b |\n|---|\n");
-    p.render();
+    let (p, bid) = rendered("| a |\n|---|\n# h\n\nx\n| b |\n|---|\n");
     let mut expected = revealing(
         vec![bar(0, 2, "│ "), bar(3, 5, " │"), bar(6, 11, "├───┤")],
         0,
@@ -1250,10 +1189,8 @@ fn table_border_is_skipped_next_to_text_and_at_the_buffer_edges() {
 
 #[test]
 fn one_empty_line_between_two_tables_carries_the_upper_tables_bottom_border() {
-    let mut p = preview();
     // "|a|b|\n|-|-|\n|c|d|\n" 0..18, "\n" 18, "|e|\n|-|\n|f|\n" 19..31.
-    let bid = p.open("a.md", "|a|b|\n|-|-|\n|c|d|\n\n|e|\n|-|\n|f|\n");
-    p.render();
+    let (p, bid) = rendered("|a|b|\n|-|-|\n|c|d|\n\n|e|\n|-|\n|f|\n");
     let mut expected = revealing(
         vec![
             bar(0, 1, "│ "),
@@ -1284,12 +1221,10 @@ fn one_empty_line_between_two_tables_carries_the_upper_tables_bottom_border() {
 
 #[test]
 fn cjk_and_combining_marks_in_cells_keep_the_columns_aligned() {
-    let mut p = preview();
     // "| 漢字 | e\u{301} |\n" 0..12: `漢字` (2..4) is 4 cells wide, `é` (7..9,
     // a base and a combining mark) 1. "|---|---|\n" 12..22.
     // "| a | bb |\n" 22..33. The columns are 4 and 2 wide.
-    let bid = p.open("a.md", "| 漢字 | e\u{301} |\n|---|---|\n| a | bb |\n");
-    p.render();
+    let (p, bid) = rendered("| 漢字 | e\u{301} |\n|---|---|\n| a | bb |\n");
     assert_eq!(
         p.conceals(bid),
         revealing(
@@ -1731,9 +1666,7 @@ const ELEMENTS: &str = "# a\n\n```\nc\n```\n";
 
 #[test]
 fn toggle_off_clears_every_source_and_on_renders_again() {
-    let mut p = preview();
-    let bid = p.open("a.md", ELEMENTS);
-    p.render();
+    let (mut p, bid) = rendered(ELEMENTS);
     let (conceals, bands, highlights) = (p.conceals(bid), p.bands(bid), p.highlights(bid));
     assert!(!p.is_blank(bid), "premise: the buffer renders");
 
@@ -1768,9 +1701,7 @@ fn toggle_in_a_buffer_outside_the_plugins_languages_is_refused() {
 
 #[test]
 fn buffer_close_clears_the_sources() {
-    let mut p = preview();
-    let bid = p.open("a.md", ELEMENTS);
-    p.render();
+    let (mut p, bid) = rendered(ELEMENTS);
     assert!(!p.is_blank(bid), "premise: the buffer renders");
 
     // An edit whose syntax hook has armed the render debounce, then the
@@ -1792,9 +1723,7 @@ fn buffer_close_clears_the_sources() {
 
 #[test]
 fn language_change_away_from_markdown_clears_the_sources() {
-    let mut p = preview();
-    let bid = p.open("a.md", ELEMENTS);
-    p.render();
+    let (mut p, bid) = rendered(ELEMENTS);
     assert!(!p.is_blank(bid), "premise: the buffer renders");
 
     p.ed.set_buffer_language(bid, None).expect_open();

@@ -56,9 +56,6 @@
     (md-preview/note-tree! pane)
     (md-preview/render-soon! pane)))
 
-(register-hook! 'on-text-changed
-  (lambda (pane changes) (md-lists/renumber-edited! pane changes)))
-
 (register-hook! 'on-buffer-close
   (lambda (pane)
     (md-preview/remove-buffer! pane)
@@ -158,7 +155,7 @@
 
 ;;; See docs/lists.md's "Renumbering after an edit".
 (define (md-lists/renumber-edited! pane changes)
-  (let ([edited (if (and md-lists/enabled changes (not (buffer-read-only? pane)))
+  (let ([edited (if (and changes (not (buffer-read-only? pane)))
                     (md-lists/edited-hunks changes)
                     '())])
     (unless (null? edited)
@@ -214,6 +211,8 @@
 (bind-key! 'normal "G X" "markdown/toggle-task" #:keymap md-lists/keymap)
 
 (when md-lists/enabled
+  (register-hook! 'on-text-changed
+    (lambda (pane changes) (md-lists/renumber-edited! pane changes)))
   (bind-key! 'insert "enter" "markdown/enter" #:keymap md-lists/keymap)
   (bind-key! 'normal "o" "markdown/open-below" #:keymap md-lists/keymap)
   (bind-key! 'normal "O" "markdown/open-above" #:keymap md-lists/keymap))

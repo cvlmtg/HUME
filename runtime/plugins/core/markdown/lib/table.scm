@@ -27,7 +27,7 @@
                     (string-width (or (hash-try-get c 'text) "")))))]))))
 
 (define (md-preview/measure-row row cells conceals line-of line-info)
-  (let* ([info (line-info (line-of (md-preview/capture-start row)))]
+  (let* ([info (md-preview/capture-line row line-of line-info)]
          [slice (md-preview/line-slicer info)]
          [spans (map (lambda (c) (md-preview/cell-span c slice)) cells)]
          [owned (md-preview/bucket (map (lambda (s) (cons (car s) (- (cdr s) 1))) spans)

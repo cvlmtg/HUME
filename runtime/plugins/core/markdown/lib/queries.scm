@@ -8,8 +8,8 @@
          md-preview/conceal-before? md-preview/group md-preview/runs-of md-preview/runs md-preview/children
          md-preview/child md-preview/captured
          md-preview/group-by md-preview/unchecked-box md-preview/checked-box
-         md-preview/end-col md-preview/task-box md-preview/line-slicer
-         md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text
+         md-preview/start-col md-preview/end-col md-preview/capture-line md-preview/line-end
+         md-preview/task-box md-preview/line-slicer md-preview/level-capture
          md-lists/query)
 
 (define md-preview/atx-levels '(1 2 3 4 5 6))
@@ -41,7 +41,7 @@
 
 ;;; The column of each `>` in `capture`, which lies on the line `text` starting at `start`, in order, before `tail`.
 (define (md-preview/quote-cols capture start text tail)
-  (let ([from (- (md-preview/capture-start capture) start)])
+  (let ([from (md-preview/start-col capture start)])
     (let loop ([col (- (min (string-length text) (- (md-preview/capture-end capture) start)) 1)]
                [cols tail])
       (cond
@@ -67,6 +67,13 @@
 ;;; Slices the line `info` reads, `(start . text)`, by buffer offsets.
 (define (md-preview/line-slicer info)
   (lambda (start end) (substring (cdr info) (- start (car info)) (- end (car info)))))
+
+(define (md-preview/line-end info)
+  (+ (car info) (string-length (cdr info))))
+
+;;; The line `capture` starts on, as `line-info` reads it.
+(define (md-preview/capture-line capture line-of line-info)
+  (line-info (line-of (md-preview/capture-start capture))))
 
 (define (md-preview/line-slice start end line-of line-info)
   ((md-preview/line-slicer (line-info (line-of start))) start end))
@@ -119,32 +126,33 @@
 (define (md-preview/captured groups name)
   (map car (md-preview/runs-of groups name)))
 
-(define (md-preview/heading n) (string-append "heading." (number->string n)))
-(define (md-preview/heading-text n) (string-append "heading-text." (number->string n)))
-(define (md-preview/setext n) (string-append "setext." (number->string n)))
-(define (md-preview/setext-text n) (string-append "setext-text." (number->string n)))
+(define (md-preview/level-capture kind n) (string-append kind "." (number->string n)))
 
 (define (md-preview/atx-patterns n)
   (let ([marker (string-append "(atx_h" (number->string n) "_marker)")])
     (string-append
-      "(atx_heading " marker " @" (md-preview/heading n) ")\n"
-      "(atx_heading " marker " (inline) @" (md-preview/heading-text n) ")\n")))
+      "(atx_heading " marker " @" (md-preview/level-capture "heading" n) ")\n"
+      "(atx_heading " marker " (inline) @" (md-preview/level-capture "heading-text" n) ")\n")))
 
 (define (md-preview/setext-patterns n)
   (let ([underline (string-append "(setext_h" (number->string n) "_underline)")])
     (string-append
-      "(setext_heading " underline ") @" (md-preview/setext n) "\n"
-      "(setext_heading (paragraph (inline) @" (md-preview/setext-text n) ") " underline ")\n")))
+      "(setext_heading " underline ") @" (md-preview/level-capture "setext" n) "\n"
+      "(setext_heading (paragraph (inline) @" (md-preview/level-capture "setext-text" n) ") " underline ")\n")))
 
 (define md-preview/unchecked-box "task-unchecked")
 (define md-preview/checked-box "task-checked")
+
+;;; The column where `capture` starts on a line starting at `start`.
+(define (md-preview/start-col capture start)
+  (- (md-preview/capture-start capture) start))
 
 ;;; The column where `capture` ends on the line `text` starting at `start`, at most the text's length.
 (define (md-preview/end-col capture start text)
   (min (string-length text) (- (md-preview/capture-end capture) start)))
 
 ;;; The task box after `marker` on the line `text` starting at `start`: `parsed`, the parser's,
-;;; or else a box with nothing after it, which the grammar reads as text. See docs/lists.md's "Prefixes".
+;;; or else one read from the line. See docs/elements.md's "Node shapes".
 (define (md-preview/task-box marker parsed start text)
   (or parsed
       (let* ([from (md-preview/skip-blanks text (md-preview/end-col marker start text))]

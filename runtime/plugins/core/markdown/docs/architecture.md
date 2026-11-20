@@ -51,8 +51,6 @@
   selection touches.
 - Dragging the mouse across concealed lines reveals them as the selection grows, which
   shifts their columns under the pointer.
-- A link path is inserted as the file is named: a name with a space makes a destination
-  Markdown reads as text, not as a link.
 - The path menu also shows what the other completion sources offer for the word before
   the cursor, such as `core:buffer-words`'s words.
 - Lines scrolled into view draw raw until the next render, `hook-viewport-debounce-ms`

@@ -73,8 +73,7 @@
                [start (hash-ref c 'start-char)]
                [line-end (if (<= start line-end)
                              line-end
-                             (let ([info (line-info (line-of start))])
-                               (+ (car info) (string-length (cdr info)))))])
+                             (md-preview/line-end (line-info (line-of start))))])
           (loop (cdr cs)
                 line-end
                 (cons (if (<= (hash-ref c 'end-char) line-end) c (hash-insert c 'end-char line-end))

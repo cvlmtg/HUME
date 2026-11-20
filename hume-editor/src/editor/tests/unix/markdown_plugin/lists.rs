@@ -251,8 +251,7 @@ fn enter_and_o_in_another_language_run_their_global_bindings() {
 
 #[test]
 fn continue_lists_off_leaves_enter_as_usual() {
-    let mut p = preview_with(Some("(hash 'continue-lists #f)"), true);
-    p.open_marked("a.md", "- foo-[\n]>");
+    let mut p = editing_without_lists("- foo-[\n]>");
     p.ed.feed_keys([key('i'), key_enter()]);
     assert_eq!(state(&p.ed), "- foo\n-[\n]>");
 }
@@ -323,8 +322,7 @@ fn a_normal_mode_edit_undoes_its_renumbering_first() {
 
 #[test]
 fn continue_lists_off_renumbers_nothing_after_an_edit() {
-    let mut p = preview_with(Some("(hash 'continue-lists #f)"), true);
-    p.open_marked("a.md", SPLIT_LISTS);
+    let mut p = editing_without_lists(SPLIT_LISTS);
     press(&mut p.ed, "r1");
     p.render();
     assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n1. c\n4. d\n");
