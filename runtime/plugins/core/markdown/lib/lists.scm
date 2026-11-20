@@ -242,8 +242,9 @@
 (define (md-lists/numbers-at markers col)
   (map md-lists/line-marker-number (filter (lambda (m) (= (md-lists/line-marker-col m) col)) markers)))
 
-(define (md-lists/markers-of lines)
-  (call! "stdlib/concat" (map md-lists/line-markers lines)))
+;;; The ordered markers of lines `[start, end)` of `by-line`, a vector of each line's markers.
+(define (md-lists/markers-in by-line start end)
+  (call! "stdlib/concat" (map (lambda (line) (vector-ref by-line line)) (range start end))))
 
 ;;; The columns at which `old` and `new`, the ordered markers of two runs of lines, hold different numbers.
 (define (md-lists/changed-cols old new)
@@ -258,28 +259,31 @@
 ;;; the lines it changed. See docs/lists.md's "Renumbering after an edit".
 (define (md-lists/edited-hunks hunks)
   (define (side-text lines) (apply string-append (map (lambda (line) (string-append line "\n")) lines)))
-  (define (split hunk)
+  (define (edited hunk)
     (let* ([old-lines (hash-ref hunk 'old-lines)]
            [new-lines (hash-ref hunk 'new-lines)]
-           [whole? (or (null? old-lines) (null? new-lines))]
-           [offset (if whole? 0 (hash-ref hunk 'new-start-line))])
-      (filter (lambda (e) (pair? (md-lists/edited-cols e)))
-              (map (lambda (part)
-                     (let ([old (md-lists/markers-of (hash-ref part 'old-lines))])
-                       (md-lists/edited (+ offset (hash-ref part 'new-start-line))
-                                        (+ offset (hash-ref part 'new-end-line))
-                                        old
-                                        (md-lists/changed-cols old (md-lists/markers-of (hash-ref part 'new-lines))))))
-                   (if whole?
-                       (list hunk)
-                       (hash-ref (diff-lines (side-text old-lines) (side-text new-lines)) 'hunks))))))
-  (call! "stdlib/concat"
-    (map (lambda (hunk)
-           (if (null? (md-lists/changed-cols (md-lists/markers-of (hash-ref hunk 'old-lines))
-                                             (md-lists/markers-of (hash-ref hunk 'new-lines))))
-               '()
-               (split hunk)))
-         hunks)))
+           [old-by-line (list->vector (map md-lists/line-markers old-lines))]
+           [new-by-line (list->vector (map md-lists/line-markers new-lines))]
+           [offset (hash-ref hunk 'new-start-line)])
+      ;; `part`'s line numbers count from the hunk's first line on each side.
+      (define (part-edit part)
+        (let ([old (md-lists/markers-in old-by-line (hash-ref part 'old-start-line) (hash-ref part 'old-end-line))]
+              [new (md-lists/markers-in new-by-line (hash-ref part 'new-start-line) (hash-ref part 'new-end-line))])
+          (md-lists/edited (+ offset (hash-ref part 'new-start-line))
+                           (+ offset (hash-ref part 'new-end-line))
+                           old
+                           (md-lists/changed-cols old new))))
+      (cond
+        [(null? (md-lists/changed-cols (md-lists/markers-in old-by-line 0 (length old-lines))
+                                       (md-lists/markers-in new-by-line 0 (length new-lines))))
+         '()]
+        [(or (null? old-lines) (null? new-lines))
+         (list (part-edit (hash 'old-start-line 0 'old-end-line (length old-lines)
+                                'new-start-line 0 'new-end-line (length new-lines))))]
+        [else
+         (filter (lambda (e) (pair? (md-lists/edited-cols e)))
+                 (map part-edit (hash-ref (diff-lines (side-text old-lines) (side-text new-lines)) 'hunks)))])))
+  (call! "stdlib/concat" (map edited hunks)))
 
 ;;; The line ranges the lists `edited` renumbers lie on, as `(start . end)`, in a text of `line-count` lines:
 ;;; each hunk's new lines, from the last non-blank line before them through the first one after them.

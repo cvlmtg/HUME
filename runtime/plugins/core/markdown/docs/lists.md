@@ -110,7 +110,8 @@ and an event whose hunks are `#f`.
 column, the numbers its old lines hold there differ from those its new lines hold. Typing
 in an item's text, deleting a word, or rewriting a line around its marker leaves them equal,
 so that hunk is dropped before the tree is read. Both sides go through the same reader, so a
-line it misreads counts the same on both. Edits on touching lines arrive as one hunk, as
+line it misreads counts the same on both. Each line of a hunk is read once, and the parts
+of a split take their lines' markers from that read. Edits on touching lines arrive as one hunk, as
 Enter at two adjacent items gives, so a kept hunk is split by `diff-lines` into the lines it
 changed: the item between the two new ones then counts on instead of anchoring. A hunk with
 no lines on one side, a pure insertion or deletion, is one change already and is kept whole,
