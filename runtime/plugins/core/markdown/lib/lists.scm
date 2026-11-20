@@ -5,7 +5,7 @@
 
 (provide md-lists/distinct md-lists/may-start-prefix? md-lists/items md-lists/past-prefix? md-lists/empty?
          md-lists/ended-edit
-         md-lists/events md-lists/renumber md-lists/prefixes
+         md-lists/events md-lists/numbered-lists md-lists/renumber md-lists/prefixes
          md-lists/edited-hunks md-lists/edited-spans md-lists/edited-events md-lists/task-edits)
 
 (define (md-lists/distinct lines)
@@ -129,22 +129,36 @@
 ;;; `start` is the number a `'start` event gives its marker, `#f` for any other kind.
 (struct md-lists/event (marker kind start))
 
-;;; The line `marker` sits on, as `(text col end)`: its text, `marker`'s column and the column past its digits.
-(define (md-lists/digit-run marker line-of line-info)
-  (let* ([info (md-preview/capture-line marker line-of line-info)]
-         [text (cdr info)]
-         [col (md-preview/start-col marker (car info))])
-    (list text col (md-preview/skip-while text col char-digit?))))
+;;; An ordered marker of a list: its capture, the line it is on and its column there, its
+;;; number, how many digits that number has, and its delimiter.
+(struct md-lists/numbered (capture line col number width delimiter))
 
-(define (md-lists/digits marker line-of line-info)
-  (apply substring (md-lists/digit-run marker line-of line-info)))
+(define (md-lists/numbered-start n) (md-preview/capture-start (md-lists/numbered-capture n)))
 
-(define (md-lists/delimiter marker line-of line-info)
-  (let ([run (md-lists/digit-run marker line-of line-info)])
-    (string-ref (car run) (list-ref run 2))))
+;;; Per list in `groups`, its ordered markers in order. `(read-lines start end)` gives lines
+;;; `[start, end)` as `(start-char . texts)`. See docs/lists.md's "Renumbering".
+(define (md-lists/numbered-lists groups line-of read-lines)
+  (define (numbered captures)
+    (let* ([first-line (line-of (md-preview/capture-start (car captures)))]
+           [read (read-lines first-line (+ (line-of (md-preview/capture-start (last captures))) 1))])
+      (let loop ([captures captures] [line first-line] [start (car read)] [texts (cdr read)] [out '()])
+        (if (null? captures)
+            (reverse out)
+            (let ([next-start (+ start (string-length (car texts)) 1)]
+                  [capture (car captures)])
+              (if (>= (md-preview/capture-start capture) next-start)
+                  (loop captures (+ line 1) next-start (cdr texts) out)
+                  (let* ([text (car texts)]
+                         [col (md-preview/start-col capture start)]
+                         [end (md-preview/skip-while text col char-digit?)])
+                    (loop (cdr captures) line start texts
+                          (cons (md-lists/numbered capture line col (string->number (substring text col end))
+                                                   (- end col) (string-ref text end))
+                                out)))))))))
+  (map numbered (map md-preview/children (md-preview/runs-of groups "list"))))
 
 ;;; See docs/lists.md's "Renumbering".
-(define (md-lists/renumber groups events line-of line-info)
+(define (md-lists/renumber lists events)
   (let* ([indexed (map cons (range 0 (length events)) events)]
          [marker-of (lambda (e) (md-lists/event-marker (cdr e)))]
          [numbered (filter (lambda (e) (let ([m (marker-of e)]) (and m (equal? (car m) "ordered"))))
@@ -154,8 +168,8 @@
          [at-marker (md-preview/group-by (lambda (e) (md-preview/capture-start (marker-of e))) numbered)]
          [numbers (box (hash))]
          [edits (box '())])
-    (define (number m) (string->number (md-lists/digits m line-of line-info)))
-    (define (events-at m) (or (hash-try-get at-marker (md-preview/capture-start m)) '()))
+    (define number md-lists/numbered-number)
+    (define (events-at n) (or (hash-try-get at-marker (md-lists/numbered-start n)) '()))
     (define (of-kind at k) (filter (lambda (e) (equal? (kind-of e) k)) at))
     (define (uniform items)
       (let loop ([items items] [same #f] [count 0])
@@ -171,43 +185,42 @@
                (+ n 1))
              counter
              es))
-    (define (renumber! m counter)
-      (let ([digits (md-lists/digits m line-of line-info)])
-        (unless (= counter (string->number digits))
-          (let ([s (md-preview/capture-start m)])
-            (set-box! edits
-                      (cons (hash 'start-char s
-                                  'end-char (+ s (string-length digits))
-                                  'text (number->string counter))
-                            (unbox edits)))))))
+    (define (renumber! n counter)
+      (unless (= counter (number n))
+        (let ([s (md-lists/numbered-start n)])
+          (set-box! edits
+                    (cons (hash 'start-char s
+                                'end-char (+ s (md-lists/numbered-width n))
+                                'text (number->string counter))
+                          (unbox edits))))))
     (for-each
       (lambda (items)
         (let ([same (uniform items)])
           (if same
-              (for-each (lambda (m)
-                          (let ([at (events-at m)])
+              (for-each (lambda (n)
+                          (let ([at (events-at n)])
                             (for-each (lambda (e) (md-preview/box-insert! numbers (car e) same))
                                       (append (of-kind at 'before) (of-kind at 'after)))))
                         items)
               (let walk ([items items] [counter #f])
                 (unless (null? items)
-                  (let* ([m (car items)]
-                         [at (events-at m)]
+                  (let* ([n (car items)]
+                         [at (events-at n)]
                          [befores (of-kind at 'before)]
                          [starts (of-kind at 'start)]
                          [afters (of-kind at 'after)]
-                         [counter (if (pair? befores) (assign! befores (or counter (number m))) counter)]
+                         [counter (if (pair? befores) (assign! befores (or counter (number n))) counter)]
                          [counter (cond
-                                    [(pair? (of-kind at 'anchor)) (+ (number m) 1)]
+                                    [(pair? (of-kind at 'anchor)) (+ (number n) 1)]
                                     [(pair? starts)
-                                     (let ([n (start-of (car starts))]) (renumber! m n) (+ n 1))]
-                                    [counter (renumber! m counter) (+ counter 1)]
-                                    [(pair? (of-kind at 'resume)) (+ (number m) 1)]
+                                     (let ([start (start-of (car starts))]) (renumber! n start) (+ start 1))]
+                                    [counter (renumber! n counter) (+ counter 1)]
+                                    [(pair? (of-kind at 'resume)) (+ (number n) 1)]
                                     [else #f])]
-                         [counter (if (pair? afters) (assign! afters (or counter (+ (number m) 1))) counter)])
+                         [counter (if (pair? afters) (assign! afters (or counter (+ (number n) 1))) counter)])
                     (walk (cdr items) counter)))))))
-      (filter (lambda (items) (findf (lambda (m) (hash-contains? at-marker (md-preview/capture-start m))) items))
-              (map md-preview/children (md-preview/runs-of groups "list"))))
+      (filter (lambda (items) (findf (lambda (n) (hash-contains? at-marker (md-lists/numbered-start n))) items))
+              lists))
     (cons (unbox edits)
           (map (lambda (e) (hash-try-get (unbox numbers) (car e))) indexed))))
 
@@ -301,13 +314,13 @@
                    [else (+ line 1)]))))
        edited))
 
-;;; The events `edited` gives the list of `markers`. See docs/lists.md's "Renumbering after an edit".
-(define (md-lists/list-events markers edited line-of line-info)
-  (let* ([lines (map (lambda (m) (line-of (md-preview/capture-start m))) markers)]
-         [cols (map (lambda (m line) (md-preview/start-col m (car (line-info line)))) markers lines)]
-         [placed (map cons lines markers)]
-         [markers-where (lambda (keep?) (map cdr (filter (lambda (p) (keep? (car p))) placed)))]
-         [delimiter (md-lists/delimiter (car markers) line-of line-info)]
+;;; The events `edited` gives the list `numbered`. See docs/lists.md's "Renumbering after an edit".
+(define (md-lists/list-events numbered edited)
+  (let* ([cols (map md-lists/numbered-col numbered)]
+         [markers-where (lambda (keep?)
+                          (map md-lists/numbered-capture
+                               (filter (lambda (n) (keep? (md-lists/numbered-line n))) numbered)))]
+         [delimiter (md-lists/numbered-delimiter (car numbered))]
          [delimited (lambda (old) (filter (lambda (m) (char=? (md-lists/line-marker-delimiter m) delimiter)) old))])
     (call! "stdlib/concat"
       (map (lambda (e)
@@ -328,11 +341,9 @@
                    '())))
            edited))))
 
-;;; The events `edited`, from `md-lists/edited-hunks`, gives the lists in `groups`.
-(define (md-lists/edited-events groups edited line-of line-info)
-  (call! "stdlib/concat"
-    (map (lambda (markers) (md-lists/list-events markers edited line-of line-info))
-         (map md-preview/children (md-preview/runs-of groups "list")))))
+;;; The events `edited`, from `md-lists/edited-hunks`, gives `lists`, from `md-lists/numbered-lists`.
+(define (md-lists/edited-events lists edited)
+  (call! "stdlib/concat" (map (lambda (numbered) (md-lists/list-events numbered edited)) lists)))
 
 ;;; Per item, its next line's prefix, or `#f` for a line with no prefix.
 (define (md-lists/prefixes items numbers)

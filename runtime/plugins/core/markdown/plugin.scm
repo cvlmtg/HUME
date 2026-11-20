@@ -75,13 +75,18 @@
 
 ;; ── Lists ─────────────────────────────────────────────────────────────────────
 
-(define (md-lists/groups pane spans)
+(define (md-lists/groups pane query spans)
   (md-preview/group
     (if (language-has-grammar? "markdown")
-        (syntax-captures pane "markdown" md-lists/query
+        (syntax-captures pane "markdown" query
                          #:ranges (map (lambda (span) (hash 'start-line (car span) 'end-line (cdr span)))
                                        spans))
         '())))
+
+(define (md-lists/numbered-lists-of pane groups line-of)
+  (md-lists/numbered-lists groups line-of
+    (lambda (start end)
+      (cons (line->char-offset pane start) (buffer-lines pane #:range (hash 'start-line start 'end-line end))))))
 
 (define (md-lists/prefix-edits pane prefixes)
   (let ([sels (buffer-selections pane)])
@@ -108,13 +113,14 @@
          [heads (map selection-head (buffer-selections pane))]
          [lines (map line-of heads)])
     (if (findf (lambda (line) (md-lists/may-start-prefix? (cdr (line-info line)))) lines)
-        (let* ([groups (md-lists/groups pane (map (lambda (line) (cons line (+ line 1))) lines))]
+        (let* ([groups (md-lists/groups pane md-lists/query (map (lambda (line) (cons line (+ line 1))) lines))]
                [items (map (lambda (item head) (and item (md-lists/past-prefix? item head) item))
                            (md-lists/items lines groups line-info)
                            heads)])
           (if (null? (filter (lambda (item) (not (and item (md-lists/empty? item)))) items))
               (edit-text! pane (map md-lists/ended-edit items))
-              (let ([numbers (cdr (md-lists/renumber groups (md-lists/events items 'after) line-of line-info))])
+              (let ([numbers (cdr (md-lists/renumber (md-lists/numbered-lists-of pane groups line-of)
+                                                     (md-lists/events items 'after)))])
                 (insert-key! pane "enter")
                 (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items numbers))))))
         (insert-key! pane "enter"))))
@@ -128,10 +134,10 @@
                     (map (lambda (sel)
                            (line-of (if below? (- (selection-end-char sel) 1) (selection-start-char sel))))
                          (buffer-selections pane)))]
-         [groups (md-lists/groups pane (map (lambda (line) (cons line (+ line 1))) sources))]
+         [groups (md-lists/groups pane md-lists/query (map (lambda (line) (cons line (+ line 1))) sources))]
          [items (md-lists/items sources groups line-info)]
-         [numbers (cdr (md-lists/renumber groups (md-lists/events items (if below? 'after 'before))
-                                          line-of line-info))])
+         [numbers (cdr (md-lists/renumber (md-lists/numbered-lists-of pane groups line-of)
+                                          (md-lists/events items (if below? 'after 'before))))])
     (call! (if below? "open-line-below" "open-line-above") pane)
     (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items numbers)))))
 
@@ -150,9 +156,10 @@
       (let* ([reader (md-preview/line-reader pane)]
              [line-of (car reader)]
              [line-info (cdr reader)]
-             [groups (md-lists/groups pane (md-lists/edited-spans edited (buffer-line-count pane) line-info))]
-             [edits (car (md-lists/renumber groups (md-lists/edited-events groups edited line-of line-info)
-                                            line-of line-info))])
+             [groups (md-lists/groups pane md-lists/numbered-query
+                                      (md-lists/edited-spans edited (buffer-line-count pane) line-info))]
+             [lists (md-lists/numbered-lists-of pane groups line-of)]
+             [edits (car (md-lists/renumber lists (md-lists/edited-events lists edited)))])
         (unless (null? edits)
           (let ([shown (buffer-panes pane)])
             (edit-text! (if (pair? shown) (car shown) pane) edits #:expect-generation generation)
@@ -183,7 +190,7 @@
          [spans (map span-of sels)]
          [lines (md-lists/distinct
                   (call! "stdlib/concat" (map (lambda (span) (range (car span) (cdr span))) spans)))]
-         [items (md-lists/items lines (md-lists/groups pane spans) line-info)]
+         [items (md-lists/items lines (md-lists/groups pane md-lists/query spans) line-info)]
          [primary (span-of (call! "stdlib/primary-selection" sels))]
          [primary-items (map cdr (filter (lambda (line-item)
                                            (and (>= (car line-item) (car primary))

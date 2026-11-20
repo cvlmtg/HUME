@@ -77,7 +77,11 @@ An edit gives three more (see [Renumbering after an edit](#renumbering-after-an-
 - `'start`, carrying a number `n`: the marker takes `n`, the number of the removed first
   item before it.
 
-Only ordered markers count. Each list that holds an event is walked in order. The walk starts
+Only ordered markers count. `md-lists/numbered-lists` reads each list the query returns
+once: one `buffer-lines` call over the lines from its first marker to its last, matched to
+its markers in order, gives each marker its line, column, number, digit count and delimiter.
+The walk and the events read these records, not the buffer. Each list that holds an event
+is walked in order. The walk starts
 at its first event: an item before it keeps its number, and each later slot, new items
 included and removed ones skipped, takes the next number. So the first new item after `n.`
 is `n+1`, a new item before `n.` is `n`, and a removed `n.` hands `n` to the item after
@@ -117,7 +121,8 @@ changed: the item between the two new ones then counts on instead of anchoring. 
 no lines on one side, a pure insertion or deletion, is one change already and is kept whole,
 since `diff-lines` reads an empty text as one empty line.
 
-The list query runs over each kept hunk's new lines, reaching back to the last non-blank
+The pass's query, `md-lists/numbered-query`, holds only the list pattern, since the pass
+reads no item or quote. It runs over each kept hunk's new lines, reaching back to the last non-blank
 line before them and on through the first one after them, so a list that now starts after
 a blanked item or a blank line comes back with them. For each list it returns, a hunk that
 changed one of the list's marker columns gives `md-lists/list-events`:

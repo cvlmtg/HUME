@@ -10,7 +10,7 @@
          md-preview/group-by md-preview/unchecked-box md-preview/checked-box
          md-preview/start-col md-preview/end-col md-preview/capture-line md-preview/line-end
          md-preview/task-box md-preview/line-slicer md-preview/level-capture
-         md-lists/query)
+         md-lists/query md-lists/numbered-query)
 
 (define md-preview/atx-levels '(1 2 3 4 5 6))
 (define md-preview/setext-levels '(1 2))
@@ -207,9 +207,12 @@
     "(backslash_escape) @escape\n"
     "[(entity_reference) (numeric_character_reference)] @entity\n"))
 
+(define md-lists/numbered-query
+  (string-append "(list (list_item " md-preview/ordered-markers " @ordered)) @list\n"))
+
 (define md-lists/query
   (string-append
     (md-preview/item-pattern md-preview/bullet-markers "bullet")
     (md-preview/item-pattern md-preview/ordered-markers "ordered")
-    "(list (list_item " md-preview/ordered-markers " @ordered)) @list\n"
+    md-lists/numbered-query
     "[(block_quote_marker) (block_continuation)] @quote-prefix\n"))
