@@ -38,7 +38,7 @@ In a link's destination, right after `](` or `](<`, `Ctrl-Space` lists the files
 
 In a list, `Enter` starts the next item: a bullet gets the same bullet, a numbered item the next number, and a task item an unchecked box. A nested item continues at its own indent, and a quote line gets the next line's `>`. `o` and `O` open a line below or above in the same way. Adding an item to a numbered list renumbers the items after it, so a new item after `2.` turns the `3.` below it into `4.`.
 
-`Enter` on an item with nothing after its marker ends the list instead: the marker goes, and the items after it are renumbered to close the gap. On an empty quote line, it ends the quote.
+`Enter` on an item with nothing after its marker or task box ends the list instead: the marker goes, and the items after it are renumbered to close the gap. On an empty quote line, it ends the quote.
 
 `G X` checks the task boxes on the lines your selections touch, or unchecks them all when the first box on the main selection's lines is checked. When the main selection's lines have no box, the first box of all decides. Lines without a box don't change.
 

@@ -96,6 +96,19 @@ fn enter_on_an_empty_bullet_ends_the_list() {
 }
 
 #[test]
+fn enter_on_an_empty_task_item_ends_the_list() {
+    assert_eq!(entered("- [ ] a\n- [ ] -[\n]>"), "- [ ] a\n-[\n]>");
+}
+
+#[test]
+fn enter_on_an_empty_checked_ordered_task_item_ends_the_list_and_renumbers() {
+    assert_eq!(
+        entered("1. [ ] a\n2. [x] -[\n]>3. [ ] c\n"),
+        "1. [ ] a\n-[\n]>2. [ ] c\n"
+    );
+}
+
+#[test]
 fn enter_on_an_empty_item_in_a_quote_keeps_the_quote() {
     assert_eq!(entered("> 1. a\n> 2. -[\n]>"), "> 1. a\n> -[\n]>");
 }
@@ -180,6 +193,11 @@ fn o_with_two_selections_on_one_ordered_item_renumbers_once() {
         opened("1. -[a]> -{b}>\n2. c\n", 'o'),
         "1. a b\n2. -[\n]>3. c\n"
     );
+}
+
+#[test]
+fn o_on_an_empty_task_item_opens_a_task_item() {
+    assert_eq!(opened("- [ ] -[\n]>", 'o'), "- [ ] \n- [ ] -[\n]>");
 }
 
 #[test]

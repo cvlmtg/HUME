@@ -25,6 +25,20 @@
   (md-preview/skip-blanks text (+ (apply max bars) 1)))
 
 ;;; See docs/lists.md's "Prefixes".
+(define (md-lists/empty-box marker start text)
+  (let* ([from (md-preview/skip-blanks text (md-lists/end-col marker start text))]
+         [to (+ from 3)])
+    (and (<= to (string-length text))
+         (char=? (string-ref text from) #\[)
+         (char=? (string-ref text (+ from 2)) #\])
+         (= (md-preview/skip-blanks text to) (string-length text))
+         (let ([mark (string-ref text (+ from 1))])
+           (cond
+             [(md-preview/blank? mark) (list "task-unchecked" (+ start from) (+ start to))]
+             [(member mark '(#\x #\X)) (list "task-checked" (+ start from) (+ start to))]
+             [else #f])))))
+
+;;; See docs/lists.md's "Prefixes".
 (define (md-lists/item info marked quote-prefixes)
   (let* ([start (car info)]
          [text (cdr info)]
@@ -35,7 +49,7 @@
     (if (pair? marked)
         (let* ([last-marked (last marked)]
                [marker (car last-marked)]
-               [task (cdr last-marked)]
+               [task (or (cdr last-marked) (md-lists/empty-box marker start text))]
                [after (md-lists/end-col (or task marker) start text)]
                [inner (filter (lambda (col) (>= col after)) bars)])
           (if (pair? inner)

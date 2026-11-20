@@ -72,6 +72,16 @@ fn a_cursor_inside_the_box_stays_on_it() {
 }
 
 #[test]
+fn an_empty_box_gets_checked() {
+    assert_eq!(toggled("- [-[ ]>] \n"), "- [-[x]>] \n");
+}
+
+#[test]
+fn an_empty_checked_box_gets_unchecked() {
+    assert_eq!(toggled("- [-[x]>] \n"), "- [-[ ]>] \n");
+}
+
+#[test]
 fn a_selection_starting_inside_the_box_keeps_its_start() {
     assert_eq!(toggled("- [-[ ] a]>\n"), "- [-[x] a]>\n");
 }
