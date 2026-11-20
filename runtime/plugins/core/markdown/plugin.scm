@@ -135,14 +135,19 @@
     (call! (if below? "open-line-below" "open-line-above") pane)
     (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items numbers)))))
 
+;;; The generation the pass's last edit made. See docs/lists.md's "Renumbering after an edit".
+(define md-lists/*renumbered* (box #f))
+
 ;;; See docs/lists.md's "Renumbering after an edit".
 (define (md-lists/renumber-edited! pane changes)
-  (let ([edited (if (and changes (not (buffer-read-only? pane)))
-                    (md-lists/edited-hunks changes)
-                    '())])
+  (let* ([generation (buffer-generation pane)]
+         [edited (if (and changes
+                          (not (buffer-read-only? pane))
+                          (not (equal? generation (unbox md-lists/*renumbered*))))
+                     (md-lists/edited-hunks changes)
+                     '())])
     (unless (null? edited)
-      (let* ([generation (buffer-generation pane)]
-             [reader (md-preview/line-reader pane)]
+      (let* ([reader (md-preview/line-reader pane)]
              [line-of (car reader)]
              [line-info (cdr reader)]
              [groups (md-lists/groups pane (md-lists/edited-spans edited (buffer-line-count pane) line-info))]
@@ -150,7 +155,8 @@
                                             line-of line-info))])
         (unless (null? edits)
           (let ([shown (buffer-panes pane)])
-            (edit-text! (if (pair? shown) (car shown) pane) edits #:expect-generation generation)))))))
+            (edit-text! (if (pair? shown) (car shown) pane) edits #:expect-generation generation)
+            (set-box! md-lists/*renumbered* (buffer-generation pane))))))))
 
 (define-command! "markdown/enter"
   "In a Markdown list item or quote, start the next item or quote line, renumbering an ordered list; on an empty item, end the list. Elsewhere, break the line as Enter does."

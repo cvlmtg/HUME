@@ -132,8 +132,10 @@ changed one of the list's marker columns gives `md-lists/list-events`:
   leaves the `1)` list after it alone.
 
 A later anchor starts the counting again, so a pasted run of items keeps its own numbers.
-The pass reads its own edit in the next event: the renumbered markers anchor there, and the
-items after them already count on, so it makes no further edit.
+The pass's own edit leaves every list it touched counting on, so another pass over it would
+make no edit. The pass keeps the generation its edit made (`md-lists/*renumbered*`) and
+skips the next event when the buffer is still at that generation. Any other edit since
+moves the generation, and the pass reads the whole change.
 
 An undo is an edit like any other. For a list numbered in order, or with one number on every
 item, it makes no renumbering. A list numbered neither way, as `3.`, `7.`, `3.`, can be
