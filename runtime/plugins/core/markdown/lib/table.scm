@@ -28,7 +28,7 @@
 
 (define (md-preview/measure-row row cells conceals line-of line-info)
   (let* ([info (line-info (line-of (md-preview/capture-start row)))]
-         [slice (lambda (start end) (substring (cdr info) (- start (car info)) (- end (car info))))]
+         [slice (md-preview/line-slicer info)]
          [spans (map (lambda (c) (md-preview/cell-span c slice)) cells)]
          [owned (md-preview/bucket (map (lambda (s) (cons (car s) (- (cdr s) 1))) spans)
                                    conceals

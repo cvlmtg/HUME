@@ -66,7 +66,7 @@
 | `manifest.scm` | Lazy activation on the language and the commands |
 | `plugin.scm` | Config, the hooks, the commands, the `on-paste` handler, the `markdown:paths` completion source and the list keymap |
 | `lib/state.scm` | Per-buffer state keyed by `(buffer-key pane)` (preview on or off, the generation of the last parsed tree), the grammars warned about, and `md-preview/box-insert!` |
-| `lib/queries.scm` | The block, inline and list queries, capture names and accessors, matches grouped by name and into runs (see [Matches](#matches)), the conceal constructor and order |
+| `lib/queries.scm` | The block, inline and list queries, capture names and accessors, matches grouped by name and into runs (see [Matches](#matches)), the task-box rule, the conceal constructor and order |
 | `lib/blocks.scm` | Block captures to conceals, line backgrounds and highlights |
 | `lib/table.scm` | Table captures to conceals. Cells are measured with `string-width` |
 | `lib/inline.scm` | Inline captures to conceals |

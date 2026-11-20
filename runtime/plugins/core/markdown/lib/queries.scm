@@ -8,6 +8,7 @@
          md-preview/conceal-before? md-preview/group md-preview/runs-of md-preview/runs md-preview/children
          md-preview/child md-preview/captured
          md-preview/group-by md-preview/unchecked-box md-preview/checked-box
+         md-preview/end-col md-preview/task-box md-preview/line-slicer
          md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text
          md-lists/query)
 
@@ -63,9 +64,12 @@
 (define (md-preview/extent capture)
   (cons (md-preview/capture-start capture) (- (md-preview/capture-end capture) 1)))
 
+;;; Slices the line `info` reads, `(start . text)`, by buffer offsets.
+(define (md-preview/line-slicer info)
+  (lambda (start end) (substring (cdr info) (- start (car info)) (- end (car info)))))
+
 (define (md-preview/line-slice start end line-of line-info)
-  (let ([info (line-info (line-of start))])
-    (substring (cdr info) (- start (car info)) (- end (car info)))))
+  ((md-preview/line-slicer (line-info (line-of start))) start end))
 
 (define (md-preview/conceal start end text scope reveal)
   (let* ([c (hash 'start-char start 'end-char end)]
@@ -134,6 +138,26 @@
 
 (define md-preview/unchecked-box "task-unchecked")
 (define md-preview/checked-box "task-checked")
+
+;;; The column where `capture` ends on the line `text` starting at `start`, at most the text's length.
+(define (md-preview/end-col capture start text)
+  (min (string-length text) (- (md-preview/capture-end capture) start)))
+
+;;; The task box after `marker` on the line `text` starting at `start`: `parsed`, the parser's,
+;;; or else a box with nothing after it, which the grammar reads as text. See docs/lists.md's "Prefixes".
+(define (md-preview/task-box marker parsed start text)
+  (or parsed
+      (let* ([from (md-preview/skip-blanks text (md-preview/end-col marker start text))]
+             [to (+ from 3)])
+        (and (<= to (string-length text))
+             (char=? (string-ref text from) #\[)
+             (char=? (string-ref text (+ from 2)) #\])
+             (= (md-preview/skip-blanks text to) (string-length text))
+             (let ([mark (string-ref text (+ from 1))])
+               (cond
+                 [(md-preview/blank? mark) (list md-preview/unchecked-box (+ start from) (+ start to))]
+                 [(member mark '(#\x #\X)) (list md-preview/checked-box (+ start from) (+ start to))]
+                 [else #f]))))))
 
 (define md-preview/bullet-markers "[(list_marker_minus) (list_marker_plus) (list_marker_star)]")
 (define md-preview/ordered-markers "[(list_marker_dot) (list_marker_parenthesis)]")

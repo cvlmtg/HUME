@@ -18,25 +18,8 @@
 (define (md-lists/col capture start)
   (- (md-preview/capture-start capture) start))
 
-(define (md-lists/end-col capture start text)
-  (min (string-length text) (- (md-preview/capture-end capture) start)))
-
 (define (md-lists/past-bars bars text)
   (md-preview/skip-blanks text (+ (apply max bars) 1)))
-
-;;; See docs/lists.md's "Prefixes".
-(define (md-lists/empty-box marker start text)
-  (let* ([from (md-preview/skip-blanks text (md-lists/end-col marker start text))]
-         [to (+ from 3)])
-    (and (<= to (string-length text))
-         (char=? (string-ref text from) #\[)
-         (char=? (string-ref text (+ from 2)) #\])
-         (= (md-preview/skip-blanks text to) (string-length text))
-         (let ([mark (string-ref text (+ from 1))])
-           (cond
-             [(md-preview/blank? mark) (list md-preview/unchecked-box (+ start from) (+ start to))]
-             [(member mark '(#\x #\X)) (list md-preview/checked-box (+ start from) (+ start to))]
-             [else #f])))))
 
 ;;; See docs/lists.md's "Prefixes".
 (define (md-lists/item info marked quote-prefixes)
@@ -50,8 +33,8 @@
     (if (pair? marked)
         (let* ([last-marked (last marked)]
                [marker (car last-marked)]
-               [task (or (cdr last-marked) (md-lists/empty-box marker start text))]
-               [after (md-lists/end-col (or task marker) start text)]
+               [task (md-preview/task-box marker (cdr last-marked) start text)]
+               [after (md-preview/end-col (or task marker) start text)]
                [inner (filter (lambda (col) (>= col after)) bars)])
           (if (pair? inner)
               (hash-insert item 'prefix-end (md-lists/past-bars inner text))
@@ -94,14 +77,14 @@
     (define (part capture)
       (let ([from (md-lists/col capture start)])
         (cond
-          [(equal? capture task) (cons (md-lists/end-col task start text) "[ ]")]
+          [(equal? capture task) (cons (md-preview/end-col task start text) "[ ]")]
           [(equal? capture marker)
            (let ([to (+ from (md-lists/token-length text from))])
              (cons to (if number
                           (string-append (number->string number) (substring text (- to 1) to))
                           (substring text from to))))]
           [else
-           (let ([to (md-lists/end-col capture start text)])
+           (let ([to (md-preview/end-col capture start text)])
              (cons to (make-string (- to from) #\space)))])))
     (let loop ([col 0]
                [captures (if task (append (hash-ref item 'markers) (list task)) (hash-ref item 'markers))]

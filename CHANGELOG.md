@@ -11,6 +11,9 @@
 - `core:markdown` checks or unchecks a list's task boxes with `G X`.
 - The `on-paste` hook lets a plugin change the text a paste puts in a buffer.
 
+### Fixes
+- The Markdown preview draws a task box with nothing after it, as in `- [ ]`, as a checkbox.
+
 ## [0.22.2] - 2026-11-19
 
 ### Fixes

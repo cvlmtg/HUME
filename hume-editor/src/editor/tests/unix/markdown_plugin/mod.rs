@@ -471,6 +471,22 @@ fn task_boxes_become_checkboxes() {
 }
 
 #[test]
+fn empty_task_boxes_become_checkboxes() {
+    let mut p = preview();
+    // "- [ ] \n" 0..7, "- [x]\n" 7..13: the grammar reads a box with nothing
+    // after it as text, and it still becomes one glyph with its bullet.
+    let bid = p.open("a.md", "- [ ] \n- [x]\n");
+    p.render();
+    assert_eq!(
+        p.conceals(bid),
+        [
+            replaced(0, 5, "☐", Some("markup.list.unchecked")),
+            replaced(7, 12, "☑", Some("markup.list.checked")),
+        ]
+    );
+}
+
+#[test]
 fn an_ordered_items_task_box_stays_raw() {
     let mut p = preview();
     let bid = p.open("a.md", "1. [ ] a\n");

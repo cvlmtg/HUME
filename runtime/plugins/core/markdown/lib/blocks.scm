@@ -57,21 +57,19 @@
   (hash md-preview/unchecked-box (cons "☐" "markup.list.unchecked")
         md-preview/checked-box (cons "☑" "markup.list.checked")))
 
-(define (md-preview/lists! groups emit!)
+(define (md-preview/lists! groups line-of line-info emit!)
   (for-each
     (lambda (run)
-      (let ([start (md-preview/capture-start (car run))]
-            [task (md-preview/child run)])
+      (let* ([marker (car run)]
+             [start (md-preview/capture-start marker)]
+             [info (line-info (line-of start))]
+             [task (md-preview/task-box marker (md-preview/child run) (car info) (cdr info))])
         (emit! 'conceals
                (if task
                    (let ([glyph (hash-ref md-preview/boxes (car task))])
                      (md-preview/conceal start (md-preview/capture-end task) (car glyph) (cdr glyph) #f))
                    (md-preview/conceal start (+ start 1) "•" #f #f)))))
     (md-preview/runs-of groups "bullet")))
-
-(define (md-preview/content-start text)
-  (let ([at (md-preview/skip-blanks text 0)])
-    (and (< at (string-length text)) at)))
 
 (define (md-preview/quotes! groups ranges line-of line-info emit!)
   (let ([marked (box (hash))])
@@ -82,9 +80,9 @@
       (unless (hash-contains? (unbox marked) line)
         (md-preview/box-insert! marked line #t)
         (let* ([info (line-info line)]
-               [content (md-preview/content-start (cdr info))])
-          (when content
-            (let ([at (+ (car info) content)])
+               [col (md-preview/skip-blanks (cdr info) 0)])
+          (when (< col (string-length (cdr info)))
+            (let ([at (+ (car info) col)])
               (emit! 'conceals (md-preview/conceal at at "┃ " "markup.quote" #f)))))))
     (for-each
       (lambda (c)
@@ -130,7 +128,7 @@
                   (md-preview/box-insert! found kind (cons item (hash-ref (unbox found) kind))))])
     (md-preview/atx-headings! groups line-of emit!)
     (md-preview/setext-headings! groups line-of emit!)
-    (md-preview/lists! groups emit!)
+    (md-preview/lists! groups line-of line-info emit!)
     (md-preview/quotes! groups ranges line-of line-info emit!)
     (md-preview/rules! groups rule-width emit!)
     (md-preview/fences! groups line-of emit!)

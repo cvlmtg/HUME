@@ -21,8 +21,8 @@ always do.
 
 - **Item line:** a list marker starts on it. Its prefix runs from the start of the line past
   the last marker, past a task box right after it, and past the blanks that follow. The
-  grammar reads a box with nothing after it, as in `- [ ] `, as text, so `md-lists/empty-box`
-  finds that box in the line instead.
+  grammar reads a box with nothing after it, as in `- [ ] `, as text, so `md-preview/task-box`
+  (`queries.scm`, which the preview also draws boxes with) finds that box in the line instead.
 - **Quote in an item:** a `>` follows the last marker, as in `- > foo`. The line is a quote
   line inside the item: its prefix runs past the last such `>` and the blanks that follow, and
   it has no last marker of its own.
