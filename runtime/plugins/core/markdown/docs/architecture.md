@@ -180,10 +180,10 @@ hiding more wins; the dropped one lay in hidden text anyway.
 ## Matches
 
 `syntax-captures` returns matches, each the captures of one pattern match, enclosing node
-first. Every pattern that relates two nodes captures the parent too: a fence with each of
-its hidden parts, a table with each row and each cell, a span with each delimiter, a link
-with its text, a list with each ordered marker. Tree-sitter reports one match per child,
-the parent repeated in each.
+first. Where the plugin needs a child together with its parent, the pattern captures the
+parent too: a fence with each of its hidden parts, a table with each row and each cell, a
+span with each delimiter, a link with its text, a list with each ordered marker.
+Tree-sitter reports one match per child, the parent repeated in each.
 
 - `md-preview/group` files a match under its first capture's name, the parent's when the
   pattern captures one.

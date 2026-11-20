@@ -61,7 +61,7 @@ impl EditorHostImpl<'_> {
     }
 }
 
-/// `captures`, which `query` collected, as the host reports them.
+/// `matches`, which `query` collected, as the host reports them.
 pub(super) fn captures_of(query: &CaptureQuery, matches: Vec<Vec<Capture>>) -> Captures {
     Captures {
         names: query.names().to_vec(),

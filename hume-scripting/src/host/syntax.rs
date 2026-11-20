@@ -37,9 +37,8 @@ pub trait SyntaxHost {
     /// matches by their entries, each distinct match once and none empty. A
     /// node several matches capture is in each. The tree is brought up to
     /// date with the text first; empty when the buffer has no tree for its
-    /// current text. `Err`
-    /// naming the language when it has no grammar, and with the position and
-    /// kind of the error when `query` does not compile.
+    /// current text. `Err` naming the language when it has no grammar, and
+    /// with the position and kind of the error when `query` does not compile.
     ///
     /// A match counts when the node its pattern is rooted at intersects the
     /// lines of one of `ranges`, with every capture of the match, inside those

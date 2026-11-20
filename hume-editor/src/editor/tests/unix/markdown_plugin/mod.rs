@@ -1046,6 +1046,29 @@ fn empty_cell_escaped_pipe_inline_conceal_and_entity_inside_a_cell() {
 }
 
 #[test]
+fn a_row_of_one_empty_cell_gets_its_borders() {
+    let mut p = preview();
+    // "| a |\n" 0..6, "|---|\n" 6..12, "||\n" 12..15: the last row's one
+    // cell is empty, at 13, and its column is 1 wide.
+    let bid = p.open("a.md", "| a |\n|---|\n||\n");
+    p.render();
+    assert_eq!(
+        p.conceals(bid),
+        revealing(
+            vec![
+                bar(0, 2, "│ "),
+                bar(3, 5, " │"),
+                bar(6, 11, "├───┤"),
+                bar(12, 13, "│ "),
+                bar(13, 14, "  │"),
+            ],
+            0,
+            15
+        )
+    );
+}
+
+#[test]
 fn rows_without_outer_pipes_get_inserted_edge_conceals() {
     let mut p = preview();
     // "a | b\n" 0..6, "--|--:\n" 6..13, "c | dd\n" 13..20. The second
