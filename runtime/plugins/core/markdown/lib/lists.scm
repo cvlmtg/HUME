@@ -5,7 +5,7 @@
 
 (provide md-lists/distinct md-lists/items md-lists/past-prefix? md-lists/empty? md-lists/ended-edit
          md-lists/events md-lists/removed-events md-lists/renumber md-lists/prefixes
-         md-lists/edited-markers md-lists/task-edits)
+         md-lists/edited-spans md-lists/edited-markers md-lists/task-edits)
 
 (define (md-lists/distinct lines)
   (reverse (foldl (lambda (line kept) (if (and (pair? kept) (= (car kept) line)) kept (cons line kept)))
@@ -214,11 +214,38 @@
                                  on-line)
                           #t))))))))
 
-;;; An `'anchor` event per ordered marker in `groups` whose number `hunks` changed.
+(define (md-lists/removes-lines? hunk)
+  (< (- (hash-ref hunk 'new-end-line) (hash-ref hunk 'new-start-line))
+     (- (hash-ref hunk 'old-end-line) (hash-ref hunk 'old-start-line))))
+
+;;; The non-empty line ranges `md-lists/edited-markers` needs `groups` over, as `(start . end)`.
+(define (md-lists/edited-spans hunks)
+  (filter (lambda (span) (< (car span) (cdr span)))
+          (map (lambda (hunk)
+                 (let ([start (hash-ref hunk 'new-start-line)])
+                   (cons (if (md-lists/removes-lines? hunk) (max 0 (- start 1)) start)
+                         (hash-ref hunk 'new-end-line))))
+               hunks)))
+
+;;; Per list in `lists`, its last marker on a line before `hunk`'s new end, if any.
+(define (md-lists/before-removal lists hunk line-of)
+  (let ([end (hash-ref hunk 'new-end-line)])
+    (filter (lambda (m) m)
+            (map (lambda (markers)
+                   (foldl (lambda (m last) (if (< (line-of (md-preview/capture-start m)) end) m last))
+                          #f
+                          markers))
+                 lists))))
+
+;;; The `'anchor` events `hunks` give the lists in `groups`. See docs/lists.md's "Renumbering after an edit".
 (define (md-lists/edited-markers groups hunks line-of line-info)
-  (map (lambda (m) (cons m 'anchor))
-       (filter (lambda (m) (md-lists/number-changed? hunks line-of line-info m))
-               (call! "stdlib/concat" (map md-preview/children (md-preview/runs-of groups "list"))))))
+  (let ([lists (map md-preview/children (md-preview/runs-of groups "list"))])
+    (map (lambda (m) (cons m 'anchor))
+         (call! "stdlib/concat"
+           (cons (filter (lambda (m) (md-lists/number-changed? hunks line-of line-info m))
+                         (call! "stdlib/concat" lists))
+                 (map (lambda (hunk) (md-lists/before-removal lists hunk line-of))
+                      (filter md-lists/removes-lines? hunks)))))))
 
 ;;; Per item, its next line's prefix, or `#f` for a line with no prefix.
 (define (md-lists/prefixes items numbers)

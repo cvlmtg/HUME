@@ -319,3 +319,32 @@ fn continue_lists_off_renumbers_nothing_after_an_edit() {
     p.render();
     assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n1. c\n4. d\n");
 }
+
+#[test]
+fn deleting_an_item_renumbers_the_items_after_it() {
+    let p = edited("1. a\n-[2]>. b\n3. c\n4. d\n", "xd");
+    assert_eq!(text(&p.ed), "1. a\n2. c\n3. d\n");
+}
+
+#[test]
+fn deleting_a_nested_item_renumbers_only_its_list() {
+    let p = edited("1. a\n   1. x\n   -[2]>. y\n   3. z\n2. b\n", "xd");
+    assert_eq!(text(&p.ed), "1. a\n   1. x\n   2. z\n2. b\n");
+}
+
+#[test]
+fn deleting_the_first_item_leaves_the_rest_numbered() {
+    let p = edited("-[1]>. a\n2. b\n3. c\n", "xd");
+    assert_eq!(text(&p.ed), "2. b\n3. c\n");
+}
+
+#[test]
+fn a_deletion_undoes_its_renumbering_first() {
+    let mut p = edited("1. a\n-[2]>. b\n3. c\n4. d\n", "xd");
+    press(&mut p.ed, "u");
+    p.render();
+    assert_eq!(text(&p.ed), "1. a\n3. c\n4. d\n");
+    press(&mut p.ed, "u");
+    p.render();
+    assert_eq!(text(&p.ed), "1. a\n2. b\n3. c\n4. d\n");
+}

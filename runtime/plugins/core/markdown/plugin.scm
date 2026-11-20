@@ -161,11 +161,7 @@
     (md-preview/note-lists! pane generation)
     (let* ([hunks (and md-lists/enabled since (buffer-dirty? pane) (not (buffer-read-only? pane))
                        (buffer-changes-since pane since))]
-           [spans (if (pair? hunks)
-                      (filter (lambda (span) (< (car span) (cdr span)))
-                              (map (lambda (h) (cons (hash-ref h 'new-start-line) (hash-ref h 'new-end-line)))
-                                   hunks))
-                      '())])
+           [spans (if (pair? hunks) (md-lists/edited-spans hunks) '())])
       (when (pair? spans)
         (let* ([reader (md-preview/line-reader pane)]
                [line-of (car reader)]

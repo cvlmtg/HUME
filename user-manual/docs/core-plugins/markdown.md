@@ -40,7 +40,7 @@ In a list, `Enter` starts the next item: a bullet gets the same bullet, a number
 
 `Enter` on an item with nothing after its marker or task box ends the list instead: the marker goes, and the items after it are renumbered to close the gap. On an empty quote line, it ends the quote.
 
-Changing the number of a numbered item renumbers the items after it, so turning `3.` into `1.` makes the `4.` below it `2.`. A change typed in Insert mode undoes together with its renumbering; after a Normal-mode change such as `r`, the first `u` undoes the renumbering and the second the change.
+Changing the number of a numbered item renumbers the items after it, so turning `3.` into `1.` makes the `4.` below it `2.`. Deleting an item, as `x d` does, renumbers the items after it to close the gap. A change typed in Insert mode undoes together with its renumbering; after a Normal-mode change such as `r`, the first `u` undoes the renumbering and the second the change.
 
 `G X` checks the task boxes on the lines your selections touch, or unchecks them all when the first box on the main selection's lines is checked. When the main selection's lines have no box, the first box of all decides. Lines without a box don't change.
 
@@ -71,6 +71,6 @@ Configure with `#:config`:
 |---|---|---|---|
 | `'preview` | boolean | `#t` | Whether the preview starts on in each buffer. Popups and the completion documentation box are drawn either way |
 | `'rule-width` | integer (≥ 1) | `40` | How many `─` a horizontal rule draws |
-| `'continue-lists` | boolean | `#t` | Whether `Enter`, `o` and `O` continue a list or quote, and changing an item's number renumbers the items after it |
+| `'continue-lists` | boolean | `#t` | Whether `Enter`, `o` and `O` continue a list or quote, and changing or deleting an item renumbers the items after it |
 
 A table wider than the pane draws a broken grid when soft wrap is on. A table's top and bottom border appear only on an empty line next to it. A tab inside a table cell throws its column out of line.

@@ -81,7 +81,8 @@ The result is the renumbering edits and, per event, its new item's number. A bul
 
 When an edit changes the number of an ordered item, the items after it in its list count on
 from the new number: changing `3.` to `1.` turns the `4.` after it into `2.`. The items
-before it keep theirs. The pass needs the edited text's tree, so it runs from the
+before it keep theirs. When an edit removes lines from a list, the items after them count on
+from the item before them, so deleting `2.` turns the `3.` after it into `2.`. The pass needs the edited text's tree, so it runs from the
 `on-syntax-changed` handler, and `md-lists/renumber-edited!` reads what changed since its last
 pass with `buffer-changes-since`. It skips a buffer with no unsaved edits, so a reload from
 disk or an undo back to the saved text renumbers nothing, and a read-only one.
@@ -92,6 +93,15 @@ number changed when its line has no span (an inserted or rewritten line), when t
 word spans (too large to compare), or when a span overlaps its digits. Typing in an item's
 text leaves its digits outside every span. Each such marker is an `'anchor` event; a later
 anchor starts the counting again, so a pasted run of items keeps its own numbers.
+
+A hunk with fewer new lines than old ones removed lines. For each list, the last ordered marker
+on a line before the hunk's new end is an `'anchor` too (`md-lists/before-removal`). The
+query for such a hunk reaches back one line (`md-lists/edited-spans`), so a deletion that
+leaves no line of its own still fetches the list holding the line before it. Deleting a
+list's first items leaves no marker before them, and the rest already count on from each
+other. A list that ends before the hunk has nothing after its anchor, and in a nested list
+the outer list's anchor is followed by items already in order, so only the list the lines
+left is renumbered.
 
 The edit goes through the first pane `buffer-panes` returns, the focused one when it shows the
 buffer, so while typing it joins the Insert session's undo group. A Normal-mode edit such as
