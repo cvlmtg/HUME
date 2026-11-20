@@ -31,7 +31,7 @@ What the plugins it loads give you:
 - `core:plum`: installs the grammars syntax highlighting needs, and third-party plugins and themes. See [Syntax Highlighting](syntax-highlighting.md).
 - `core:git-diff`: marks changed lines in the gutter as you edit.
 - `core:undotree`: `:undotree` shows the undo history as a graph.
-- `core:markdown`: draws Markdown without its syntax as you edit it. See [Core Plugins](core-plugins.md#core-markdown).
+- `core:markdown`: draws Markdown without its syntax as you edit it. See [core:markdown](core-plugins/markdown.md).
 
 The commented-out lines are optional; [Core Plugins](core-plugins.md) describes each one.
 

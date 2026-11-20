@@ -20,7 +20,7 @@ chars)`. It sets no trigger characters itself.
   word splitting.
 - **Activates on:** `load-plugin!`. It registers hooks and a completion source at load,
   so it has no `manifest.scm` (see the [core plugins index](../README.md#loading-model)).
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-buffer-words).
+- **User docs:** [core:buffer-words](https://cvlmtg.github.io/HUME/core-plugins/buffer-words.html).
 
 ## Configuration
 

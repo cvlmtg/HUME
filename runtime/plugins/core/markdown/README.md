@@ -15,7 +15,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
   manifest lists no events: a `#:languages` manifest may list no buffer event.
 - **Grammars:** `markdown` and `markdown.inline`. The first buffer opened without one
   logs a warning per missing grammar, once a session, naming `:plum-install-grammar`.
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-markdown).
+- **User docs:** [core:markdown](https://cvlmtg.github.io/HUME/core-plugins/markdown.html).
 
 ## Configuration
 

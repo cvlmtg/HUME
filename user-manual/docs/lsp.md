@@ -4,7 +4,7 @@
 
 ## Setup
 
-Load `core:lsp` and `core:lsp-install` from your [`init.scm`](configuration.md) (see [Core Plugins](core-plugins.md#core-lsp) for how they fit alongside HUME's other core plugins):
+Load `core:lsp` and `core:lsp-install` from your [`init.scm`](configuration.md) (see [Core Plugins](core-plugins.md) for how they fit alongside HUME's other core plugins):
 
 ```scheme
 (load-plugin! "core:stdlib")       ; the plugins depend on it
@@ -20,7 +20,7 @@ A language uses the servers its [server list](#choosing-which-server-a-language-
 
 ## Installing servers
 
-`core:lsp-install` downloads and manages language servers for you, the same way [PLUM](core-plugins.md#core-plum) handles tree-sitter grammars.
+`core:lsp-install` downloads and manages language servers for you, the same way [PLUM](core-plugins/plum.md) handles tree-sitter grammars.
 
 ### Prerequisites
 

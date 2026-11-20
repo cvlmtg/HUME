@@ -84,7 +84,7 @@ Indentation (Helix's per-language `indent.tab-width`/`indent.unit` in `languages
 HUME reads Helix's theme format: the same TOML with `[palette]` indirection, the same color forms (hex, a palette name, or one of the sixteen bare terminal color names like `red`), the same modifier names, and the same underline styles. Most Helix themes work unchanged.
 
 - **Your own themes:** copy them from `~/.config/helix/themes/` to `~/.config/hume/themes/` (`%APPDATA%\hume\themes\` on Windows). `inherits` works too. HUME bundles many of Helix's popular themes (`onedark`, `catppuccin_mocha`, `gruvbox`, `nord`, …), so a theme built on one of them still finds its parent.
-- **Published themes:** run `:plum-install-theme <user/repo>` and [PLUM](core-plugins.md#core-plum) fetches the theme repo from GitHub, the same way it installs plugins.
+- **Published themes:** run `:plum-install-theme <user/repo>` and [PLUM](core-plugins/plum.md) fetches the theme repo from GitHub, the same way it installs plugins.
 
 Type `:theme ` and press Tab to try one for the session, then set it as your default in your [`init.scm`](configuration.md#example-init-scm). Here's [Everforest](https://github.com/cvlmtg/everforest.hume), a theme ported as-is from Helix:
 
@@ -119,7 +119,7 @@ HUME's tab bar reads `ui.tabline`, and falls back to Helix's `ui.bufferline` whe
 
 HUME's plugins are written in Steel Scheme, and the core plugins ship with every release. Plugins written for Helix's Steel plugin work won't run in HUME: the two editors expose different functions to scripts.
 
-[PLUM](core-plugins.md#core-plum) is HUME's plugin manager, installing plugins from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker plugin.
+[PLUM](core-plugins/plum.md) is HUME's plugin manager, installing plugins from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker plugin.
 
 ### Growing selections
 
@@ -240,7 +240,7 @@ Helix's bracket mode (`]` or `[` plus an object letter) jumps to the next or pre
 
 ## What HUME has that Helix doesn't
 
-- A plugin manager ([PLUM](core-plugins.md#core-plum)) that installs Scheme plugins from GitHub
+- A plugin manager ([PLUM](core-plugins/plum.md)) that installs Scheme plugins from GitHub
 - [Tab pages](files-and-buffers.md#tabs): each holds a whole pane layout, distinct from a strip of buffers
 - [Smart paste](copy-and-paste.md#smart-paste) with a kill ring
 - [Hooks](writing-plugins.md#hooks) (`on-buffer-open`, `on-buffer-save`, …)

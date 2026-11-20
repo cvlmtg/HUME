@@ -17,7 +17,7 @@ plugin supplies its own `cargo install` step instead.
 - **Depends on:** nothing. It calls only editor functions, no plugin's commands, so it
   loads without `core:lsp`; the registered server is useful once `core:lsp` is loaded.
 - **Activates on:** the first Scheme buffer, or `:steel-server-install`.
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-steel-server)
+- **User docs:** [core:steel-server](https://cvlmtg.github.io/HUME/core-plugins/steel-server.html)
   for the install walkthrough.
 
 ## Commands

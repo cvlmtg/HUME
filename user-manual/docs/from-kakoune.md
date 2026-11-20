@@ -258,7 +258,7 @@ Kakoune's named user modes (`declare-user-mode`) have no equivalent. A key seque
 
 Kakoune has neither a package manager nor LSP support in the core; both come from outside, via plug.kak and kakoune-lsp.
 
-Both ship with HUME. [PLUM](core-plugins.md#core-plum) is the plugin manager: declare a plugin in `init.scm`, run `:plum-install-plugins`, and it is fetched from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker plugin.
+Both ship with HUME. [PLUM](core-plugins/plum.md) is the plugin manager: declare a plugin in `init.scm`, run `:plum-install-plugins`, and it is fetched from GitHub. [Installing a plugin](plugins.md#installing-a-plugin) walks through it with [grep.hume](https://github.com/cvlmtg/grep.hume), a live-grep picker plugin.
 
 Language server support is a core plugin rather than a separate process you configure by hand. See [Language Servers](lsp.md). Syntax highlighting is tree-sitter based and built in.
 
@@ -279,9 +279,9 @@ Language server support is a core plugin rather than a separate process you conf
 - A built-in system clipboard, a [kill ring, and a paste](copy-and-paste.md) that picks up text copied in other applications
 - [Extend mode](#extending-selections), plus one-shot extends that need no mode switch
 - Built-in [panes and splits](files-and-buffers.md#splits-and-panes), and [tab pages](files-and-buffers.md#tabs)
-- A [plugin manager](core-plugins.md#core-plum), [Scheme scripting](configuration.md), and [hooks](writing-plugins.md#hooks)
+- A [plugin manager](core-plugins/plum.md), [Scheme scripting](configuration.md), and [hooks](writing-plugins.md#hooks)
 - [Language-server](lsp.md) and [tree-sitter](syntax-highlighting.md) support that ships with the editor
 - [Dot-repeat](editing.md#repeat) covering every edit, not only Insert-mode changes
-- A browsable graph of the undo history ([`core:undotree`](core-plugins.md#core-undotree)), and undo by time with [`:earlier 5m`](command-mode.md#editing)
+- A browsable graph of the undo history ([`core:undotree`](core-plugins/undotree.md)), and undo by time with [`:earlier 5m`](command-mode.md#editing)
 - [Selecting every search match at once](moving-around.md#search-navigation) (`m /`)
 - Grammar-backed [structural text objects](#text-objects) and [navigation](moving-around.md#structural-navigation) (functions, classes, comments, tests, values)

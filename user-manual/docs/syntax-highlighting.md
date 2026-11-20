@@ -2,9 +2,9 @@
 
 HUME colors your code with tree-sitter, which keeps highlighting correct as you type, even in partial or malformed code.
 
-Highlighting is opt-in per language. HUME recognizes many languages out of the box but ships no grammars. For a language to light up, you install its grammar, a small prebuilt package tree-sitter uses to parse that language. [PLUM](core-plugins.md#core-plum) downloads it for you.
+Highlighting is opt-in per language. HUME recognizes many languages out of the box but ships no grammars. For a language to light up, you install its grammar, a small prebuilt package tree-sitter uses to parse that language. [PLUM](core-plugins/plum.md) downloads it for you.
 
-Installing, listing, and cleaning up grammars need [PLUM](core-plugins.md#core-plum) loaded in your [`init.scm`](configuration.md), with `core:stdlib` before it:
+Installing, listing, and cleaning up grammars need [PLUM](core-plugins/plum.md) loaded in your [`init.scm`](configuration.md), with `core:stdlib` before it:
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -79,7 +79,7 @@ While the top of a pane is inside a function, class, or Markdown section whose f
 
 - A header row shows its line's own number and starts at the pane's left edge, whatever the horizontal scroll. A line too long for the pane is cut at its right edge, whatever the wrap mode.
   - It shows the line's text in its syntax colors, with search matches, diagnostics and plugin highlights on it.
-  - Plugins can draw it differently, as the [Markdown preview](core-plugins.md#core-markdown) does for a heading.
+  - Plugins can draw it differently, as the [Markdown preview](core-plugins/markdown.md) does for a heading.
   - It has no cursor or selection, inlay hints, end-of-line messages, gutter signs, virtual lines or line backgrounds.
 - Scrolling keeps the cursor below the headers.
 - Clicking a header row puts the cursor on its line, at the column you clicked. With `mouse-select` on, dragging over one extends the selection to that line the same way.

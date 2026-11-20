@@ -8,7 +8,7 @@
 (load-plugin! "core:stdlib")
 ```
 
-[Core Plugins](core-plugins.md#core-stdlib) explains why this call should stay a plain `load-plugin!`. [Depending on another plugin](writing-plugins.md#depending-on-another-plugin) shows how to check it's available before your plugin relies on it.
+[core:stdlib](core-plugins/stdlib.md) explains why this call should stay a plain `load-plugin!`. [Depending on another plugin](writing-plugins.md#depending-on-another-plugin) shows how to check it's available before your plugin relies on it.
 
 ## Selections
 

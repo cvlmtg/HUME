@@ -23,7 +23,7 @@ plugin that calls `register-lsp-server!` works with `core:lsp` the same way.
   commands.
 - **User docs:** [Language Servers](https://cvlmtg.github.io/HUME/lsp.html) for the full
   walkthrough, commands, keys and settings, and
-  [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-lsp) for the quick
+  [core:lsp](https://cvlmtg.github.io/HUME/core-plugins/lsp.html) for the quick
   summary.
 
 ## Configuration

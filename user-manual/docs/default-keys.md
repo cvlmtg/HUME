@@ -421,4 +421,4 @@ These keys exist once the plugin has loaded: `core:lsp`'s the first time a buffe
 | `core:pickers` | `z b` | Pick an open buffer |
 | `core:pickers` | `z m` | Pick a modified file in the git repository |
 
-`core:vim-keybind` and `core:classic-paste` change existing keys instead; each one's section in [Core Plugins](core-plugins.md) lists them.
+[`core:vim-keybind`](core-plugins/vim-keybind.md) and [`core:classic-paste`](core-plugins/classic-paste.md) change existing keys instead; each one's page lists them.

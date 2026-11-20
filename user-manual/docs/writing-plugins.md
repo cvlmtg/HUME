@@ -550,7 +550,7 @@ It returns the hunks where they differ, which is what a git-status indicator or 
 
 `(diff-words old-text new-text)` compares two short texts word by word, such as the two sides of one changed line, to highlight the words that differ rather than the whole line. For long texts, compare lines with `diff-lines` first.
 
-[Diffing](plugin-api.md#diffing) has the exact shape of each result. To draw hunks the way `core:git-diff` draws its own, see [core:git-diff](core-plugins.md#core-git-diff).
+[Diffing](plugin-api.md#diffing) has the exact shape of each result. To draw hunks the way `core:git-diff` draws its own, see [core:git-diff](core-plugins/git-diff.md).
 
 ## Completion sources
 

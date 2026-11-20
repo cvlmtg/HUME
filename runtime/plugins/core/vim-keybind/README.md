@@ -15,7 +15,7 @@ natively, `o` to flip the selection in Extend mode, and `Ctrl-6` for the alterna
 - **Activates on:** `load-plugin!`. It mostly binds built-in commands, which a manifest
   cannot claim, so it has no `manifest.scm` (see the
   [core plugins index](../README.md#loading-model)).
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-vim-keybind).
+- **User docs:** [core:vim-keybind](https://cvlmtg.github.io/HUME/core-plugins/vim-keybind.html).
 
 ## Configuration
 

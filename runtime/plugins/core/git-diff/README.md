@@ -19,7 +19,7 @@ that element.
   rendering.
 - **Activates on:** the first `on-buffer-open`, either typed command, or any `git-diff/*`
   command below (`manifest.scm`).
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-git-diff).
+- **User docs:** [core:git-diff](https://cvlmtg.github.io/HUME/core-plugins/git-diff.html).
 
 ## Configuration
 

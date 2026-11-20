@@ -220,7 +220,7 @@ To add your own element, place `"steel:<name>"` with any `<name>` you choose. `<
 
 Placing the element and pushing its text are independent: either can come first, and neither errors if the other hasn't happened yet.
 
-`core:git-diff` ships a `"steel:git-branch"` element built this way (see [Core Plugins → core:git-diff](core-plugins.md#core-git-diff)); add it to your own `configure-statusline!` call.
+`core:git-diff` ships a `"steel:git-branch"` element built this way (see [core:git-diff](core-plugins/git-diff.md)); add it to your own `configure-statusline!` call.
 
 ## Language detection
 

@@ -14,7 +14,7 @@ dropped.
 
 - **Depends on:** `core:stdlib`, for config validation.
 - **Activates on:** `on-buffer-open`, or either toggle command (`manifest.scm`).
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-colorizer).
+- **User docs:** [core:colorizer](https://cvlmtg.github.io/HUME/core-plugins/colorizer.html).
 
 ## Configuration
 

@@ -31,11 +31,11 @@ function pageExists(link: string): boolean {
 
 function pruneSidebar(items: DefaultTheme.SidebarItem[]): DefaultTheme.SidebarItem[] {
   return items.flatMap((item) => {
-    if (item.items) {
-      const pruned = pruneSidebar(item.items)
-      return pruned.length > 0 ? [{ ...item, items: pruned }] : []
-    }
-    return !item.link || pageExists(item.link) ? [item] : []
+    const pruned = item.items ? pruneSidebar(item.items) : []
+    if (pruned.length > 0) return [{ ...item, items: pruned }]
+    // An entry whose children were all pruned stays as a plain link to its own page.
+    if (item.link) return pageExists(item.link) ? [{ ...item, items: undefined, collapsed: undefined }] : []
+    return item.items ? [] : [item]
   })
 }
 
@@ -131,8 +131,27 @@ export default defineConfig({
         items: [
           { text: 'Configuration', link: '/configuration' },
           { text: 'Themes', link: '/themes' },
-          { text: 'Core Plugins', link: '/core-plugins' },
           { text: 'Plugins', link: '/plugins' },
+          {
+            text: 'Core Plugins',
+            link: '/core-plugins',
+            collapsed: false,
+            items: [
+              { text: 'core:plum', link: '/core-plugins/plum' },
+              { text: 'core:markdown', link: '/core-plugins/markdown' },
+              { text: 'core:lsp', link: '/core-plugins/lsp' },
+              { text: 'core:lsp-install', link: '/core-plugins/lsp-install' },
+              { text: 'core:steel-server', link: '/core-plugins/steel-server' },
+              { text: 'core:pickers', link: '/core-plugins/pickers' },
+              { text: 'core:git-diff', link: '/core-plugins/git-diff' },
+              { text: 'core:undotree', link: '/core-plugins/undotree' },
+              { text: 'core:colorizer', link: '/core-plugins/colorizer' },
+              { text: 'core:buffer-words', link: '/core-plugins/buffer-words' },
+              { text: 'core:vim-keybind', link: '/core-plugins/vim-keybind' },
+              { text: 'core:classic-paste', link: '/core-plugins/classic-paste' },
+              { text: 'core:stdlib', link: '/core-plugins/stdlib' },
+            ],
+          },
         ],
       },
       {

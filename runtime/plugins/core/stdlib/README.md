@@ -22,7 +22,7 @@ separate layer, not part of this plugin.
   rest), each with its own `#:commands`, so a plugin that never touches files does not
   load `files.scm`.
 - **User docs:** [Standard Library](https://cvlmtg.github.io/HUME/standard-library.html)
-  for signatures, [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-stdlib)
+  for signatures, [core:stdlib](https://cvlmtg.github.io/HUME/core-plugins/stdlib.html)
   for load order.
 
 ## Commands

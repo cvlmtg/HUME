@@ -15,7 +15,7 @@ adds text copied in another application to the kill ring and pastes the ring hea
 - **Depends on:** nothing.
 - **Activates on:** `load-plugin!`. It exists to bind keys, so it has no `manifest.scm`
   (see the [core plugins index](../README.md#loading-model)).
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-classic-paste).
+- **User docs:** [core:classic-paste](https://cvlmtg.github.io/HUME/core-plugins/classic-paste.html).
 
 ## Key bindings
 

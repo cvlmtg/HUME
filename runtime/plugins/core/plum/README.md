@@ -20,7 +20,7 @@ without it, highlighting included, since core registers installed grammars at st
 - **Activates on:** the first `:plum-*` command typed, or the first call to
   `plum/ensure-grammars`. Its `manifest.scm` has three entries, each loading on its own
   commands: `plugin.scm` (the plugin commands), `grammars.scm` and `themes.scm`.
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-plum)
+- **User docs:** [core:plum](https://cvlmtg.github.io/HUME/core-plugins/plum.html)
   and [Syntax Highlighting](https://cvlmtg.github.io/HUME/syntax-highlighting.html) for
   the grammar workflow.
 

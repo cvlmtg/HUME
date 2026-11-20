@@ -4,7 +4,7 @@ Plugins are written in Scheme, the same language as your config, so the line bet
 
 This page covers installing and loading plugins other people wrote; [Writing Plugins](writing-plugins.md) covers making your own.
 
-Plugins are installed and updated by PLUM, a core plugin. See [Core Plugins](core-plugins.md#core-plum) to enable it.
+Plugins are installed and updated by PLUM, a core plugin. See [core:plum](core-plugins/plum.md) to enable it.
 
 ## Installing a plugin
 

@@ -16,7 +16,7 @@ shows what the current revision changed.
 - **Activates on:** `:undotree` or `undotree/toggle` (`manifest.scm`).
 - **Keys:** none. The two commands are the plugin's only entry points, so `init.scm` binds
   one, as above.
-- **User docs:** [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-undotree).
+- **User docs:** [core:undotree](https://cvlmtg.github.io/HUME/core-plugins/undotree.html).
 
 ## Commands
 

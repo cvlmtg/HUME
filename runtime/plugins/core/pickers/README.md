@@ -15,7 +15,7 @@ with no native (Rust) picker definitions.
 - **Activates on:** `load-plugin!`. Its `bind-key!` calls must run at startup, so it has
   no `manifest.scm` (see the [core plugins index](../README.md#loading-model)).
 - **User docs:** [Fuzzy Finder](https://cvlmtg.github.io/HUME/pickers.html) and
-  [Core Plugins](https://cvlmtg.github.io/HUME/core-plugins.html#core-pickers).
+  [core:pickers](https://cvlmtg.github.io/HUME/core-plugins/pickers.html).
 
 ## Configuration
 

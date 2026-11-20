@@ -73,7 +73,7 @@ Loading then keeps your current theme.
 
 ## Installing themes
 
-To install a third-party theme repository, run `:plum-install-theme <user/repo>` (see [Core Plugins → core:plum](core-plugins.md#core-plum)), for example:
+To install a third-party theme repository, run `:plum-install-theme <user/repo>` (see [core:plum](core-plugins/plum.md)), for example:
 
 ```
 :plum-install-theme cvlmtg/everforest.hume

@@ -286,7 +286,7 @@ Vim's `0` / `$` / `^` are not bound by default; HUME uses the `g` keys above. To
 | Vim | HUME (native) | HUME (`core:vim-keybind`) |
 |-----|----------------|---------------------------|
 | `0` / `$` / `^` | `g h` / `g l` / `g s` | `0` / `$` / `^` |
-| `C` / `D` | `e g l c` / `e g l d`, or `Ctrl-g l c` / `Ctrl-g l d` (kitty only) | `C` / `D` (see [`core:vim-keybind`](core-plugins.md#core-vim-keybind)) |
+| `C` / `D` | `e g l c` / `e g l d`, or `Ctrl-g l c` / `Ctrl-g l d` (kitty only) | `C` / `D` (see [`core:vim-keybind`](core-plugins/vim-keybind.md)) |
 | `o` (Visual mode) | `Ctrl-e` (flips anchor and head, in Normal and Extend mode) | `o` (in Extend mode) |
 
 ### Tabs
@@ -316,4 +316,4 @@ The keys moved: `g t` / `g T` jump between classes or types (see [Muscle-memory 
 - A [kill ring and smart paste](copy-and-paste.md), with `y` reaching the system clipboard and deletes leaving it alone
 - One-shot extends: `Ctrl` + a motion extends for one keystroke (kitty only, except `Ctrl-x`)
 - Grammar-backed [structural text objects](selections.md#text-objects) and [navigation](moving-around.md#structural-navigation) (functions, classes, comments, tests, values) with no plugin to install
-- A browsable graph of the undo history ([`core:undotree`](core-plugins.md#core-undotree))
+- A browsable graph of the undo history ([`core:undotree`](core-plugins/undotree.md))

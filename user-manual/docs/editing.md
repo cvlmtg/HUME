@@ -223,7 +223,7 @@ For any other shell, `Tab` completes nothing and the message line says so the fi
 | `u` | Undo (accepts a count: `5u` undoes five steps) |
 | `U` / `Ctrl-r` | Redo (accepts a count: `5U` redoes five steps) |
 
-Undo history is a tree rather than a straight line. Redo follows the branch you last moved along: the newest edit, or the branch you jumped into with [`core:undotree`](core-plugins.md#core-undotree). The history lives in memory only and starts fresh each time you open a file.
+Undo history is a tree rather than a straight line. Redo follows the branch you last moved along: the newest edit, or the branch you jumped into with [`core:undotree`](core-plugins/undotree.md). The history lives in memory only and starts fresh each time you open a file.
 
 ## Repeat
 
@@ -262,7 +262,7 @@ See [Macros](copy-and-paste.md#macros) for how macros share registers with yanke
 
 Prefix a command with digits to repeat it. The first digit must be `1`–`9`; `0` counts only after another digit. So `3w` moves forward 3 words and `10j` moves down 10 lines. Counts are capped at 10,000.
 
-`0` on its own does nothing by default; `g h` goes to the start of the line. The [`core:vim-keybind`](core-plugins.md#core-vim-keybind) plugin binds `0` to it.
+`0` on its own does nothing by default; `g h` goes to the start of the line. The [`core:vim-keybind`](core-plugins/vim-keybind.md) plugin binds `0` to it.
 
 ## Surround
 

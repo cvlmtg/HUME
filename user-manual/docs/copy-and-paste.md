@@ -16,7 +16,7 @@ On a bare cursor, `p` pastes after it and `P` before it. A real selection (more 
 When the text a bare `p` or `P` is about to paste matches the selected text, it goes after or before the selection instead of replacing it. Pressing `p` again after a paste therefore adds another copy, each its own undo step, rather than overwriting the first. With a register prefix (`"cp`, `"kp`, `"5p`), a selection is always replaced.
 :::
 
-A plugin can change what a paste puts in: [`core:markdown`](core-plugins.md#core-markdown) turns a URL pasted over selected text into a link.
+A plugin can change what a paste puts in: [`core:markdown`](core-plugins/markdown.md) turns a URL pasted over selected text into a link.
 
 ## Lines and inline text
 
