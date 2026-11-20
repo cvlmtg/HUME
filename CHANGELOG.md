@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Breaking changes
+- `syntax-captures` and `parsed-text-captures` return one list per match, holding the nodes it captures. For one flat list, write `(call! "stdlib/concat" (syntax-captures ...))`; a node two matches capture is then in it twice.
+
 ### Plugins & scripting
 - `core:markdown` turns a URL pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
 - `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and renumbers a numbered list.

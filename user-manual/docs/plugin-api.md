@@ -400,8 +400,8 @@ Valid names are `0`–`9`, `k` (kill-ring head), `c` (system clipboard), and `b`
 | `bundled-languages` | `(bundled-languages)`{.sig} Every language HUME ships language data for, sorted |
 | `register-grammar!` | `(register-grammar! name grammar-path symbol highlights-path [#:injections path] [#:textobjects path] [#:indents path] [#:context path] [#:folds path] [#:locals path])`{.sig} Register an already-compiled tree-sitter grammar. During startup (`init.scm` and the plugins it loads at startup) the grammar loads the first time a file or an embedded block needs it. At any other time it loads at once and raises if it can't. Of two grammars from the same rank, the later replaces the earlier |
 | `language-has-grammar?` | `(language-has-grammar? name)`{.sig} `#t` if `name` has a registered grammar that hasn't failed to load |
-| `syntax-captures` | `(syntax-captures pane language query [#:ranges ranges])`{.sig} The nodes a tree-sitter `query` captures in the buffer's syntax tree, as a list of `(name start-char end-char)` entries, one per captured node, `name` being the capture's name without its `@`. See [Syntax captures](#syntax-captures) |
-| `parsed-text-captures` | `(parsed-text-captures parsed language query)`{.sig} The nodes `query` captures in the text a [text formatter](#formatting-popup-text) is drawing, as `syntax-captures` returns them for a buffer, over every line. `parsed` is the formatter's second argument, and names that text only while the formatter runs. See [Syntax captures](#syntax-captures) |
+| `syntax-captures` | `(syntax-captures pane language query [#:ranges ranges])`{.sig} The matches a tree-sitter `query` finds in the buffer's syntax tree, as a list with one item per match. Each match is a list of `(name start-char end-char)` entries, one per node it captures, `name` being the capture's name without its `@`. See [Syntax captures](#syntax-captures) |
+| `parsed-text-captures` | `(parsed-text-captures parsed language query)`{.sig} The matches `query` finds in the text a [text formatter](#formatting-popup-text) is drawing, as `syntax-captures` returns them for a buffer, over every line. `parsed` is the formatter's second argument, and names that text only while the formatter runs. See [Syntax captures](#syntax-captures) |
 
 `configure-language!` takes:
 
@@ -417,6 +417,8 @@ A keyword left out leaves its setting as it is. Values rank as `define-language!
 ### Syntax captures
 
 For `syntax-captures`, `language` is the buffer's own language or one embedded in it, and the query runs over every part of the buffer parsed as it. The tree is first brought up to date with the text, which parses on the spot when the text changed since the last parse.
+
+In a match, a node comes before the nodes inside it, and the rest follow in text order. The matches are sorted by their first entry's start, a longer one first, then by their later entries, so a match comes before a longer one that begins with the same entries. A node two matches capture is in both: `(list (list_item) @item) @list` gives one match per item, each holding the list. A pattern that captures no node gives no match. `(call! "stdlib/concat" matches)` gives every entry in one list.
 
 The list is empty for a buffer with no parsed syntax tree yet (one just opened) or larger than `syntax-highlight-max-bytes`.
 

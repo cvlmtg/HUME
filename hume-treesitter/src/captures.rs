@@ -68,14 +68,19 @@ impl CaptureQuery {
         &self.names
     }
 
-    /// Replace `out` with the captures of the matches over each layer of
-    /// `layers` parsed with this query's bundle over the lines of `lines`,
-    /// injected layers included, predicates evaluated against `rope`. The
-    /// ranges may come in any order and overlap; no line is walked twice.
+    /// Replace `out` with the matches over each layer of `layers` parsed
+    /// with this query's bundle over the lines of `lines`, injected layers
+    /// included, predicates evaluated against `rope`, each match as its
+    /// captures. The ranges may come in any order and overlap; no line is
+    /// walked twice.
     ///
-    /// `out` is sorted by start, then by end descending, so an enclosing node
-    /// precedes the nodes it starts with, then by name. Each distinct capture
-    /// is there once, however many matches or ranges reach it.
+    /// A match's captures are sorted by start, then by end descending, so an
+    /// enclosing node precedes the nodes it starts with; two captures of one
+    /// range keep tree-sitter's order, which enters a parent before its
+    /// child. The matches are sorted by their captures, each compared by
+    /// start, end descending and name, so a match precedes the longer ones it
+    /// starts. Each distinct match is there once, however many ranges reach
+    /// it, and none is empty. A node several matches capture is in each.
     ///
     /// A match counts when the node its pattern is rooted at intersects one
     /// of the ranges, with every capture of the match, inside the lines or
@@ -86,7 +91,7 @@ impl CaptureQuery {
         layers: &SyntaxLayers,
         rope: &Rope,
         lines: &[ExclusiveRange<ContentLine>],
-        out: &mut Vec<Capture>,
+        out: &mut Vec<Vec<Capture>>,
     ) {
         out.clear();
         let mut cursor = QueryCursor::new();
@@ -97,25 +102,38 @@ impl CaptureQuery {
                 let mut matches =
                     cursor.matches(&self.query, layer.tree.root_node(), RopeProvider(rope));
                 while let Some(m) = matches.next() {
-                    out.extend(m.captures().iter().map(|capture| Capture {
-                        name: capture.index,
-                        range: ExclusiveRange::new(
-                            CharOffset::new(rope.byte_to_char(capture.node.start_byte())),
-                            CharOffset::new(rope.byte_to_char(capture.node.end_byte())),
-                        ),
-                    }));
+                    if m.captures().is_empty() {
+                        continue;
+                    }
+                    let mut captures: Vec<Capture> = m
+                        .captures()
+                        .iter()
+                        .map(|capture| Capture {
+                            name: capture.index,
+                            range: ExclusiveRange::new(
+                                CharOffset::new(rope.byte_to_char(capture.node.start_byte())),
+                                CharOffset::new(rope.byte_to_char(capture.node.end_byte())),
+                            ),
+                        })
+                        .collect();
+                    captures
+                        .sort_by_key(|capture| (capture.range.start, Reverse(capture.range.end)));
+                    out.push(captures);
                 }
             }
         }
-        out.sort_by_key(|capture| {
-            (
-                capture.range.start,
-                Reverse(capture.range.end),
-                capture.name,
-            )
-        });
+        out.sort_by(|a, b| a.iter().map(order_key).cmp(b.iter().map(order_key)));
         out.dedup();
     }
+}
+
+/// The key two matches are compared by, capture by capture.
+fn order_key(capture: &Capture) -> (CharOffset, Reverse<CharOffset>, u32) {
+    (
+        capture.range.start,
+        Reverse(capture.range.end),
+        capture.name,
+    )
 }
 
 #[cfg(test)]

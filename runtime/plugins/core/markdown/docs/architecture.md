@@ -66,7 +66,7 @@
 | `manifest.scm` | Lazy activation on the language and the six commands |
 | `plugin.scm` | Config, the hooks, the commands, the `on-paste` handler, the `markdown:paths` completion source and the list keymap |
 | `lib/state.scm` | Per-buffer state keyed by `(buffer-key pane)` (preview on or off, the generation of the last parsed tree), the grammars warned about, and `md-preview/box-insert!` |
-| `lib/queries.scm` | The block, inline and list queries, capture names and accessors, grouping by name, the conceal constructor and order |
+| `lib/queries.scm` | The block, inline and list queries, capture names and accessors, matches grouped by name and into runs (see [Matches](#matches)), the conceal constructor and order |
 | `lib/blocks.scm` | Block captures to conceals, line backgrounds and highlights |
 | `lib/table.scm` | Table captures to conceals. Cells are measured with `string-width` |
 | `lib/inline.scm` | Inline captures to conceals |
@@ -177,6 +177,20 @@ that part. `render.scm` sorts conceals by start, longer first at one start, and 
 with `#:overlaps 'drop`, so each one overlapping an earlier one is dropped. The conceal
 hiding more wins; the dropped one lay in hidden text anyway.
 
+## Matches
+
+`syntax-captures` returns matches, each the captures of one pattern match, enclosing node
+first. Every pattern that relates two nodes captures the parent too: a fence with each of
+its hidden parts, a table with each row and each cell, a span with each delimiter, a link
+with its text, a list with each ordered marker. Tree-sitter reports one match per child,
+the parent repeated in each.
+
+- `md-preview/group` files a match under its first capture's name, the parent's when the
+  pattern captures one.
+- `md-preview/runs` joins adjacent matches with one first capture into a run: that
+  capture and the rest of each match. Matches are sorted by their captures, so a parent's
+  matches are adjacent. A table's run nests a run per row.
+
 ## Fenced blocks
 
 The block query also runs over layers injected into code blocks: a fence whose info
@@ -185,12 +199,13 @@ string names `markdown` is parsed as Markdown, and its headings and lists come b
 
 - It walks the `code_fence_content` captures in order and keeps each one not inside an
   earlier kept one: the outermost blocks.
-- It drops every capture inside a kept content. A block's own captures lie outside its
-  content and stay.
+- It drops every match whose first capture lies inside a kept content. A match's captures
+  come from one layer and lie inside its first, and a block's own matches start outside
+  its content and stay.
 - The inline captures go through the same filter against the block query's contents: an
   injected Markdown layer brings its own `markdown.inline` layers.
 
-One capture inside a content is kept: a `block_continuation` child of
+One match inside a content is kept: a `block_continuation` child of
 `code_fence_content`, captured as `fence-continuation`. In a code block inside a quote,
 these carry the quote's markers on every line after the first. An injected layer's
 continuation also lies inside its own block's content, so a `fence-continuation` is kept

@@ -121,16 +121,16 @@
 
 (define (md-preview/fences! groups line-of emit!)
   (for-each
-    (lambda (record)
-      (let ([span (md-preview/line-span line-of (car record))])
+    (lambda (run)
+      (let ([span (md-preview/line-span line-of (car run))])
         (emit! 'bands (md-preview/band span "markup.raw.block.line"))
         (for-each
-          (lambda (d)
-            (emit! 'conceals (md-preview/conceal (md-preview/capture-start d) (md-preview/capture-end d)
-                                                 #f #f span)))
-          (cdr record))))
-    (md-preview/records (md-preview/captured groups "fence")
-                        (md-preview/captured groups "fence-hidden"))))
+          (lambda (tail)
+            (let ([d (car tail)])
+              (emit! 'conceals (md-preview/conceal (md-preview/capture-start d) (md-preview/capture-end d)
+                                                   #f #f span))))
+          (cdr run))))
+    (md-preview/runs (md-preview/matched groups "fence"))))
 
 (define (md-preview/block-elements groups ranges line-of line-info rule-width)
   (let* ([found (box (hash 'conceals '() 'bands '() 'highlights '()))]

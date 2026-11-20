@@ -12,16 +12,16 @@ use crate::registry::{GrammarBundle, GrammarSnapshot};
 use crate::syntax::Syntax;
 use crate::test_support::{fixture_markdown, make_bundle, syntax_with};
 
-/// `(name, start char, end char)` of each capture `source` yields over
-/// `syntax`'s layers, compiled by `bundle`, restricted to the line ranges
-/// `lines`, or over every line when `None`.
+/// Per match `source` yields over `syntax`'s layers, compiled by `bundle`,
+/// restricted to the line ranges `lines` or over every line when `None`,
+/// the `(name, start char, end char)` of each of its captures.
 fn captures(
     bundle: &GrammarBundle,
     source: &str,
     lines: Option<&[ExclusiveRange<ContentLine>]>,
     syntax: &Syntax,
     text: &BufferText,
-) -> Vec<(String, usize, usize)> {
+) -> Vec<Vec<(String, usize, usize)>> {
     let query = bundle.capture_query(source).expect("query compiles");
     let mut out = Vec::new();
     let every_line = [ExclusiveRange::new(
@@ -35,12 +35,17 @@ fn captures(
         &mut out,
     );
     out.iter()
-        .map(|Capture { name, range }| {
-            (
-                query.names()[*name as usize].to_string(),
-                range.start.index(),
-                range.end.index(),
-            )
+        .map(|captures| {
+            captures
+                .iter()
+                .map(|Capture { name, range }| {
+                    (
+                        query.names()[*name as usize].to_string(),
+                        range.start.index(),
+                        range.end.index(),
+                    )
+                })
+                .collect()
         })
         .collect()
 }
@@ -85,11 +90,11 @@ fn root_captures_are_sorted_by_start_then_end_desc() {
     assert_eq!(
         got,
         [
-            capture("s", 0, 21),
-            capture("h", 0, 4),
-            capture("s", 5, 21),
-            capture("h", 5, 10),
-            capture("p", 11, 21),
+            [capture("s", 0, 21)],
+            [capture("h", 0, 4)],
+            [capture("s", 5, 21)],
+            [capture("h", 5, 10)],
+            [capture("p", 11, 21)],
         ]
     );
 }
@@ -100,7 +105,7 @@ fn injected_inline_layer_captures_are_included() {
     let (syntax, text, inline) = markdown_with_inline("é *x* y\n");
     assert_eq!(
         captures(&inline, "(emphasis) @e", None, &syntax, &text),
-        [capture("e", 2, 5)]
+        [[capture("e", 2, 5)]]
     );
 }
 
@@ -116,7 +121,7 @@ fn a_range_returns_only_the_inline_layers_it_covers() {
             &syntax,
             &text
         ),
-        [capture("e", 13, 18)]
+        [[capture("e", 13, 18)]]
     );
 }
 
@@ -132,7 +137,7 @@ fn eq_predicate_filters_matches() {
         &syntax,
         &text,
     );
-    assert_eq!(got, [capture("m", 0, 1), capture("m", 11, 12)]);
+    assert_eq!(got, [[capture("m", 0, 1)], [capture("m", 11, 12)]]);
 }
 
 #[test]
@@ -143,12 +148,9 @@ fn a_layer_of_another_bundle_is_skipped() {
     let (syntax, text) = syntax_with(Arc::clone(&parsed_with), "# A\n");
     assert_eq!(
         captures(&parsed_with, "(atx_heading) @h", None, &syntax, &text),
-        [capture("h", 0, 4)]
+        [[capture("h", 0, 4)]]
     );
-    assert_eq!(
-        captures(&reregistered, "(atx_heading) @h", None, &syntax, &text),
-        []
-    );
+    assert!(captures(&reregistered, "(atx_heading) @h", None, &syntax, &text).is_empty());
 }
 
 /// A table between two paragraphs. Lines 0 to 7, by char offset: `intro`
@@ -170,7 +172,7 @@ fn range_inside_a_table_returns_every_row_for_a_table_rooted_pattern() {
         &syntax,
         &text,
     );
-    assert_eq!(got, [capture("row", 27, 36), capture("row", 37, 46)]);
+    assert_eq!(got, [[capture("row", 27, 36)], [capture("row", 37, 46)]]);
 }
 
 #[test]
@@ -186,7 +188,7 @@ fn range_inside_a_table_returns_only_intersecting_cells_for_a_cell_rooted_patter
         &syntax,
         &text,
     );
-    assert_eq!(got, [capture("cell", 39, 41), capture("cell", 43, 45)]);
+    assert_eq!(got, [[capture("cell", 39, 41)], [capture("cell", 43, 45)]]);
 }
 
 #[test]
@@ -208,9 +210,9 @@ fn range_on_a_nested_section_returns_the_ancestor_headings() {
     assert_eq!(
         got,
         [
-            capture("h", 0, 4),
-            capture("h", 11, 16),
-            capture("h", 23, 29)
+            [capture("h", 0, 4)],
+            [capture("h", 11, 16)],
+            [capture("h", 23, 29)]
         ]
     );
 }
@@ -228,7 +230,7 @@ fn a_node_spanning_two_ranges_is_captured_once() {
         &syntax,
         &text,
     );
-    assert_eq!(got, [capture("row", 27, 36), capture("row", 37, 46)]);
+    assert_eq!(got, [[capture("row", 27, 36)], [capture("row", 37, 46)]]);
 }
 
 #[test]
@@ -244,7 +246,7 @@ fn lines_between_two_ranges_are_not_captured() {
         &syntax,
         &text,
     );
-    assert_eq!(got, [capture("h", 0, 4), capture("h", 10, 14)]);
+    assert_eq!(got, [[capture("h", 0, 4)], [capture("h", 10, 14)]]);
 }
 
 #[test]
@@ -263,16 +265,16 @@ fn overlapping_ranges_capture_each_match_once() {
     assert_eq!(
         got,
         [
-            capture("cell", 29, 31),
-            capture("cell", 33, 35),
-            capture("cell", 39, 41),
-            capture("cell", 43, 45)
+            [capture("cell", 29, 31)],
+            [capture("cell", 33, 35)],
+            [capture("cell", 39, 41)],
+            [capture("cell", 43, 45)]
         ]
     );
 }
 
 #[test]
-fn a_node_two_patterns_capture_under_one_name_is_captured_once() {
+fn an_identical_match_from_two_patterns_comes_once() {
     require_grammars(&["markdown"]);
     let bundle = fixture_markdown();
     let (syntax, text) = syntax_with(Arc::clone(&bundle), "# A\n");
@@ -283,7 +285,7 @@ fn a_node_two_patterns_capture_under_one_name_is_captured_once() {
         &syntax,
         &text,
     );
-    assert_eq!(got, [capture("h", 0, 4)]);
+    assert_eq!(got, [[capture("h", 0, 4)]]);
 }
 
 #[test]
@@ -337,4 +339,94 @@ fn capture_query_compiles_once_per_bundle_and_source() {
         .capture_query("(atx_heading) @h")
         .expect("compiles");
     assert!(!Arc::ptr_eq(&first, &elsewhere));
+}
+
+#[test]
+fn a_match_holds_each_marker_with_its_list() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    // The list takes 0..8, its markers `- ` 0..2 and 4..6.
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), "- a\n- b\n");
+    let got = captures(
+        &bundle,
+        "(list (list_item (list_marker_minus) @m)) @l",
+        None,
+        &syntax,
+        &text,
+    );
+    assert_eq!(
+        got,
+        [
+            [capture("l", 0, 8), capture("m", 0, 2)],
+            [capture("l", 0, 8), capture("m", 4, 6)]
+        ]
+    );
+}
+
+#[test]
+fn a_match_reached_by_two_ranges_comes_once() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), TABLE);
+    // The header and the last row: both reach the one table, 7..47.
+    let got = captures(
+        &bundle,
+        "(pipe_table (pipe_table_row) @row) @table",
+        Some(&[lines(2, 2), lines(5, 5)]),
+        &syntax,
+        &text,
+    );
+    assert_eq!(
+        got,
+        [
+            [capture("table", 7, 47), capture("row", 27, 36)],
+            [capture("table", 7, 47), capture("row", 37, 46)]
+        ]
+    );
+}
+
+#[test]
+fn a_pattern_capturing_nothing_yields_no_match() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), "# A\n\nsome text\n");
+    let got = captures(
+        &bundle,
+        "(atx_heading)\n(paragraph) @p",
+        None,
+        &syntax,
+        &text,
+    );
+    assert_eq!(got, [[capture("p", 5, 15)]]);
+}
+
+#[test]
+fn a_match_sorts_before_a_longer_one_it_starts() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), "# A\n");
+    let got = captures(
+        &bundle,
+        "(atx_heading (atx_h1_marker) @m) @h\n(atx_heading) @h",
+        None,
+        &syntax,
+        &text,
+    );
+    assert_eq!(
+        got,
+        [
+            vec![capture("h", 0, 4)],
+            vec![capture("h", 0, 4), capture("m", 0, 1)]
+        ]
+    );
+}
+
+#[test]
+fn a_parent_with_the_range_of_its_child_comes_first() {
+    require_grammars(&["markdown"]);
+    let bundle = fixture_markdown();
+    // The document and its one section both take 0..4.
+    let (syntax, text) = syntax_with(Arc::clone(&bundle), "# A\n");
+    let got = captures(&bundle, "(document (section) @s) @d", None, &syntax, &text);
+    assert_eq!(got, [[capture("d", 0, 4), capture("s", 0, 4)]]);
 }

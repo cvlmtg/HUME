@@ -178,23 +178,17 @@
        (loop spans reveals (cdr cs) (cons (hash-insert (car cs) 'reveal (car reveals)) out))]
       [else (loop spans reveals (cdr cs) (cons (car cs) out))])))
 
-(define (md-preview/table-elements groups inline ranges line-of line-info line-count)
-  (let* ([tables (md-preview/captured groups "table")]
-         [spans (map md-preview/extent tables)]
+(define (md-preview/table-elements runs inline ranges line-of line-info line-count)
+  (let* ([spans (map (lambda (run) (md-preview/extent (car run))) runs)]
          [inline (sort inline md-preview/conceal-before?)]
-         [record-start (lambda (r) (md-preview/capture-start (car r)))]
-         [layouts (map (lambda (t rows delimiters conceals)
-                         (md-preview/layout t rows delimiters conceals line-of line-info))
-                       tables
-                       (md-preview/bucket spans
-                                          (md-preview/records (md-preview/captured groups "table-row")
-                                                              (md-preview/captured groups "table-cell"))
-                                          record-start)
-                       (md-preview/bucket spans
-                                          (md-preview/records
-                                            (md-preview/captured groups "table-delimiter-row")
-                                            (md-preview/captured groups "table-delimiter-cell"))
-                                          record-start)
+         [layouts (map (lambda (run conceals)
+                         (let* ([rows (map (lambda (row) (cons (car row) (map car (cdr row))))
+                                           (md-preview/runs (cdr run)))]
+                                [of-kind (lambda (name)
+                                           (filter (lambda (row) (equal? (car (car row)) name)) rows))])
+                           (md-preview/layout (car run) (of-kind "table-row") (of-kind "table-delimiter-row")
+                                              conceals line-of line-info)))
+                       runs
                        (md-preview/bucket spans inline md-preview/char-start))])
     (hash 'conceals (foldl (lambda (t out) (append (hash-ref t 'conceals) out))
                            (md-preview/edges layouts ranges line-info line-count)

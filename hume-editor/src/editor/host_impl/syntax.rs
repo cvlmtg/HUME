@@ -35,11 +35,11 @@ impl<'a> SyntaxHost for EditorHostImpl<'a> {
         );
         let buf = self.state.buffers.get(bid);
         let text = buf.text();
-        let mut captures = Vec::new();
+        let mut matches = Vec::new();
         if let Some(layers) = buf.current_layers() {
-            query.collect(layers, text.rope(), ranges, &mut captures);
+            query.collect(layers, text.rope(), ranges, &mut matches);
         }
-        Ok(captures_of(&query, captures))
+        Ok(captures_of(&query, matches))
     }
 }
 
@@ -62,15 +62,20 @@ impl EditorHostImpl<'_> {
 }
 
 /// `captures`, which `query` collected, as the host reports them.
-pub(super) fn captures_of(query: &CaptureQuery, captures: Vec<Capture>) -> Captures {
+pub(super) fn captures_of(query: &CaptureQuery, matches: Vec<Vec<Capture>>) -> Captures {
     Captures {
         names: query.names().to_vec(),
-        entries: captures
+        matches: matches
             .into_iter()
-            .map(|capture| CaptureEntry {
-                name: capture.name,
-                start_char: capture.range.start.index(),
-                end_char: capture.range.end.index(),
+            .map(|captures| {
+                captures
+                    .into_iter()
+                    .map(|capture| CaptureEntry {
+                        name: capture.name,
+                        start_char: capture.range.start.index(),
+                        end_char: capture.range.end.index(),
+                    })
+                    .collect()
             })
             .collect(),
     }

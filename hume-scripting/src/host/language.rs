@@ -26,9 +26,9 @@ pub trait LanguageHost {
     /// whose load failed does not count.
     fn has_grammar(&self, language: &str) -> bool;
 
-    /// The captures of `query`, compiled against `language`'s grammar, over
-    /// every layer of that grammar in the text `parsed` names, sorted as
-    /// [`super::SyntaxHost::syntax_captures`] sorts them, with char offsets
+    /// The matches of `query`, compiled against `language`'s grammar, over
+    /// every layer of that grammar in the text `parsed` names, as
+    /// [`super::SyntaxHost::syntax_captures`] gives them, with char offsets
     /// into that text. `parsed` names a text only while the call it was lent
     /// to runs; `Err` otherwise, when `language` has no grammar, or when
     /// `query` does not compile.

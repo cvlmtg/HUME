@@ -35,8 +35,8 @@
               (md-preview/box-insert! memo line info)
               info))))))
 
-(define (md-preview/fence-contents captures)
-  (filter (lambda (c) (equal? (car c) "fence-content")) captures))
+(define (md-preview/fence-contents matches)
+  (map car (filter (lambda (m) (equal? (car (car m)) "fence-content")) matches)))
 
 (define (md-preview/fence-zones contents)
   (let loop ([cs contents] [reach -1] [zones '()])
@@ -50,18 +50,20 @@
   (and (equal? (car capture) "fence-continuation")
        (= 1 (length (filter (lambda (content) (md-preview/inside? capture content)) contents)))))
 
-(define (md-preview/outside-fences captures contents)
-  (let loop ([cs captures] [zones (md-preview/fence-zones contents)] [kept '()])
-    (cond
-      [(null? cs) (reverse kept)]
-      [(and (pair? zones)
-            (< (md-preview/capture-end (car zones)) (md-preview/capture-start (car cs))))
-       (loop cs (cdr zones) kept)]
-      [(and (pair? zones)
-            (md-preview/inside? (car cs) (car zones))
-            (not (md-preview/root-continuation? (car cs) contents)))
-       (loop (cdr cs) zones kept)]
-      [else (loop (cdr cs) zones (cons (car cs) kept))])))
+(define (md-preview/outside-fences matches contents)
+  (let loop ([ms matches] [zones (md-preview/fence-zones contents)] [kept '()])
+    (if (null? ms)
+        (reverse kept)
+        (let ([first (car (car ms))])
+          (cond
+            [(and (pair? zones)
+                  (< (md-preview/capture-end (car zones)) (md-preview/capture-start first)))
+             (loop ms (cdr zones) kept)]
+            [(and (pair? zones)
+                  (md-preview/inside? first (car zones))
+                  (not (md-preview/root-continuation? first contents)))
+             (loop (cdr ms) zones kept)]
+            [else (loop (cdr ms) zones (cons (car ms) kept))])))))
 
 (define (md-preview/clamped line-of line-info conceal)
   (let* ([info (line-info (line-of (hash-ref conceal 'start-char)))]
@@ -74,15 +76,15 @@
   (let* ([contents (md-preview/fence-contents blocks)]
          [groups (md-preview/group (md-preview/outside-fences blocks contents))]
          [elements (md-preview/block-elements groups ranges line-of line-info rule-width)]
+         [table-runs (md-preview/runs (md-preview/matched groups "table"))]
          [inline-ranges (append ranges
-                                (map (lambda (t) (md-preview/line-span line-of t))
-                                     (md-preview/captured groups "table")))]
+                                (map (lambda (run) (md-preview/line-span line-of (car run))) table-runs))]
          [inline (if (language-has-grammar? "markdown.inline")
                      (md-preview/inline-elements
                        (md-preview/outside-fences (inline-captures inline-ranges) contents)
                        line-of line-info)
                      '())]
-         [tables (md-preview/table-elements groups inline ranges line-of line-info line-count)])
+         [tables (md-preview/table-elements table-runs inline ranges line-of line-info line-count)])
     (hash 'conceals (sort (map (lambda (c) (md-preview/clamped line-of line-info c))
                                (append (hash-ref elements 'conceals)
                                        (hash-ref tables 'conceals)

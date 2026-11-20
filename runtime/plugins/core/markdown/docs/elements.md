@@ -33,10 +33,9 @@ is drawn on each `>` in it.
 | Backslash escape | `backslash_escape` | The backslash hidden |
 | Entity | `entity_reference`, `numeric_character_reference` | Its character, unscoped. Raw for a name not in `entities.scm`, or a reference to a control character (line break included), a surrogate, or past the last code point |
 
-- `inline.scm` walks the captures in order with a stack of the open spans and links. A
-  delimiter belongs to the innermost open span and reveals over its lines. A text belongs
-  to the innermost open link starting before it, so an image that is a link's whole text
-  is not its own link.
+- Each delimiter comes in a match with its span and reveals over that span's lines; each
+  text comes with its link, so an image that is a link's whole text keeps both links (see
+  [Matches](architecture.md#matches)).
 - `render.scm` clamps every conceal to the end of its line's text, since the setter
   refuses one covering a line break. A `thematic_break` ends after its line break, and a
   link whose destination or title runs onto a later line hides only to the end of its

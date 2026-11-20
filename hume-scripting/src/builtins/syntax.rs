@@ -277,12 +277,12 @@ pub(crate) fn language_has_grammar(ctx: &mut SteelCtx, name: SteelVal) -> SteelR
 /// [`super::args::line_range_value`], the shape `viewport-range` returns) or
 /// `#f` for the whole buffer.
 ///
-/// Returns a list of `(list name start-char end-char)`, one per node
-/// `query-source` captures in `pane`'s buffer, over every layer of `language`
-/// (the root, or a language it injects), as
-/// [`crate::host::SyntaxHost::syntax_captures`] gives them: `name` the capture
-/// name without its `@`, one string shared by every entry of that name. `'()`
-/// when the buffer has no tree for its current text.
+/// Returns a list of matches of `query-source` in `pane`'s buffer, over every
+/// layer of `language` (the root, or a language it injects), each a list of
+/// `(list name start-char end-char)`, one per node the match captures, as
+/// [`crate::host::SyntaxHost::syntax_captures`] gives and orders them: `name`
+/// the capture name without its `@`, one string shared by every entry of
+/// that name. `'()` when the buffer has no tree for its current text.
 ///
 /// With `ranges`, a match is returned when the node its pattern is rooted at
 /// intersects the lines of one of them, with every capture of the match.
@@ -334,20 +334,23 @@ pub(crate) fn parsed_text_captures(
     Ok(captures_list(&captures))
 }
 
-/// `captures` as a list of `(list name start-char end-char)`, `name` one
-/// string shared by every entry of that name.
+/// `captures` as a list of matches, each a list of
+/// `(list name start-char end-char)`, `name` one string shared by every entry
+/// of that name.
 fn captures_list(captures: &Captures) -> SteelVal {
     let names: Vec<SteelVal> = captures
         .names
         .iter()
         .map(|name| SteelVal::StringV(name.as_ref().into()))
         .collect();
-    list_of(captures.entries.iter().map(|entry| {
-        list_of([
-            names[entry.name as usize].clone(),
-            SteelVal::IntV(entry.start_char as isize),
-            SteelVal::IntV(entry.end_char as isize),
-        ])
+    list_of(captures.matches.iter().map(|entries| {
+        list_of(entries.iter().map(|entry| {
+            list_of([
+                names[entry.name as usize].clone(),
+                SteelVal::IntV(entry.start_char as isize),
+                SteelVal::IntV(entry.end_char as isize),
+            ])
+        }))
     }))
 }
 

@@ -49,10 +49,15 @@
   (let* ([unique (md-lists/distinct lines)]
          [infos (map line-info unique)]
          [spans (map (lambda (info) (cons (car info) (+ (car info) (string-length (cdr info))))) infos)]
-         [on-lines (lambda (name)
-                     (md-preview/bucket spans (md-preview/captured groups name) md-preview/capture-start))]
-         [items (map md-lists/item infos (on-lines "bullet") (on-lines "ordered") (on-lines "task")
-                     (on-lines "quote-prefix"))])
+         [on-lines (lambda (captures) (md-preview/bucket spans captures md-preview/capture-start))]
+         [ordered (sort (map (lambda (m) (car (cdr m))) (md-preview/matched groups "list"))
+                        md-preview/capture-before?)]
+         [items (map md-lists/item
+                     infos
+                     (on-lines (md-preview/captured groups "bullet"))
+                     (on-lines ordered)
+                     (on-lines (md-preview/captured groups "task"))
+                     (on-lines (md-preview/captured groups "quote-prefix")))])
     (let loop ([lines lines] [unique unique] [items items] [out '()])
       (cond
         [(null? lines) (reverse out)]
@@ -118,18 +123,6 @@
 
 ;; ── Renumbering ───────────────────────────────────────────────────────────────
 
-(define (md-lists/width capture)
-  (- (md-preview/capture-end capture) (md-preview/capture-start capture)))
-
-(define (md-lists/list-of lists marker)
-  (foldl (lambda (l best)
-           (if (and (md-preview/inside? marker l)
-                    (or (not best) (< (md-lists/width l) (md-lists/width best))))
-               l
-               best))
-         #f
-         lists))
-
 (define (md-lists/digits marker line-of line-info)
   (let* ([start (md-preview/capture-start marker)]
          [info (line-info (line-of start))]
@@ -139,10 +132,7 @@
 
 ;;; See docs/lists.md's "Renumbering".
 (define (md-lists/renumber groups events line-of line-info)
-  (let* ([lists (md-preview/captured groups "list")]
-         [owned (map (lambda (m) (cons m (md-lists/list-of lists m)))
-                     (sort (md-preview/captured groups "ordered") md-preview/capture-before?))]
-         [indexed (let loop ([es events] [i 0] [out '()])
+  (let* ([indexed (let loop ([es events] [i 0] [out '()])
                     (if (null? es)
                         (reverse out)
                         (loop (cdr es) (+ i 1) (cons (cons i (car es)) out))))]
@@ -155,11 +145,6 @@
                                (hash-insert table s (cons e (or (hash-try-get table s) '())))))
                            (hash)
                            (reverse numbered))]
-         [touched (foldl (lambda (e acc)
-                           (let ([l (md-lists/list-of lists (marker-of e))])
-                             (if (member l acc) acc (cons l acc))))
-                         '()
-                         numbered)]
          [numbers (box (hash))]
          [edits (box '())])
     (define (number m) (string->number (md-lists/digits m line-of line-info)))
@@ -179,9 +164,8 @@
                                   'text (number->string counter))
                             (unbox edits)))))))
     (for-each
-      (lambda (l)
-        (let walk ([items (map car (filter (lambda (o) (equal? (cdr o) l)) owned))]
-                   [counter #f])
+      (lambda (run)
+        (let walk ([items (map car (cdr run))] [counter #f])
           (unless (null? items)
             (let* ([m (car items)]
                    [at (or (hash-try-get at-marker (md-preview/capture-start m)) '())]
@@ -196,7 +180,7 @@
                               [else #f])]
                    [counter (if (pair? afters) (assign! afters (or counter (+ (number m) 1))) counter)])
               (walk (cdr items) counter)))))
-      touched)
+      (md-preview/runs (md-preview/matched groups "list")))
     (cons (unbox edits)
           (map (lambda (e) (hash-try-get (unbox numbers) (car e))) indexed))))
 

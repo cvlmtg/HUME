@@ -21,17 +21,23 @@ fn markdown_editor_with(source: &str, queries: &[OptionalQuery]) -> Editor {
         .0
 }
 
-/// `captures-text` renders a `syntax-captures` result as `[name start..end;…]`.
+/// `captures-text` renders a `syntax-captures` result as
+/// `[name start..end;…|…]`, each match's entries followed by `|`.
 const CAPTURES_TEXT: &str = r#"
-(define (captures-text caps)
+(define (captures-text matches)
   (string-append
     "["
     (apply string-append
-      (map (lambda (c)
-             (string-append (list-ref c 0) " "
-                            (number->string (list-ref c 1)) ".."
-                            (number->string (list-ref c 2)) ";"))
-           caps))
+      (map (lambda (m)
+             (string-append
+               (apply string-append
+                 (map (lambda (c)
+                        (string-append (list-ref c 0) " "
+                                       (number->string (list-ref c 1)) ".."
+                                       (number->string (list-ref c 2)) ";"))
+                      m))
+               "|"))
+           matches))
     "]"))"#;
 
 /// Define `:check`, which logs what `call` returns, run with the command's
@@ -104,11 +110,22 @@ const THREE_HEADINGS: &str = "# A\n\n# B\n\n# C\n";
 const EMPHASIS: &str = r#"(syntax-captures bid "markdown.inline" "(emphasis) @e")"#;
 
 #[test]
+fn a_match_lists_its_root_then_its_child() {
+    let tmp = tempfile::tempdir().unwrap();
+    let mut ed = markdown_editor(THREE_HEADINGS);
+    let call = r#"(syntax-captures bid "markdown" "(atx_heading (atx_h1_marker) @m) @h")"#;
+    assert_eq!(
+        captures(&mut ed, tmp.path(), call),
+        "[h 0..4;m 0..1;|h 5..9;m 5..6;|h 10..14;m 10..11;|]"
+    );
+}
+
+#[test]
 fn multibyte_text_yields_char_offsets() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor("漢字\n\n# A\n");
     // The heading starts at char 4 (byte 8) and ends after its line break.
-    assert_eq!(captures(&mut ed, tmp.path(), HEADINGS), "[h 4..8;]");
+    assert_eq!(captures(&mut ed, tmp.path(), HEADINGS), "[h 4..8;|]");
 }
 
 #[test]
@@ -116,7 +133,7 @@ fn edit_then_query_in_one_command_reads_the_edited_tree() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor("# A\n");
     let call = insert_then(HEADING_Z, HEADINGS);
-    assert_eq!(captures(&mut ed, tmp.path(), &call), "[h 0..4;h 5..9;]");
+    assert_eq!(captures(&mut ed, tmp.path(), &call), "[h 0..4;|h 5..9;|]");
 }
 
 /// The root is not `markdown.inline`: its injections query is what lets the
@@ -126,7 +143,7 @@ fn edit_then_inline_query_in_one_command_reads_the_edited_tree() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor("a\n");
     let call = insert_then("*x* ", EMPHASIS);
-    assert_eq!(captures(&mut ed, tmp.path(), &call), "[e 0..3;]");
+    assert_eq!(captures(&mut ed, tmp.path(), &call), "[e 0..3;|]");
 }
 
 /// Markdown without an injections query: the root being the queried
@@ -136,14 +153,14 @@ fn edit_then_root_query_without_injections_reads_the_edited_tree() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor_with("# A\n", &[]);
     let call = insert_then(HEADING_Z, HEADINGS);
-    assert_eq!(captures(&mut ed, tmp.path(), &call), "[h 0..4;h 5..9;]");
+    assert_eq!(captures(&mut ed, tmp.path(), &call), "[h 0..4;|h 5..9;|]");
 }
 
 #[test]
 fn injected_inline_captures_are_included() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor("é *x* y\n");
-    assert_eq!(captures(&mut ed, tmp.path(), EMPHASIS), "[e 2..5;]");
+    assert_eq!(captures(&mut ed, tmp.path(), EMPHASIS), "[e 2..5;|]");
 }
 
 #[test]
@@ -224,7 +241,7 @@ fn query_using_a_directive_hume_does_not_apply_raises_with_its_position() {
 fn reattached_grammar_answers_from_its_new_bundles_tree() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor("# A\n");
-    assert_eq!(captures(&mut ed, tmp.path(), HEADINGS), "[h 0..4;]");
+    assert_eq!(captures(&mut ed, tmp.path(), HEADINGS), "[h 0..4;|]");
     run(
         &mut ed,
         tmp.path(),
@@ -240,7 +257,7 @@ fn reattached_grammar_answers_from_its_new_bundles_tree() {
     // The new attachment has no committed tree until its first parse lands.
     assert_eq!(check(&mut ed), "[]");
     ed.settle();
-    assert_eq!(check(&mut ed), "[h 0..4;]");
+    assert_eq!(check(&mut ed), "[h 0..4;|]");
 }
 
 #[test]
@@ -267,7 +284,7 @@ fn ranges_keyword_returns_the_captures_of_the_lines_each_range_names() {
     let mut ed = markdown_editor(THREE_HEADINGS);
     let call = r#"(syntax-captures bid "markdown" "(atx_heading) @h"
                     #:ranges (list (hash 'start-line 4 'end-line 5) (hash 'start-line 0 'end-line 1)))"#;
-    assert_eq!(captures(&mut ed, tmp.path(), call), "[h 0..4;h 10..14;]");
+    assert_eq!(captures(&mut ed, tmp.path(), call), "[h 0..4;|h 10..14;|]");
 }
 
 #[test]
@@ -277,7 +294,7 @@ fn a_range_covering_the_buffer_returns_every_capture() {
     let call = r#"(syntax-captures bid "markdown" "(atx_heading) @h" #:ranges (list (hash 'start-line 0 'end-line 5)))"#;
     assert_eq!(
         captures(&mut ed, tmp.path(), call),
-        "[h 0..4;h 5..9;h 10..14;]"
+        "[h 0..4;|h 5..9;|h 10..14;|]"
     );
 }
 
@@ -389,7 +406,7 @@ fn viewport_range_feeds_syntax_captures_unchanged() {
     let call = r#"(syntax-captures bid "markdown" "(section (atx_heading) @h)" #:ranges (list (viewport-range bid)))"#;
     assert_eq!(
         captures(&mut ed, tmp.path(), call),
-        "[h 0..4;h 11..16;h 23..29;]"
+        "[h 0..4;|h 11..16;|h 23..29;|]"
     );
 }
 
@@ -409,8 +426,9 @@ fn heading_rooted_pattern_over_the_viewport_range_returns_no_hidden_heading() {
 fn entries_of_one_capture_name_share_one_string() {
     let tmp = tempfile::tempdir().unwrap();
     let mut ed = markdown_editor(THREE_HEADINGS);
-    // Per heading, `h` then `m` (the marker): indexes 0 and 2 are `h`.
-    let name = |i: usize| format!("(list-ref (list-ref caps {i}) 0)");
+    // Per heading, `h` then `m` (the marker), each its own match: indexes 0
+    // and 2 are `h`.
+    let name = |i: usize| format!("(list-ref (list-ref (list-ref caps {i}) 0) 0)");
     let expr = format!(
         r#"(let ((caps (syntax-captures bid "markdown" "(atx_heading) @h (atx_h1_marker) @m")))
              (list (eq? {} {}) (eq? {} {})))"#,
@@ -468,7 +486,7 @@ fn a_parsed_text_yields_the_root_layers_captures() {
     // The heading node ends after the line break the parsed text ends with.
     assert_eq!(
         popup_captures(&mut ed, tmp.path(), "a\n\n# B", call),
-        "[h 3..7;]"
+        "[h 3..7;|]"
     );
 }
 
@@ -479,7 +497,7 @@ fn a_parsed_text_yields_an_injected_layers_captures() {
     let call = r#"(parsed-text-captures parsed "markdown.inline" "(emphasis) @e")"#;
     assert_eq!(
         popup_captures(&mut ed, tmp.path(), "a *e* b", call),
-        "[e 2..5;]"
+        "[e 2..5;|]"
     );
 }
 

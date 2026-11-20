@@ -566,6 +566,24 @@ fn markdown_fence_sets_conceals_for_its_two_fence_lines_only() {
 }
 
 #[test]
+fn a_table_inside_a_markdown_fence_draws_no_border() {
+    let mut p = preview();
+    // "```markdown\n" 0..12, "| a |\n" 12..18, "|---|\n" 18..24, "```\n"
+    // 24..28.
+    let bid = p.open("a.md", "```markdown\n| a |\n|---|\n```\n");
+    p.render();
+    assert_eq!(
+        p.conceals(bid),
+        [
+            hidden(0, 3).revealing(0, 28),
+            hidden(3, 11).revealing(0, 28),
+            hidden(24, 27).revealing(0, 28)
+        ]
+    );
+    assert_eq!(p.bands(bid), bands(0..4, "markup.raw.block.line"));
+}
+
+#[test]
 fn quote_lines_inside_a_code_block_get_no_inserted_bar() {
     let mut p = preview();
     // "> ```\n" 0..6, "> code\n" 6..13, "> ```\n" 13..19. Every line has its
@@ -653,6 +671,25 @@ fn emphasis_strikethrough_and_code_span_delimiters_are_hidden_revealing_over_the
     );
     assert_eq!(p.bands(bid), []);
     assert_eq!(p.highlights(bid), []);
+}
+
+#[test]
+fn strong_emphasis_around_emphasis_hides_every_delimiter() {
+    let mut p = preview();
+    // "***a***\n" 0..8: both spans take line 0, so every `*` reveals over it.
+    let bid = p.open("a.md", "***a***\n");
+    p.render();
+    assert_eq!(
+        p.conceals(bid),
+        [
+            hidden(0, 1).revealing(0, 8),
+            hidden(1, 2).revealing(0, 8),
+            hidden(2, 3).revealing(0, 8),
+            hidden(4, 5).revealing(0, 8),
+            hidden(5, 6).revealing(0, 8),
+            hidden(6, 7).revealing(0, 8),
+        ]
+    );
 }
 
 #[test]

@@ -3,9 +3,9 @@
 (provide md-preview/block-query md-preview/inline-query md-preview/atx-levels md-preview/setext-levels
          md-preview/capture-start md-preview/capture-end md-preview/capture-before? md-preview/line-span
          md-preview/inside? md-preview/line-slice md-preview/blank? md-preview/skip-while md-preview/skip-blanks
-         md-preview/quote-cols md-preview/bucket md-preview/extent md-preview/records
+         md-preview/quote-cols md-preview/bucket md-preview/extent
          md-preview/conceal
-         md-preview/conceal-before? md-preview/group md-preview/captured
+         md-preview/conceal-before? md-preview/group md-preview/matched md-preview/runs md-preview/captured
          md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text
          md-lists/query)
 
@@ -61,10 +61,6 @@
 (define (md-preview/extent capture)
   (cons (md-preview/capture-start capture) (- (md-preview/capture-end capture) 1)))
 
-(define (md-preview/records containers items)
-  (map cons containers
-       (md-preview/bucket (map md-preview/extent containers) items md-preview/capture-start)))
-
 (define (md-preview/line-slice start end line-of line-info)
   (let ([info (line-info (line-of start))])
     (substring (cdr info) (- start (car info)) (- end (car info)))))
@@ -80,14 +76,28 @@
     (or (< a-start b-start)
         (and (= a-start b-start) (> (hash-ref a 'end-char) (hash-ref b 'end-char))))))
 
-(define (md-preview/group captures)
-  (foldl (lambda (c groups)
-           (hash-insert groups (car c) (cons c (or (hash-try-get groups (car c)) '()))))
+(define (md-preview/group matches)
+  (foldl (lambda (m groups)
+           (let ([name (car (car m))])
+             (hash-insert groups name (cons m (or (hash-try-get groups name) '())))))
          (hash)
-         (reverse captures)))
+         (reverse matches)))
 
-(define (md-preview/captured groups name)
+(define (md-preview/matched groups name)
   (or (hash-try-get groups name) '()))
+
+;;; Per run of adjacent matches with one first entry, `(head . tails)`: that entry, and each match's other entries.
+(define (md-preview/runs matches)
+  (foldl (lambda (m runs)
+           (if (and (pair? runs) (equal? (car (car runs)) (car m)))
+               (cons (cons (car m) (cons (cdr m) (cdr (car runs)))) (cdr runs))
+               (cons (list (car m) (cdr m)) runs)))
+         '()
+         (reverse matches)))
+
+;;; The first entry of each match of a kind whose patterns capture one node.
+(define (md-preview/captured groups name)
+  (map car (md-preview/matched groups name)))
 
 (define (md-preview/heading n) (string-append "heading." (number->string n)))
 (define (md-preview/heading-text n) (string-append "heading-text." (number->string n)))
@@ -118,23 +128,19 @@
     "(block_continuation) @continuation\n"
     "(code_fence_content (block_continuation) @fence-continuation)\n"
     "(thematic_break) @rule\n"
-    "(fenced_code_block) @fence\n"
-    "(fenced_code_block [(fenced_code_block_delimiter) (info_string)] @fence-hidden)\n"
+    "(fenced_code_block [(fenced_code_block_delimiter) (info_string)] @fence-hidden) @fence\n"
     "(fenced_code_block (code_fence_content) @fence-content)\n"
-    "(pipe_table) @table\n"
-    "(pipe_table [(pipe_table_header) (pipe_table_row)] @table-row)\n"
-    "(pipe_table (pipe_table_delimiter_row) @table-delimiter-row)\n"
     "(pipe_table [(pipe_table_header (pipe_table_cell) @table-cell)\n"
-    "             (pipe_table_row (pipe_table_cell) @table-cell)])\n"
-    "(pipe_table (pipe_table_delimiter_row (pipe_table_delimiter_cell) @table-delimiter-cell))\n"))
+    "             (pipe_table_row (pipe_table_cell) @table-cell)] @table-row) @table\n"
+    "(pipe_table (pipe_table_delimiter_row (pipe_table_delimiter_cell) @table-delimiter-cell)\n"
+    "            @table-delimiter-row) @table\n"))
 
 (define md-preview/inline-query
   (string-append
-    "[(emphasis) (strong_emphasis) (strikethrough) (code_span)] @span\n"
-    "(emphasis (emphasis_delimiter) @span-delimiter)\n"
-    "(strong_emphasis (emphasis_delimiter) @span-delimiter)\n"
-    "(strikethrough (emphasis_delimiter) @span-delimiter)\n"
-    "(code_span (code_span_delimiter) @span-delimiter)\n"
+    "(emphasis (emphasis_delimiter) @span-delimiter) @span\n"
+    "(strong_emphasis (emphasis_delimiter) @span-delimiter) @span\n"
+    "(strikethrough (emphasis_delimiter) @span-delimiter) @span\n"
+    "(code_span (code_span_delimiter) @span-delimiter) @span\n"
     "(inline_link (link_text) @link-text) @link\n"
     "(full_reference_link (link_text) @link-text) @link\n"
     "(collapsed_reference_link (link_text) @link-text) @link\n"
@@ -145,8 +151,7 @@
 
 (define md-lists/query
   (string-append
-    "(list) @list\n"
     "(list (list_item [(list_marker_minus) (list_marker_plus) (list_marker_star)] @bullet))\n"
-    "(list (list_item [(list_marker_dot) (list_marker_parenthesis)] @ordered))\n"
+    "(list (list_item [(list_marker_dot) (list_marker_parenthesis)] @ordered)) @list\n"
     "[(task_list_marker_unchecked) (task_list_marker_checked)] @task\n"
     "[(block_quote_marker) (block_continuation)] @quote-prefix\n"))
