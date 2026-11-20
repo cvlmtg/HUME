@@ -18,6 +18,9 @@ always do.
 
 - **Item line:** a list marker starts on it. Its prefix runs from the start of the line past
   the last marker, past a task box right after it, and past the blanks that follow.
+- **Quote in an item:** a `>` follows the last marker, as in `- > foo`. The line is a quote
+  line inside the item: its prefix runs past the last such `>` and the blanks that follow, and
+  it has no last marker of its own.
 - **Quote line:** no marker starts on it, but a `block_quote_marker` or
   `block_continuation` on it holds a `>`. Its prefix runs past the last of these and the
   blanks that follow.
@@ -26,7 +29,8 @@ always do.
 
 The next line's prefix (`md-lists/next-prefix`) copies the prefix with these changes:
 
-- each marker before the last becomes blanks of its width (`1. - foo` gives `   - `);
+- each marker before the last becomes blanks of its width (`1. - foo` gives `   - `, and
+  `- > foo` gives `  > `);
 - the last marker keeps its bullet, or takes the new number with its own `.` or `)`;
 - a task box becomes `[ ]`.
 
@@ -39,7 +43,8 @@ When every cursor is on an item or quote line with nothing after its prefix, Ent
 line. `md-lists/ended-edit` instead deletes the end of each prefix:
 
 - **Item line:** what follows the last `>` before the first marker, and the blank after it.
-  With no `>`, the whole prefix. So `- ` and `  - ` give an empty line, and `> 1. ` gives `> `.
+  With no `>`, the whole prefix. So `- `, `  - ` and `- > ` give an empty line, and `> 1. `
+  gives `> `.
 - **Quote line:** the last `>` and what follows it. So `> ` gives an empty line, and `> > `
   gives `> `.
 
@@ -47,21 +52,22 @@ A deletion rather than a replacement leaves the cursor at the end of what is kep
 
 ## Renumbering
 
-`md-lists/renumber` takes events, each an item and a kind:
+`md-lists/renumber` takes events, each a marker and a kind:
 
-- `'after`: a new item after it (Enter, `o`);
+- `'after`: a new item after the line's last marker (Enter, `o`);
 - `'before`: a new item before it (`O`);
-- `'remove`: the item is gone (an ended list).
+- `'remove`: the marker is gone, one event for each marker an ended list deletes, so ending
+  `1. - ` renumbers the outer list too.
 
-Only ordered items count. Each list that holds an event is walked in order. The walk starts
+Only ordered markers count. Each list that holds an event is walked in order. The walk starts
 at its first event: an item before it keeps its number, and each later slot, new items
 included and removed ones skipped, takes the next number. So the first new item after `n.`
 is `n+1`, a new item before `n.` is `n`, and a removed `n.` hands `n` to the item after
 it. Several cursors in one list number together. A wider number does not move the text after
 the marker.
 
-The result is the renumbering edits and, per event, its new item's number. Bullet items get
-`#f`.
+The result is the renumbering edits and, per event, its new item's number. A bullet, and a
+quote line's event, which has no marker, get `#f`.
 
 ## Order of edits
 

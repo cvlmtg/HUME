@@ -109,6 +109,35 @@ fn ending_an_ordered_list_renumbers_the_items_after_it() {
 }
 
 #[test]
+fn ending_a_nested_item_on_an_ordered_line_renumbers_the_outer_list() {
+    assert_eq!(
+        entered("1. - -[\n]>2. b\n3. c\n"),
+        "-[\n]>1. b\n2. c\n"
+    );
+}
+
+#[test]
+fn a_quote_after_a_bullet_continues_the_quote_in_the_item() {
+    assert_eq!(entered("- > foo-[\n]>"), "- > foo\n  > -[\n]>");
+}
+
+#[test]
+fn a_quote_after_an_ordered_marker_adds_no_item() {
+    assert_eq!(
+        entered("1. > foo-[\n]>2. b\n"),
+        "1. > foo\n   > -[\n]>2. b\n"
+    );
+}
+
+#[test]
+fn ending_an_empty_quote_after_a_marker_renumbers_the_list() {
+    assert_eq!(
+        entered("1. a\n2. > -[\n]>3. c\n"),
+        "1. a\n-[\n]>2. c\n"
+    );
+}
+
+#[test]
 fn enter_before_the_marker_breaks_the_line_as_usual() {
     assert_eq!(entered("-[-]> foo\n"), "\n-[-]> foo\n");
 }

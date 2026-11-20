@@ -3,7 +3,7 @@
 (require "queries.scm")
 
 (provide md-lists/item md-lists/past-prefix? md-lists/empty? md-lists/ended-edit
-         md-lists/events md-lists/renumber md-lists/prefixes)
+         md-lists/events md-lists/removed-events md-lists/renumber md-lists/prefixes)
 
 (define (md-lists/on-line captures start end)
   (filter (lambda (c) (and (>= (md-preview/capture-start c) start)
@@ -41,6 +41,13 @@
   (string-contains? (substring text (md-lists/col capture start) (md-lists/end-col capture start text))
                     ">"))
 
+(define (md-lists/quotes groups start end text from)
+  (filter (lambda (c) (and (>= (md-lists/col c start) from) (md-lists/quote-prefix? c start text)))
+          (md-lists/on-line (md-preview/captured groups "quote-prefix") start end)))
+
+(define (md-lists/past-quotes quotes start text)
+  (md-lists/skip-blanks text (apply max (map (lambda (c) (md-lists/end-col c start text)) quotes))))
+
 ;;; See docs/lists.md's "Prefixes".
 (define (md-lists/item line groups line-info)
   (let* ([info (line-info line)]
@@ -57,28 +64,21 @@
                [after (md-lists/end-col marker start text)]
                [task (findf (lambda (c) (= (md-lists/col c start) after))
                             (md-lists/on-line (md-preview/captured groups "task") start end))]
-               [after (if task (md-lists/end-col task start text) after)])
-          (hash-insert (hash-insert (hash-insert item 'marker marker) 'task task)
-                       'prefix-end (md-lists/skip-blanks text after)))
-        (let ([quotes (filter (lambda (c) (md-lists/quote-prefix? c start text))
-                              (md-lists/on-line (md-preview/captured groups "quote-prefix")
-                                                start end))])
+               [after (if task (md-lists/end-col task start text) after)]
+               [quotes (md-lists/quotes groups start end text after)])
+          (if (pair? quotes)
+              (hash-insert item 'prefix-end (md-lists/past-quotes quotes start text))
+              (hash-insert (hash-insert (hash-insert item 'marker marker) 'task task)
+                           'prefix-end (md-lists/skip-blanks text after))))
+        (let ([quotes (md-lists/quotes groups start end text 0)])
           (and (pair? quotes)
-               (hash-insert item 'prefix-end
-                            (md-lists/skip-blanks
-                              text
-                              (apply max (map (lambda (c) (md-lists/end-col c start text))
-                                              quotes)))))))))
+               (hash-insert item 'prefix-end (md-lists/past-quotes quotes start text)))))))
 
 (define (md-lists/past-prefix? item head)
   (>= (- head (hash-ref item 'start)) (hash-ref item 'prefix-end)))
 
 (define (md-lists/empty? item)
   (= (hash-ref item 'prefix-end) (string-length (hash-ref item 'text))))
-
-(define (md-lists/ordered? item)
-  (let ([marker (hash-ref item 'marker)])
-    (and marker (equal? (car marker) "ordered"))))
 
 ;;; See docs/lists.md's "Prefixes".
 (define (md-lists/next-prefix item number)
@@ -107,20 +107,24 @@
         [else (loop (+ col 1) (cons (substring text col (+ col 1)) parts))]))))
 
 ;;; See docs/lists.md's "Ending a list".
+(define (md-lists/kept-col item)
+  (let ([text (hash-ref item 'text)]
+        [markers (hash-ref item 'markers)])
+    (if (pair? markers)
+        (let* ([cut (md-lists/col (car markers) (hash-ref item 'start))]
+               [bar (md-lists/last-index-of text #\> cut)])
+          (cond
+            [(not bar) 0]
+            [(and (< (+ bar 1) cut) (md-lists/blank? (string-ref text (+ bar 1))))
+             (+ bar 2)]
+            [else (+ bar 1)]))
+        (or (md-lists/last-index-of text #\> (hash-ref item 'prefix-end)) 0))))
+
 (define (md-lists/ended-edit item)
-  (let* ([text (hash-ref item 'text)]
-         [start (hash-ref item 'start)]
-         [markers (hash-ref item 'markers)]
-         [kept (if (pair? markers)
-                   (let* ([cut (md-lists/col (car markers) start)]
-                          [bar (md-lists/last-index-of text #\> cut)])
-                     (cond
-                       [(not bar) 0]
-                       [(and (< (+ bar 1) cut) (md-lists/blank? (string-ref text (+ bar 1))))
-                        (+ bar 2)]
-                       [else (+ bar 1)]))
-                   (or (md-lists/last-index-of text #\> (hash-ref item 'prefix-end)) 0))])
-    (hash 'start-char (+ start kept) 'end-char (+ start (hash-ref item 'prefix-end)) 'text "")))
+  (let ([start (hash-ref item 'start)])
+    (hash 'start-char (+ start (md-lists/kept-col item))
+          'end-char (+ start (hash-ref item 'prefix-end))
+          'text "")))
 
 ;; ── Renumbering ───────────────────────────────────────────────────────────────
 
@@ -156,8 +160,9 @@
                     (if (null? es)
                         (reverse out)
                         (loop (cdr es) (+ i 1) (cons (cons i (car es)) out))))]
-         [numbered (filter (lambda (e) (md-lists/ordered? (car (cdr e)))) indexed)]
-         [marker-of (lambda (e) (hash-ref (car (cdr e)) 'marker))]
+         [marker-of (lambda (e) (car (cdr e)))]
+         [numbered (filter (lambda (e) (let ([m (marker-of e)]) (and m (equal? (car m) "ordered"))))
+                           indexed)]
          [kind-of (lambda (e) (cdr (cdr e)))]
          [touched (foldl (lambda (e acc)
                            (let ([l (md-lists/list-of lists (marker-of e))])
@@ -204,9 +209,19 @@
     (cons (unbox edits)
           (map (lambda (e) (hash-try-get (unbox numbers) (car e))) indexed))))
 
-;;; One event of `kind` per item, the `#f`s of lines with no prefix left out.
+;;; One event of `kind` per item, on its marker, the `#f`s of lines with no prefix left out.
 (define (md-lists/events items kind)
-  (map (lambda (item) (cons item kind)) (filter (lambda (item) item) items)))
+  (map (lambda (item) (cons (hash-ref item 'marker) kind)) (filter (lambda (item) item) items)))
+
+;;; One `'remove` event per marker `md-lists/ended-edit` deletes.
+(define (md-lists/removed-events items)
+  (apply append
+         (map (lambda (item)
+                (let ([kept (md-lists/kept-col item)] [start (hash-ref item 'start)])
+                  (map (lambda (m) (cons m 'remove))
+                       (filter (lambda (m) (>= (md-lists/col m start) kept))
+                               (hash-ref item 'markers)))))
+              (filter (lambda (item) item) items))))
 
 ;;; Per item, its next line's prefix, or `#f` for a line with no prefix.
 (define (md-lists/prefixes items numbers)

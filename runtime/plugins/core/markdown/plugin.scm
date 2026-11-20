@@ -112,7 +112,7 @@
     (if (null? (filter (lambda (item) (not (and item (md-lists/empty? item)))) items))
         (edit-text! pane
                     (append (map md-lists/ended-edit items)
-                            (car (md-lists/renumber groups (md-lists/events items 'remove)
+                            (car (md-lists/renumber groups (md-lists/removed-events items)
                                                     line-of line-info))))
         (let ([plan (md-lists/renumber groups (md-lists/events items 'after) line-of line-info)])
           (edit-text! pane (car plan))
