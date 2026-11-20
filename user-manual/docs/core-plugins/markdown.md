@@ -25,7 +25,9 @@ Every line the cursor or a selection touches shows its source, in every mode. Wh
 
 Pasting a URL over selected text makes a link: select `foo`, paste `https://example.com`, and get `[foo](https://example.com)`. It works with `p`, `P` and your terminal's paste shortcut, and one `u` brings the selected text back.
 
-Pasting a URL over a URL or a link replaces it, as does pasting at a cursor, over text that spans lines, or over text that holds a `[` or `]` or ends with `\`.
+Pasting the path of a file or folder does the same: over `foo`, `notes/todo.md` gives `[foo](notes/todo.md)`. It makes a link when the file or folder exists, a relative path being read from the Markdown file's folder. A path with a space or a parenthesis goes between `<` and `>`, as Markdown needs. In a buffer not yet saved to a file, only a URL makes a link.
+
+Pasting a URL or a path over a URL or a link replaces it, as does pasting at a cursor, over text that spans lines, or over text that holds a `[` or `]` or ends with `\`.
 
 In a link's destination, right after `](`, `Ctrl-Space` lists the files and folders next to the Markdown file. After a folder you have typed, such as `](notes/`, it lists the ones in that folder. Typing `(` right after `]`, or `/` after a folder's name, opens the list too.
 

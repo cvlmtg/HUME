@@ -772,7 +772,7 @@ pub enum PasteHandlers {
     None,
     /// This many handlers that change nothing.
     Unchanged(usize),
-    /// `core:markdown`'s, which makes a pasted URL a link.
+    /// `core:markdown`'s, which makes a pasted URL or path a link.
     Markdown,
 }
 

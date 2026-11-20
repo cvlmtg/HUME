@@ -24,8 +24,8 @@
   [Widening by query roots](#widening-by-query-roots)), not the whole buffer.
 - **Popups** draw every element a buffer does, tables included. Nothing in a popup reveals,
   and the popup wraps the drawn text, so a table wider than the box breaks its grid.
-- **Link paste:** any paste that replaces selected text with a URL makes a link, whichever
-  key or command pasted it. The kill ring keeps the bare URL.
+- **Link paste:** any paste that replaces selected text with a URL or an existing path makes
+  a link, whichever key or command pasted it. The kill ring keeps the bare text.
 - **Link paths** complete relative to the Markdown file's own folder, the way a renderer
   resolves them, never the working directory.
 - **Lists:** off a list or quote line, Enter, `o` and `O` fall back to the editor's own

@@ -61,7 +61,7 @@
 ;; ── Links ─────────────────────────────────────────────────────────────────────
 
 (register-hook! 'on-paste
-  (lambda (pane pasted previous) (md-links/paste-link pasted previous)))
+  (lambda (pane pasted previous) (md-links/paste-link pane pasted previous)))
 
 (register-completion-source! "markdown:paths" md-paths/complete!
   #:target 'buffer #:priority 20 #:token-chars "/.-")

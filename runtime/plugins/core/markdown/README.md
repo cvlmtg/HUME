@@ -1,6 +1,6 @@
 # core:markdown
 
-Draws Markdown without its syntax, in the style of Obsidian's live preview. Every line a selection touches shows its source, and a code block or a table shows its source as a whole while a selection is inside it. It also turns a URL pasted over selected text into a link, completes the path in a link's destination, and continues a list or quote on Enter, `o` and `O`.
+Draws Markdown without its syntax, in the style of Obsidian's live preview. Every line a selection touches shows its source, and a code block or a table shows its source as a whole while a selection is inside it. It also turns a URL or a file's path pasted over selected text into a link, completes the path in a link's destination, and continues a list or quote on Enter, `o` and `O`.
 
 ## Usage
 

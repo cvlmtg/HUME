@@ -4,16 +4,27 @@
 
 (define md-links/url-pattern (regex "^[a-z][a-z0-9+.-]*://[^\\s]+$"))
 
+(define md-links/needs-angles-pattern (regex "[\\s()]"))
+
 (define md-links/breaks-link-pattern (regex "[\\[\\]]|\\\\$"))
 
 (define (md-links/matches? text pattern)
   (pair? (string-matches text pattern)))
 
 ;;; See docs/links.md's "Link paste".
-(define (md-links/paste-link pasted previous)
+(define (md-links/paste-link pane pasted previous)
   (and previous
-       (md-links/matches? pasted md-links/url-pattern)
        (not (string-contains? previous "\n"))
        (not (md-links/matches? previous md-links/breaks-link-pattern))
        (not (md-links/matches? previous md-links/url-pattern))
-       (string-append "[" previous "](" pasted ")")))
+       (let ([destination (or (and (md-links/matches? pasted md-links/url-pattern) pasted)
+                              (md-links/path-destination pane pasted))])
+         (and destination (string-append "[" previous "](" destination ")")))))
+
+(define (md-links/path-destination pane pasted)
+  (let ([file (buffer-path pane)])
+    (and file
+         (path-exists? (path-join (parent-name file) pasted))
+         (if (md-links/matches? pasted md-links/needs-angles-pattern)
+             (string-append "<" pasted ">")
+             pasted))))

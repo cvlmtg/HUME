@@ -1,7 +1,8 @@
 //! What a terminal paste and its undo cost with `on-paste` handlers: none,
-//! handlers that change nothing, and `core:markdown`'s link paste, at one
-//! selection and at 200, for a short value and a 10 KB one pasted over every
-//! selection. The undo puts the buffer back for the next sample.
+//! handlers that change nothing, and `core:markdown`'s link paste given a URL
+//! and given a text it looks up as a path, at one selection and at 200, for a
+//! short value and a 10 KB one pasted over every selection. The undo puts the
+//! buffer back for the next sample.
 
 use std::hint::black_box;
 
@@ -37,6 +38,7 @@ fn bench_on_paste(c: &mut Criterion) {
         ("one_unchanged/short", PasteHandlers::Unchanged(1), SHORT),
         ("three_unchanged/short", PasteHandlers::Unchanged(3), SHORT),
         ("markdown/url", PasteHandlers::Markdown, URL),
+        ("markdown/short", PasteHandlers::Markdown, SHORT),
         ("none/10k", PasteHandlers::None, long.as_str()),
         (
             "one_unchanged/10k",
