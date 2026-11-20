@@ -113,27 +113,19 @@ impl Preview {
         open_in(&mut self.ed, self.tmp.path(), name, text)
     }
 
-    /// Opens `marked`'s text as `<tmp>/<name>`, announces its open, and
-    /// selects as `marked` marks it.
+    /// Opens `marked`'s text as `<tmp>/<name>`, announces its open, waits
+    /// for its tree, and selects as `marked` marks it.
     fn open_marked(&mut self, name: &str, marked: &str) {
         let (text, _) = test_fixtures::testing::parse_state(marked);
         self.open(name, &text.to_string());
-        self.ed.settle();
+        self.parse();
         select_marked(&mut self.ed, marked);
     }
 
-    /// Draws frames until the focused buffer's tree matches its text (a
-    /// parse runs on a worker thread), then lets every pending debounce run
-    /// out, three times over: the syntax hook arms the render debounce, the
-    /// viewport hook renders, and the debounced render renders again. No
-    /// hook may have raised on the way.
-    fn render(&mut self) {
-        self.render_logging();
-        assert_eq!(error_log(&self.ed), Vec::<String>::new());
-    }
-
-    /// [`Self::render`] without the check that no hook raised.
-    fn render_logging(&mut self) {
+    /// Draws frames until the focused buffer's tree matches its text: a
+    /// parse runs on a worker thread, and a query made before the first one
+    /// lands finds nothing.
+    fn parse(&mut self) {
         let bid = self.ed.focused_buffer_id();
         let (width, height) = self.size;
         poll_until(
@@ -145,6 +137,20 @@ impl Preview {
             },
             |ed| ed.state.buffers.get(bid).current_layers().is_some(),
         );
+    }
+
+    /// [`Self::parse`], then lets every pending debounce run out, three
+    /// times over: the syntax hook arms the render debounce, the viewport
+    /// hook renders, and the debounced render renders again. No hook may
+    /// have raised on the way.
+    fn render(&mut self) {
+        self.render_logging();
+        assert_eq!(error_log(&self.ed), Vec::<String>::new());
+    }
+
+    /// [`Self::render`] without the check that no hook raised.
+    fn render_logging(&mut self) {
+        self.parse();
         for _ in 0..3 {
             self.frame();
             self.wait();
