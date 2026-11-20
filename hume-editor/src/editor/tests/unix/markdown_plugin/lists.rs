@@ -292,12 +292,22 @@ fn typing_in_an_items_text_renumbers_nothing() {
 
 #[test]
 fn a_renumbering_while_typing_undoes_with_the_edit() {
-    let mut p = edited(SPLIT_LISTS, "c1");
+    let mut p = editing(SPLIT_LISTS);
+    press(&mut p.ed, "c1");
+    p.ed.feed_event(key_esc());
+    p.render();
     assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n1. c\n2. d\n");
-    p.ed.feed_key(key_esc());
     press(&mut p.ed, "u");
     p.render();
     assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n3. c\n4. d\n");
+}
+
+#[test]
+fn saving_right_after_an_edit_keeps_its_renumbering() {
+    let mut p = editing(SPLIT_LISTS);
+    p.ed.feed_keys([key('r'), key('1'), key(':'), key('w'), key_enter()]);
+    p.render();
+    assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n1. c\n2. d\n");
 }
 
 #[test]
@@ -333,9 +343,9 @@ fn deleting_a_nested_item_renumbers_only_its_list() {
 }
 
 #[test]
-fn deleting_the_first_item_leaves_the_rest_numbered() {
+fn deleting_the_first_item_renumbers_the_rest_from_its_number() {
     let p = edited("-[1]>. a\n2. b\n3. c\n", "xd");
-    assert_eq!(text(&p.ed), "2. b\n3. c\n");
+    assert_eq!(text(&p.ed), "1. b\n2. c\n");
 }
 
 #[test]
@@ -347,4 +357,43 @@ fn a_deletion_undoes_its_renumbering_first() {
     press(&mut p.ed, "u");
     p.render();
     assert_eq!(text(&p.ed), "1. a\n2. b\n3. c\n4. d\n");
+}
+
+#[test]
+fn deleting_a_word_in_an_items_text_renumbers_nothing() {
+    let p = edited("1. a\n3. b -[c]>\n7. d\n", "d");
+    assert_eq!(text(&p.ed), "1. a\n3. b \n7. d\n");
+}
+
+#[test]
+fn indenting_an_item_renumbers_the_list_it_left() {
+    let p = edited("1. a\n-[2]>. b\n3. c\n", ">");
+    assert_eq!(text(&p.ed), "1. a\n\t2. b\n2. c\n");
+}
+
+/// A list whose items all carry one number.
+const SAME_NUMBER: &str = "1. a\n-[1]>. b\n1. c\n1. d\n";
+
+#[test]
+fn deleting_from_a_list_numbered_the_same_keeps_its_numbers() {
+    let p = edited(SAME_NUMBER, "xd");
+    assert_eq!(text(&p.ed), "1. a\n1. c\n1. d\n");
+}
+
+#[test]
+fn undoing_a_deletion_from_a_list_numbered_the_same_restores_it() {
+    let mut p = edited(SAME_NUMBER, "xd");
+    press(&mut p.ed, "u");
+    p.render();
+    assert_eq!(text(&p.ed), "1. a\n1. b\n1. c\n1. d\n");
+}
+
+#[test]
+fn enter_in_a_list_numbered_the_same_gives_the_new_item_its_number() {
+    assert_eq!(entered("1. a-[\n]>1. b\n"), "1. a\n1. -[\n]>1. b\n");
+}
+
+#[test]
+fn o_in_a_list_numbered_the_same_gives_the_new_item_its_number() {
+    assert_eq!(opened("-[1]>. a\n1. b\n", 'o'), "1. a\n1. -[\n]>1. b\n");
 }

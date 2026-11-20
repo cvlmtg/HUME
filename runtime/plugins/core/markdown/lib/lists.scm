@@ -5,7 +5,7 @@
 
 (provide md-lists/distinct md-lists/items md-lists/past-prefix? md-lists/empty? md-lists/ended-edit
          md-lists/events md-lists/removed-events md-lists/renumber md-lists/prefixes
-         md-lists/edited-spans md-lists/edited-markers md-lists/task-edits)
+         md-lists/edited-hunks md-lists/edited-spans md-lists/edited-events md-lists/task-edits)
 
 (define (md-lists/distinct lines)
   (reverse (foldl (lambda (line kept) (if (and (pair? kept) (= (car kept) line)) kept (cons line kept)))
@@ -134,11 +134,19 @@
          [marker-of (lambda (e) (car (cdr e)))]
          [numbered (filter (lambda (e) (let ([m (marker-of e)]) (and m (equal? (car m) "ordered"))))
                            indexed)]
-         [kind-of (lambda (e) (cdr (cdr e)))]
+         [kind-of (lambda (e) (let ([kind (cdr (cdr e))]) (if (pair? kind) (car kind) kind)))]
+         [start-of (lambda (e) (cdr (cdr (cdr e))))]
          [at-marker (md-preview/group-by (lambda (e) (md-preview/capture-start (marker-of e))) numbered)]
          [numbers (box (hash))]
          [edits (box '())])
     (define (number m) (string->number (md-lists/digits m line-of line-info)))
+    (define (events-at m) (or (hash-try-get at-marker (md-preview/capture-start m)) '()))
+    (define (of-kind at k) (filter (lambda (e) (equal? (kind-of e) k)) at))
+    (define (uniform items)
+      (let ([kept (map number (filter (lambda (m) (null? (of-kind (events-at m) 'anchor))) items))])
+        (and (>= (length kept) 2)
+             (null? (filter (lambda (n) (not (= n (car kept)))) kept))
+             (car kept))))
     (define (assign! es counter)
       (foldl (lambda (e n)
                (md-preview/box-insert! numbers (car e) n)
@@ -157,23 +165,32 @@
     (unless (null? numbered)
       (for-each
         (lambda (run)
-          (let walk ([items (md-preview/children run)] [counter #f])
-            (unless (null? items)
-              (let* ([m (car items)]
-                     [at (or (hash-try-get at-marker (md-preview/capture-start m)) '())]
-                     [of-kind (lambda (k) (filter (lambda (e) (equal? (kind-of e) k)) at))]
-                     [befores (of-kind 'before)]
-                     [removes (of-kind 'remove)]
-                     [anchors (of-kind 'anchor)]
-                     [afters (of-kind 'after)]
-                     [counter (if (pair? befores) (assign! befores (or counter (number m))) counter)]
-                     [counter (cond
-                                [(pair? anchors) (+ (number m) 1)]
-                                [(pair? removes) (or counter (number m))]
-                                [counter (renumber! m counter) (+ counter 1)]
-                                [else #f])]
-                     [counter (if (pair? afters) (assign! afters (or counter (+ (number m) 1))) counter)])
-                (walk (cdr items) counter)))))
+          (let* ([items (md-preview/children run)]
+                 [same (uniform items)])
+            (if same
+                (for-each (lambda (m)
+                            (let ([at (events-at m)])
+                              (for-each (lambda (e) (md-preview/box-insert! numbers (car e) same))
+                                        (append (of-kind at 'before) (of-kind at 'after)))))
+                          items)
+                (let walk ([items items] [counter #f])
+                  (unless (null? items)
+                    (let* ([m (car items)]
+                           [at (events-at m)]
+                           [befores (of-kind at 'before)]
+                           [starts (of-kind at 'start)]
+                           [afters (of-kind at 'after)]
+                           [counter (if (pair? befores) (assign! befores (or counter (number m))) counter)]
+                           [counter (cond
+                                      [(pair? (of-kind at 'anchor)) (+ (number m) 1)]
+                                      [(pair? starts)
+                                       (let ([n (start-of (car starts))]) (renumber! m n) (+ n 1))]
+                                      [(pair? (of-kind at 'remove)) (or counter (number m))]
+                                      [counter (renumber! m counter) (+ counter 1)]
+                                      [(pair? (of-kind at 'resume)) (+ (number m) 1)]
+                                      [else #f])]
+                           [counter (if (pair? afters) (assign! afters (or counter (+ (number m) 1))) counter)])
+                      (walk (cdr items) counter)))))))
         (md-preview/runs-of groups "list")))
     (cons (unbox edits)
           (map (lambda (e) (hash-try-get (unbox numbers) (car e))) indexed))))
@@ -192,60 +209,82 @@
                           (hash-ref item 'markers)))))
          items)))
 
-;;; Whether `hunks` changed the ordered marker `m`'s number. See docs/lists.md's "Renumbering after an edit".
-(define (md-lists/number-changed? hunks line-of line-info m)
-  (let* ([start (md-preview/capture-start m)]
-         [line (line-of start)]
-         [hunk (findf (lambda (h) (and (<= (hash-ref h 'new-start-line) line)
-                                       (< line (hash-ref h 'new-end-line))))
-                      hunks)])
-    (and hunk
-         (let ([words (hash-ref hunk 'words)])
-           (or (not words)
-               (let* ([info (line-info line)]
-                      [line-end (+ (car info) (string-length (cdr info)))]
-                      [digits-end (+ start (string-length (md-lists/digits m line-of line-info)))]
-                      [on-line (filter (lambda (span) (let ([s (hash-ref span 'start-char)])
-                                                        (and (<= (car info) s) (<= s line-end))))
-                                       (hash-ref words 'new))])
-                 (or (null? on-line)
-                     (and (findf (lambda (span) (and (< (hash-ref span 'start-char) digits-end)
-                                                     (> (hash-ref span 'end-char) start)))
-                                 on-line)
-                          #t))))))))
+;;; The ordered markers in `text`'s container prefix, as `(col . number)`.
+(define (md-lists/line-markers text)
+  (let ([len (string-length text)])
+    (define (ends? col) (or (= col len) (md-preview/blank? (string-ref text col))))
+    (let loop ([col 0] [out '()])
+      (let ([col (md-preview/skip-while text col (lambda (c) (or (md-preview/blank? c) (char=? c #\>))))])
+        (if (= col len)
+            (reverse out)
+            (let* ([c (string-ref text col)]
+                   [end (md-preview/skip-while text col char-digit?)])
+              (cond
+                [(or (char=? c #\-) (char=? c #\*) (char=? c #\+))
+                 (if (ends? (+ col 1)) (loop (+ col 1) out) (reverse out))]
+                [(and (< col end) (<= (- end col) 9) (< end len)
+                      (or (char=? (string-ref text end) #\.) (char=? (string-ref text end) #\)))
+                      (ends? (+ end 1)))
+                 (loop (+ end 1) (cons (cons col (string->number (substring text col end))) out))]
+                [else (reverse out)])))))))
 
-(define (md-lists/removes-lines? hunk)
-  (< (- (hash-ref hunk 'new-end-line) (hash-ref hunk 'new-start-line))
-     (- (hash-ref hunk 'old-end-line) (hash-ref hunk 'old-start-line))))
+(define (md-lists/numbers-at markers col)
+  (map cdr (filter (lambda (m) (= (car m) col)) markers)))
 
-;;; The non-empty line ranges `md-lists/edited-markers` needs `groups` over, as `(start . end)`.
-(define (md-lists/edited-spans hunks)
-  (filter (lambda (span) (< (car span) (cdr span)))
+;;; Per hunk of `hunks` that changed the numbers its lines' ordered markers hold, the hunk, its old
+;;; lines' markers, and the columns whose numbers changed, as `(hunk old . cols)`.
+(define (md-lists/edited-hunks hunks)
+  (filter (lambda (e) (pair? (cdr (cdr e))))
           (map (lambda (hunk)
-                 (let ([start (hash-ref hunk 'new-start-line)])
-                   (cons (if (md-lists/removes-lines? hunk) (max 0 (- start 1)) start)
-                         (hash-ref hunk 'new-end-line))))
+                 (let* ([side (lambda (key) (call! "stdlib/concat" (map md-lists/line-markers (hash-ref hunk key))))]
+                        [old (side 'old-lines)]
+                        [new (side 'new-lines)])
+                   (cons hunk
+                         (cons old
+                               (filter (lambda (col) (not (equal? (md-lists/numbers-at old col)
+                                                                  (md-lists/numbers-at new col))))
+                                       (md-lists/distinct (sort (map car (append old new)) <)))))))
                hunks)))
 
-;;; Per list in `lists`, its last marker on a line before `hunk`'s new end, if any.
-(define (md-lists/before-removal lists hunk line-of)
-  (let ([end (hash-ref hunk 'new-end-line)])
-    (filter (lambda (m) m)
-            (map (lambda (markers)
-                   (foldl (lambda (m last) (if (< (line-of (md-preview/capture-start m)) end) m last))
-                          #f
-                          markers))
-                 lists))))
+;;; The line ranges the lists `edited` renumbers lie on, as `(start . end)`, in a text of `line-count` lines.
+(define (md-lists/edited-spans edited line-count)
+  (map (lambda (e)
+         (let* ([hunk (car e)]
+                [start (hash-ref hunk 'new-start-line)]
+                [end (hash-ref hunk 'new-end-line)])
+           (if (= start end)
+               (cons (max 0 (- start 1)) (min line-count (+ end 1)))
+               (cons start end))))
+       edited))
 
-;;; The `'anchor` events `hunks` give the lists in `groups`. See docs/lists.md's "Renumbering after an edit".
-(define (md-lists/edited-markers groups hunks line-of line-info)
-  (let ([lists (map md-preview/children (md-preview/runs-of groups "list"))])
-    (map (lambda (m) (cons m 'anchor))
-         (call! "stdlib/concat"
-           (cons (filter (lambda (m) (md-lists/number-changed? hunks line-of line-info m))
-                         (call! "stdlib/concat" lists))
-                 (map (lambda (hunk) (md-lists/before-removal lists hunk line-of))
-                      (filter md-lists/removes-lines? hunks)))))))
+;;; The events `edited` gives the list of `markers`. See docs/lists.md's "Renumbering after an edit".
+(define (md-lists/list-events markers edited line-of line-info)
+  (let* ([line-of-marker (lambda (m) (line-of (md-preview/capture-start m)))]
+         [cols (map (lambda (m) (- (md-preview/capture-start m) (car (line-info (line-of-marker m))))) markers)])
+    (call! "stdlib/concat"
+      (map (lambda (e)
+             (let* ([hunk (car e)]
+                    [start (hash-ref hunk 'new-start-line)]
+                    [end (hash-ref hunk 'new-end-line)]
+                    [col (findf (lambda (c) (member c cols)) (cdr (cdr e)))]
+                    [inside (filter (lambda (m) (let ([line (line-of-marker m)]) (and (<= start line) (< line end))))
+                                    markers)]
+                    [before (filter (lambda (m) (< (line-of-marker m) start)) markers)]
+                    [after (filter (lambda (m) (>= (line-of-marker m) end)) markers)]
+                    [old-numbers (if col (md-lists/numbers-at (car (cdr e)) col) '())])
+               (cond
+                 [(not col) '()]
+                 [(pair? inside) (map (lambda (m) (cons m 'anchor)) inside)]
+                 [(pair? before) (list (cons (last before) 'resume))]
+                 [(and (pair? after) (pair? old-numbers)) (list (cons (car after) (cons 'start (car old-numbers))))]
+                 [else '()])))
+           edited))))
+
+;;; The events `edited`, from `md-lists/edited-hunks`, gives the lists in `groups`.
+(define (md-lists/edited-events groups edited line-of line-info)
+  (call! "stdlib/concat"
+    (map (lambda (markers) (md-lists/list-events markers edited line-of line-info))
+         (map md-preview/children (md-preview/runs-of groups "list")))))
 
 ;;; Per item, its next line's prefix, or `#f` for a line with no prefix.
 (define (md-lists/prefixes items numbers)

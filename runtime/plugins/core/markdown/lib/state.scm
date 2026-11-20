@@ -2,7 +2,7 @@
 
 (provide md-preview/entry md-preview/track-buffer! md-preview/remove-buffer!
          md-preview/note-tree! md-preview/toggle-enabled! md-preview/warn-once!
-         md-preview/box-insert! md-preview/lists-generation md-preview/note-lists!)
+         md-preview/box-insert!)
 
 (define md-preview/*buffers* (box (hash)))
 
@@ -21,7 +21,7 @@
 
 (define (md-preview/track-buffer! pane enabled?)
   (unless (md-preview/entry pane)
-    (md-preview/put-entry! pane (hash 'enabled? enabled? 'generation #f 'lists-generation #f))))
+    (md-preview/put-entry! pane (hash 'enabled? enabled? 'generation #f))))
 
 (define (md-preview/remove-buffer! pane)
   (set-box! md-preview/*buffers*
@@ -32,12 +32,6 @@
 
 (define (md-preview/note-tree! pane)
   (md-preview/entry-set! pane 'generation (buffer-generation pane)))
-
-(define (md-preview/lists-generation pane)
-  (hash-ref (md-preview/entry pane) 'lists-generation))
-
-(define (md-preview/note-lists! pane generation)
-  (md-preview/entry-set! pane 'lists-generation generation))
 
 (define (md-preview/toggle-enabled! pane)
   (let ([on? (not (hash-ref (md-preview/entry pane) 'enabled?))])

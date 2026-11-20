@@ -8,8 +8,8 @@ stays open with another language. `markdown/enter` handles Enter, `markdown/open
 
 The list query (`md-lists/query`) runs over the lines Enter's cursors are on, the lines `o`
 and `O` open from, every line a selection touches for `G X`, and the lines an edit changed
-for [renumbering after it](#renumbering-after-an-edit). Its marker patterns are
-rooted at `list_item`, as the block query's bullet pattern is, and a task box comes in a
+for [renumbering after it](#renumbering-after-an-edit). Its marker patterns are rooted at
+`list_item`, as the block query's bullet pattern is, and a task box comes in a
 match with the marker before it, as `@task-checked` or `@task-unchecked`. An ordered marker
 also comes in a match with the list holding it, rooted at `list`, so every ordered marker of
 a list on those lines comes back for renumbering, however far the list runs. A line in a
@@ -67,6 +67,11 @@ A deletion rather than a replacement leaves the cursor at the end of what is kep
 - `'anchor`: the marker's number was edited, so it keeps that number and the items after it
   count on from it (see [Renumbering after an edit](#renumbering-after-an-edit)).
 
+An edit gives two more (see [Renumbering after an edit](#renumbering-after-an-edit)):
+
+- `'resume`: the items after the marker count on from it, past the removed items between;
+- `('start . n)`: the marker takes `n`, the number of the removed first item before it.
+
 Only ordered markers count. Each list that holds an event is walked in order. The walk starts
 at its first event: an item before it keeps its number, and each later slot, new items
 included and removed ones skipped, takes the next number. So the first new item after `n.`
@@ -74,40 +79,54 @@ is `n+1`, a new item before `n.` is `n`, and a removed `n.` hands `n` to the ite
 it. Several cursors in one list number together. A wider number does not move the text after
 the marker.
 
+A list whose items all carry one number, as in `1.`, `1.`, `1.`, keeps it, since Markdown
+counts on from the first item whatever the others say. A list is read that way when at least
+two of its items have no `'anchor` event and those share one number. The walk then makes no
+edit in it, and each new item takes that number.
+
 The result is the renumbering edits and, per event, its new item's number. A bullet gets
 `#f`, and so does an event with no marker: a quote line's, or a plain line's.
 
 ## Renumbering after an edit
 
-When an edit changes the number of an ordered item, the items after it in its list count on
-from the new number: changing `3.` to `1.` turns the `4.` after it into `2.`. The items
-before it keep theirs. When an edit removes lines from a list, the items after them count on
-from the item before them, so deleting `2.` turns the `3.` after it into `2.`. The pass needs the edited text's tree, so it runs from the
-`on-syntax-changed` handler, and `md-lists/renumber-edited!` reads what changed since its last
-pass with `buffer-changes-since`. It skips a buffer with no unsaved edits, so a reload from
-disk or an undo back to the saved text renumbers nothing, and a read-only one.
+When an edit changes the numbers of a list's items, the items after it count on from the
+last item it left: changing `3.` to `1.` turns the `4.` after it into `2.`, and deleting
+`2.` turns the `3.` after it into `2.`. The items before it keep theirs. The pass runs from
+the `on-text-changed` handler, right after the keystroke, and `syntax-captures` parses the
+edited text on the spot. While typing, the renumbering joins the Insert session's undo
+group. A Normal-mode edit such as `r1`, or a `.`, has already made its undo step, so the
+renumbering is a second one. The handler skips a read-only buffer
+and an event whose hunks are `#f`.
 
-`md-lists/number-changed?` tells an edited number from the hunks alone. A hunk's new-side word
-spans mark what changed inside a line and leave out a line that changed whole, so a marker's
-number changed when its line has no span (an inserted or rewritten line), when the hunk has no
-word spans (too large to compare), or when a span overlaps its digits. Typing in an item's
-text leaves its digits outside every span. Each such marker is an `'anchor` event; a later
-anchor starts the counting again, so a pasted run of items keeps its own numbers.
+`md-lists/line-markers` reads the ordered markers at the start of a line, past blanks,
+`>` and bullets, as `(col . number)`. `md-lists/edited-hunks` keeps a hunk when, at some
+column, the numbers its old lines hold there differ from those its new lines hold. Typing
+in an item's text, deleting a word, or rewriting a line around its marker leaves them equal,
+so that hunk is dropped before the tree is read. Both sides go through the same reader, so a
+line it misreads counts the same on both.
 
-A hunk with fewer new lines than old ones removed lines. For each list, the last ordered marker
-on a line before the hunk's new end is an `'anchor` too (`md-lists/before-removal`). The
-query for such a hunk reaches back one line (`md-lists/edited-spans`), so a deletion that
-leaves no line of its own still fetches the list holding the line before it. Deleting a
-list's first items leaves no marker before them, and the rest already count on from each
-other. A list that ends before the hunk has nothing after its anchor, and in a nested list
-the outer list's anchor is followed by items already in order, so only the list the lines
-left is renumbered.
+The list query runs over each kept hunk's new lines, or the lines on both sides of a
+deletion that leaves none. For each list it returns, a hunk that changed one of the list's
+marker columns gives `md-lists/list-events`:
 
-The edit goes through the first pane `buffer-panes` returns, the focused one when it shows the
-buffer, so while typing it joins the Insert session's undo group. A Normal-mode edit such as
-`r1` has already made its undo step, so the renumbering is a second one. Undoing it fires no
-new renumbering: each restored number already follows the one before it. The pass notes the
-generation after its own edit, so it does not read that edit as the user's.
+- an `'anchor` for each of the list's markers on the hunk's new lines: an edited number, a
+  pasted item, an item outdented into the list;
+- with none there, a `'resume` on the list's last item before the hunk: deleted items, or an
+  item indented into a nested list;
+- with no item before the hunk either, a `('start . n)` on its first item after, `n` being
+  the first number the hunk's old lines held at that column, so deleting `1.` from `1.`,
+  `2.`, `3.` leaves `1.`, `2.`.
+
+A later anchor starts the counting again, so a pasted run of items keeps its own numbers.
+The pass reads its own edit in the next event: the renumbered markers anchor there, and the
+items after them already count on, so it makes no further edit.
+
+An undo is an edit like any other. For a list numbered in order, or with one number on every
+item, it makes no renumbering. A list numbered neither way, as `3.`, `7.`, `3.`, can be
+renumbered by an undo.
+
+The edit goes through the first pane `buffer-panes` returns, the focused one when it shows
+the buffer.
 
 ## Order of edits
 

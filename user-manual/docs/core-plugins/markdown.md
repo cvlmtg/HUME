@@ -40,7 +40,9 @@ In a list, `Enter` starts the next item: a bullet gets the same bullet, a number
 
 `Enter` on an item with nothing after its marker or task box ends the list instead: the marker goes, and the items after it are renumbered to close the gap. On an empty quote line, it ends the quote.
 
-Changing the number of a numbered item renumbers the items after it, so turning `3.` into `1.` makes the `4.` below it `2.`. Deleting an item, as `x d` does, renumbers the items after it to close the gap. A change typed in Insert mode undoes together with its renumbering; after a Normal-mode change such as `r`, the first `u` undoes the renumbering and the second the change.
+Changing the number of a numbered item renumbers the items after it, so turning `3.` into `1.` makes the `4.` below it `2.`. Deleting an item, as `x d` does, renumbers the items after it to close the gap, and deleting the first item numbers the rest from its number. Indenting an item into a nested list closes the gap it leaves in the same way. A change typed in Insert mode undoes together with its renumbering; after a Normal-mode change such as `r`, or a `.`, the first `u` undoes the renumbering and the second the change.
+
+A list numbered `1.`, `1.`, `1.`, or with any one number on every item, keeps its numbers: Markdown numbers it in order when it is shown. `Enter`, `o` and `O` give a new item in it the same number, and changing or deleting an item renumbers nothing.
 
 `G X` checks the task boxes on the lines your selections touch, or unchecks them all when the first box on the main selection's lines is checked. When the main selection's lines have no box, the first box of all decides. Lines without a box don't change.
 

@@ -33,7 +33,8 @@
 - **Rust surface:** `set-conceals!`, `syntax-captures` with `#:ranges`, the
   `on-syntax-changed` hook, and for popups the `format-text/<lang>` command and
   `parsed-text-captures`. There is no query handle. Link paste rests on the `on-paste`
-  hook, which sees a paste before it lands.
+  hook, which sees a paste before it lands. List renumbering after an edit rests on the
+  `on-text-changed` hook's hunks.
 
 ## Limitations
 
