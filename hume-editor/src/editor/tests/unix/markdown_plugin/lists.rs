@@ -115,10 +115,7 @@ fn ending_an_ordered_item_with_no_blank_after_its_marker_renumbers() {
 
 #[test]
 fn ending_a_nested_item_on_an_ordered_line_renumbers_the_outer_list() {
-    assert_eq!(
-        entered("1. - -[\n]>2. b\n3. c\n"),
-        "-[\n]>1. b\n2. c\n"
-    );
+    assert_eq!(entered("1. - -[\n]>2. b\n3. c\n"), "-[\n]>1. b\n2. c\n");
 }
 
 #[test]
@@ -136,10 +133,7 @@ fn a_quote_after_an_ordered_marker_adds_no_item() {
 
 #[test]
 fn ending_an_empty_quote_after_a_marker_renumbers_the_list() {
-    assert_eq!(
-        entered("1. a\n2. > -[\n]>3. c\n"),
-        "1. a\n-[\n]>2. c\n"
-    );
+    assert_eq!(entered("1. a\n2. > -[\n]>3. c\n"), "1. a\n-[\n]>2. c\n");
 }
 
 #[test]
