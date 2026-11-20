@@ -60,7 +60,7 @@
   (lambda (pane pasted previous) (md-links/paste-link pasted previous)))
 
 (register-completion-source! "markdown:paths" md-paths/complete!
-  #:target 'buffer #:token-chars "/.-")
+  #:target 'buffer #:priority 20 #:token-chars "/.-")
 
 (set-completion-triggers! "markdown" "markdown:paths" (list #\( #\/))
 

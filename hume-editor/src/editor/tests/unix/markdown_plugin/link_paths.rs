@@ -72,6 +72,16 @@ fn accepting_a_path_inserts_it_after_its_directory() {
 }
 
 #[test]
+fn accepting_a_directory_inserts_its_name_without_the_slash() {
+    let mut p = inserting("a.md", "[x](-[\n]>");
+    trigger_completion(&mut p.ed);
+    p.ed.feed_key(key('s'));
+    p.ed.settle();
+    p.ed.feed_key(key_enter());
+    assert_eq!(text(&p.ed), "[x](sub\n");
+}
+
+#[test]
 fn a_parent_directory_lists_its_files() {
     let mut p = inserting("sub/c.md", "[x](../-[\n]>");
     trigger_completion(&mut p.ed);

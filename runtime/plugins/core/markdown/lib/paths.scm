@@ -33,11 +33,15 @@
           (completion-emit!
             id
             (map (lambda (entry)
-                   (let ([target (string-append dir-part entry)])
+                   (let* ([folder? (ends-with? entry "/")]
+                          [target (string-append dir-part
+                                                 (if folder?
+                                                     (substring entry 0 (- (string-length entry) 1))
+                                                     entry))])
                      (hash "label" entry
                            "insertText" target
                            "filterText" target
-                           "kind" (if (ends-with? entry "/") md-paths/folder-kind md-paths/file-kind))))
+                           "kind" (if folder? md-paths/folder-kind md-paths/file-kind))))
                  names)
             #:incomplete (equal? name "")))
         (completion-emit! id '()))))

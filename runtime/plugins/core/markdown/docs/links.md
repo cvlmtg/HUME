@@ -27,7 +27,9 @@ make the whole relative path the token, `../` included. The token splits at its 
 the part before it names a folder relative to the buffer's file, and `path-entries` lists
 that folder, folders ending in `/`, as `:e` lists them; when the part after the `/` starts
 with `.`, it lists the hidden entries instead. Each item inserts the folder part followed by
-the name and is matched as that path, which is what the token holds. A token starting with `/` gets the empty answer: joined to the buffer's folder it
+the name and is matched as that path, which is what the token holds. A folder's item shows
+its `/` but inserts the name without it, so typing the `/` lists the folder through its
+trigger. A token starting with `/` gets the empty answer: joined to the buffer's folder it
 would name the filesystem root.
 
 The source leaves the filtering to the menu's fuzzy matcher, so typing a name does not read
