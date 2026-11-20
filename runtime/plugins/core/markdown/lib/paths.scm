@@ -8,12 +8,6 @@
 
 (define md-paths/folder-kind 19)
 
-(define (md-paths/dir-end prefix)
-  (let loop ([i (string-length prefix)])
-    (cond [(= i 0) 0]
-          [(char=? (string-ref prefix (- i 1)) #\/) i]
-          [else (loop (- i 1))])))
-
 (struct md-paths/destination (column dir-part name angle?))
 
 (define (md-paths/destination-before before)
@@ -25,10 +19,11 @@
            (and (if angle? (md-destinations/angle-safe? typed) (md-destinations/bare-depth typed))
                 (not (starts-with? typed "/"))
                 (not (string-contains? typed "#"))
-                (let ([cut (md-paths/dir-end typed)])
-                  (md-paths/destination (- (string-length before) (string-length typed))
-                                        (substring typed 0 cut)
-                                        (substring typed cut (string-length typed))
+                (let* ([name (last (split-many typed "/"))]
+                       [typed-length (string-length typed)])
+                  (md-paths/destination (- (string-length before) typed-length)
+                                        (substring typed 0 (- typed-length (string-length name)))
+                                        name
                                         angle?)))))))
 
 (define (md-paths/item entry found range closing-range)
