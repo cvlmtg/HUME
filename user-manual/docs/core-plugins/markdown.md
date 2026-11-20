@@ -40,7 +40,7 @@ In a list, `Enter` starts the next item: a bullet gets the same bullet, a number
 
 `Enter` on an item with nothing after its marker ends the list instead: the marker goes, and the items after it are renumbered to close the gap. On an empty quote line, it ends the quote.
 
-`G X` checks the task boxes on the lines your selections touch, or unchecks them when the main selection's first one is checked. Lines without a box don't change.
+`G X` checks the task boxes on the lines your selections touch, or unchecks them all when the first box on the main selection's lines is checked. When the main selection's lines have no box, the first box of all decides. Lines without a box don't change.
 
 With a Markdown [language server](../lsp.md#install-a-server) installed (`:lsp-install markdown` installs marksman), the symbol keys jump between sections. `z s` lists the file's headings to pick one, and `z S` searches the headings of every Markdown file in the project as you type. marksman reads the files you haven't opened only when the project's folder is a git repository or holds a `.marksman.toml` file.
 
