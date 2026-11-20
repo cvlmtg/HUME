@@ -172,6 +172,13 @@ fn one_undo_after_o_brings_back_the_list() {
 }
 
 #[test]
+fn dot_repeats_o_with_its_list_item() {
+    let mut p = editing("-[1]>. a\n2. b\n");
+    p.ed.feed_keys([key('o'), key('x'), key_esc(), key('.')]);
+    assert_eq!(text(&p.ed), "1. a\n2. x\n3. x\n4. b\n");
+}
+
+#[test]
 fn two_cursors_in_one_list_each_start_an_item() {
     assert_eq!(
         entered("1. a-[\n]>2. b-{\n}>3. c\n"),

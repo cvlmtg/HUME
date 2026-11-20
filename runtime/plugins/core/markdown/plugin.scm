@@ -162,11 +162,13 @@
 
 (define-command! "markdown/open-below"
   "Open a line below each selection as `o` does, continuing the list item or quote it is on and renumbering an ordered list."
-  (lambda (pane) (md-lists/open! pane #t)))
+  (lambda (pane) (md-lists/open! pane #t))
+  #:repeatable #t)
 
 (define-command! "markdown/open-above"
   "Open a line above each selection as `O` does, continuing the list item or quote it is on and renumbering an ordered list."
-  (lambda (pane) (md-lists/open! pane #f)))
+  (lambda (pane) (md-lists/open! pane #f))
+  #:repeatable #t)
 
 (when md-lists/enabled
   (bind-key! 'insert "enter" "markdown/enter" #:keymap md-lists/keymap)
