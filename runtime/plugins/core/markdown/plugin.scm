@@ -119,14 +119,20 @@
           (insert-key! pane "enter")
           (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items (cdr plan))))))))
 
+(define (md-lists/distinct lines)
+  (reverse (foldl (lambda (line kept) (if (and (pair? kept) (= (car kept) line)) kept (cons line kept)))
+                  '()
+                  lines)))
+
 ;;; See docs/lists.md's "Order of edits".
 (define (md-lists/open! pane below?)
   (let* ([reader (md-preview/line-reader pane)]
          [line-of (car reader)]
          [line-info (cdr reader)]
-         [sources (map (lambda (sel)
-                         (line-of (if below? (- (selection-end-char sel) 1) (selection-start-char sel))))
-                       (buffer-selections pane))]
+         [sources (md-lists/distinct
+                    (map (lambda (sel)
+                           (line-of (if below? (- (selection-end-char sel) 1) (selection-start-char sel))))
+                         (buffer-selections pane)))]
          [groups (md-lists/groups pane sources)]
          [items (map (lambda (line) (md-lists/item line groups line-info)) sources)]
          [plan (md-lists/renumber groups (md-lists/events items (if below? 'after 'before))

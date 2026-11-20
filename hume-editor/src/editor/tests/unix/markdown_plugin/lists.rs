@@ -140,6 +140,19 @@ fn shift_o_on_an_ordered_item_opens_an_item_before_it() {
 }
 
 #[test]
+fn o_with_two_selections_on_one_item_opens_one_item() {
+    assert_eq!(opened("- -[f]>oo -{b}>ar\n", 'o'), "- foo bar\n- -[\n]>");
+}
+
+#[test]
+fn o_with_two_selections_on_one_ordered_item_renumbers_once() {
+    assert_eq!(
+        opened("1. -[a]> -{b}>\n2. c\n", 'o'),
+        "1. a b\n2. -[\n]>3. c\n"
+    );
+}
+
+#[test]
 fn o_on_a_plain_line_opens_a_plain_line() {
     assert_eq!(opened("-[f]>oo\n- a\n", 'o'), "foo\n-[\n]>- a\n");
 }
