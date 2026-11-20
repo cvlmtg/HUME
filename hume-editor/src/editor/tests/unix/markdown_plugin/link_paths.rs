@@ -13,6 +13,14 @@ fn inserting(name: &str, marked: &str) -> Preview {
     p
 }
 
+/// Asks for completion, types `typed`, and accepts the item it leaves first.
+fn accept_after_typing(p: &mut Preview, typed: &str) {
+    trigger_completion(&mut p.ed);
+    p.ed.feed_keys(typed.chars().map(key));
+    p.ed.settle();
+    p.ed.feed_key(key_enter());
+}
+
 #[test]
 fn ctrl_space_in_a_destination_lists_the_files_beside_the_buffer() {
     let mut p = inserting("a.md", "[x](-[\n]>");
@@ -68,10 +76,7 @@ fn accepting_a_path_inserts_it_after_its_directory() {
 #[test]
 fn accepting_a_directory_inserts_its_name_without_the_slash() {
     let mut p = inserting("a.md", "[x](-[\n]>");
-    trigger_completion(&mut p.ed);
-    p.ed.feed_key(key('s'));
-    p.ed.settle();
-    p.ed.feed_key(key_enter());
+    accept_after_typing(&mut p, "s");
     assert_eq!(text(&p.ed), "[x](sub\n");
 }
 
@@ -79,10 +84,7 @@ fn accepting_a_directory_inserts_its_name_without_the_slash() {
 fn accepting_a_name_with_a_space_puts_it_between_angle_brackets() {
     let mut p = inserting("a.md", "[x](-[\n]>");
     p.write_notes(&["my notes.md"]);
-    trigger_completion(&mut p.ed);
-    p.ed.feed_keys([key('m'), key('y')]);
-    p.ed.settle();
-    p.ed.feed_key(key_enter());
+    accept_after_typing(&mut p, "my");
     assert_eq!(text(&p.ed), "[x](<my notes.md>\n");
 }
 
@@ -90,10 +92,7 @@ fn accepting_a_name_with_a_space_puts_it_between_angle_brackets() {
 fn accepting_a_directory_with_a_space_leaves_its_angle_bracket_open() {
     let mut p = inserting("a.md", "[x](-[\n]>");
     p.write_notes(&["my dir/c.md"]);
-    trigger_completion(&mut p.ed);
-    p.ed.feed_keys([key('m'), key('y')]);
-    p.ed.settle();
-    p.ed.feed_key(key_enter());
+    accept_after_typing(&mut p, "my");
     assert_eq!(text(&p.ed), "[x](<my dir\n");
     p.ed.feed_key(key('/'));
     p.ed.settle();
@@ -112,18 +111,14 @@ fn ctrl_space_after_an_angle_bracket_lists_the_files() {
 #[test]
 fn accepting_after_an_angle_bracket_closes_it() {
     let mut p = inserting("a.md", "[x](<-[\n]>");
-    trigger_completion(&mut p.ed);
-    p.ed.feed_key(key('t'));
-    p.ed.settle();
-    p.ed.feed_key(key_enter());
+    accept_after_typing(&mut p, "t");
     assert_eq!(text(&p.ed), "[x](<todo.md>\n");
 }
 
 #[test]
 fn accepting_before_a_closing_angle_bracket_keeps_one() {
     let mut p = inserting("a.md", "[x](<sub/-[>]>)\n");
-    trigger_completion(&mut p.ed);
-    p.ed.feed_key(key_enter());
+    accept_after_typing(&mut p, "");
     assert_eq!(text(&p.ed), "[x](<sub/b.md>)\n");
 }
 
@@ -139,11 +134,16 @@ fn a_destination_with_an_opening_parenthesis_lists_its_paths() {
 fn accepting_a_name_with_paired_parentheses_inserts_it_bare() {
     let mut p = inserting("a.md", "[x](-[\n]>");
     p.write_notes(&["(draft).md"]);
-    trigger_completion(&mut p.ed);
-    p.ed.feed_keys([key('d'), key('r')]);
-    p.ed.settle();
-    p.ed.feed_key(key_enter());
+    accept_after_typing(&mut p, "dr");
     assert_eq!(text(&p.ed), "[x]((draft).md\n");
+}
+
+#[test]
+fn accepting_a_name_with_an_angle_bracket_inserts_it_bare() {
+    let mut p = inserting("a.md", "[x](-[\n]>");
+    p.write_notes(&["a>b.md"]);
+    accept_after_typing(&mut p, "ab");
+    assert_eq!(text(&p.ed), "[x](a>b.md\n");
 }
 
 #[test]

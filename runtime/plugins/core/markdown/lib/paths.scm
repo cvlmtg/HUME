@@ -14,40 +14,38 @@
           [(char=? (string-ref prefix (- i 1)) #\/) i]
           [else (loop (- i 1))])))
 
+(struct md-paths/destination (column dir-part name angle?))
+
 (define (md-paths/destination-before before)
-  (let ([open (md-paths/link-open before)])
-    (and open
-         (let* ([angle? (and (< open (string-length before)) (char=? (string-ref before open) #\<))]
-                [column (if angle? (+ open 1) open)]
-                [typed (substring before column (string-length before))])
+  (let ([parts (split-many before "](")])
+    (and (pair? (cdr parts))
+         (let* ([after (last parts)]
+                [angle? (starts-with? after "<")]
+                [typed (if angle? (substring after 1 (string-length after)) after)])
            (and (if angle? (md-destinations/angle-safe? typed) (md-destinations/bare-depth typed))
                 (not (starts-with? typed "/"))
                 (not (string-contains? typed "#"))
-                (list column typed angle?))))))
+                (let ([cut (md-paths/dir-end typed)])
+                  (md-paths/destination (- (string-length before) (string-length typed))
+                                        (substring typed 0 cut)
+                                        (substring typed cut (string-length typed))
+                                        angle?)))))))
 
-(define (md-paths/link-open line)
-  (let loop ([chars (reverse (string->list line))] [i (string-length line)])
-    (cond [(or (null? chars) (null? (cdr chars))) #f]
-          [(and (char=? (car chars) #\() (char=? (cadr chars) #\])) i]
-          [else (loop (cdr chars) (- i 1))])))
-
-(define (md-paths/new-text path folder? form)
-  (cond [(not (md-destinations/angle-safe? path)) #f]
-        [(eq? form 'bare) (cond [(not folder?) (md-destinations/encode path)]
-                                [(md-destinations/bare? path) path]
-                                [else (string-append "<" path)])]
-        [folder? path]
-        [else (string-append path ">")]))
-
-(define (md-paths/item entry dir-part form edit)
+(define (md-paths/item entry found range closing-range)
   (let* ([folder? (ends-with? entry "/")]
-         [path (string-append dir-part (if folder? (trim-end-matches entry "/") entry))]
-         [new-text (md-paths/new-text path folder? form)])
-    (and new-text
+         [path (string-append (md-paths/destination-dir-part found)
+                              (if folder? (trim-end-matches entry "/") entry))]
+         [angle? (md-paths/destination-angle? found)]
+         [wrapped? (or angle? (not (md-destinations/bare? path)))]
+         [closes? (and wrapped? (not folder?))])
+    (and (or (not wrapped?) (md-destinations/angle-safe? path))
          (hash "label" entry
                "filterText" path
                "kind" (if folder? md-paths/folder-kind md-paths/file-kind)
-               "textEdit" (edit folder? new-text)))))
+               "textEdit" (hash "range" (if closes? closing-range range)
+                                "newText" (string-append (if (and wrapped? (not angle?)) "<" "")
+                                                         path
+                                                         (if closes? ">" "")))))))
 
 (define (md-paths/answer pane)
   (let* ([head (call! "stdlib/cursor-char-offset" (buffer-selections pane))]
@@ -56,29 +54,20 @@
          [found (and line
                      (md-paths/destination-before
                        (buffer-text pane #:range (hash 'start-char line-start 'end-char head))))]
-         [typed (and found (cadr found))]
-         [cut (and found (md-paths/dir-end typed))]
-         [dir-part (and found (substring typed 0 cut))]
-         [folder (and found (md-destinations/resolve pane dir-part))])
+         [folder (and found (md-destinations/resolve pane (md-paths/destination-dir-part found)))])
     (and folder
-         (let* ([name (substring typed cut (string-length typed))]
-                [form (cond [(not (caddr found)) 'bare]
-                            [(equal? (buffer-text pane #:range (hash 'start-char head
-                                                                     'end-char (+ head 1)))
-                                     ">")
-                             'closed]
-                            [else 'open])]
+         (let* ([name (md-paths/destination-name found)]
+                [start (hash "line" line "character" (md-paths/destination-column found))]
                 [end (- head line-start)]
-                [edit (lambda (folder? new-text)
-                        (hash "range"
-                              (hash "start" (hash "line" line "character" (car found))
-                                    "end" (hash "line" line
-                                                "character" (if (and (eq? form 'closed) (not folder?))
-                                                                (+ end 1)
-                                                                end)))
-                              "newText" new-text))])
+                [range (hash "start" start "end" (hash "line" line "character" end))]
+                [closing-range
+                 (if (and (md-paths/destination-angle? found)
+                          (equal? (buffer-text pane #:range (hash 'start-char head 'end-char (+ head 1)))
+                                  ">"))
+                     (hash "start" start "end" (hash "line" line "character" (+ end 1)))
+                     range)])
            (cons (filter (lambda (item) item)
-                         (map (lambda (entry) (md-paths/item entry dir-part form edit))
+                         (map (lambda (entry) (md-paths/item entry found range closing-range))
                               (path-entries folder (if (starts-with? name ".") "." ""))))
                  (equal? name ""))))))
 

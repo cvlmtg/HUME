@@ -25,9 +25,5 @@
       (md-destinations/encode pasted)
       (let ([path (and (not (starts-with? pasted "#"))
                        (not (string-contains? pasted "\n"))
-                       (md-destinations/resolve pane (md-links/before-fragment pasted)))])
+                       (md-destinations/resolve pane pasted))])
         (and path (path-exists? path) (md-destinations/encode pasted)))))
-
-(define (md-links/before-fragment pasted)
-  (let ([parts (split-once pasted "#")])
-    (if (pair? parts) (car parts) pasted)))

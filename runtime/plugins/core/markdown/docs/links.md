@@ -33,12 +33,12 @@ differs from it.
 ## Destinations
 
 `destinations.scm` writes every destination the plugin produces, pasted or completed, and
-reads a path from the folder of the buffer's file, the way a renderer reads it. A
-destination is bare when CommonMark reads it bare: not empty, holding no whitespace, not
-starting with `<`, and its parentheses paired, the depth never below zero and back to zero
-at its end. Any other destination goes between `<` and `>`, which hold anything but a line
-break, a `<` or a `>`; a text holding one of those has no destination, being too rare a name
-to escape. Backslash escapes are not read.
+reads a path, its part before the first `#`, from the folder of the buffer's file, the way
+a renderer reads it. A destination is bare when CommonMark reads it bare: not empty,
+holding no whitespace, not starting with `<`, and its parentheses paired, the depth never
+below zero and back to zero at its end. Any other destination goes between `<` and `>`,
+which hold anything but a line break, a `<` or a `>`; a text holding one of those has no
+destination, being too rare a name to escape. Backslash escapes are not read.
 
 ## Link paths
 
