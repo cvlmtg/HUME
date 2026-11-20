@@ -77,7 +77,7 @@
 | `lib/paths.scm` | `md-paths/complete!`, the completion source's answer: see [`links.md`](links.md#link-paths) |
 | `lib/lists.scm` | A line's prefix, the next line's, ending a list, and renumbering: see [`lists.md`](lists.md) |
 
-`blocks.scm`, `table.scm`, `inline.scm` and `lists.scm` call no editor function: lines come in as
+`blocks.scm`, `table.scm`, `inline.scm` and `lists.scm` read no buffer: lines come in as
 procedures.
 
 ## Rendering

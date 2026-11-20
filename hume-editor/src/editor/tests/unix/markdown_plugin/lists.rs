@@ -199,6 +199,11 @@ fn dot_repeats_o_with_its_list_item() {
 }
 
 #[test]
+fn two_cursors_on_one_item_line_each_start_an_item() {
+    assert_eq!(entered("- a-[b]>c-{d}>\n"), "- a\n- -[b]>c\n- -{d}>\n");
+}
+
+#[test]
 fn two_cursors_in_one_list_each_start_an_item() {
     assert_eq!(
         entered("1. a-[\n]>2. b-{\n}>3. c\n"),

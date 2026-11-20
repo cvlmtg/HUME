@@ -83,18 +83,18 @@
   (let ([sels (buffer-selections pane)])
     (unless (= (length sels) (length prefixes))
       (error "markdown: the selection count differs from the list prefixes planned for it"))
-    (apply append
-           (map (lambda (sel prefix)
-                  (if prefix
-                      (let* ([head (selection-head sel)]
-                             [start (line->char-offset pane (char-offset->line pane head))]
-                             [insert (hash 'start-char head 'end-char head 'text prefix)])
-                        (if (< start head)
-                            (list (hash 'start-char start 'end-char head 'text "") insert)
-                            (list insert)))
-                      '()))
-                sels
-                prefixes))))
+    (call! "stdlib/concat"
+      (map (lambda (sel prefix)
+             (if prefix
+                 (let* ([head (selection-head sel)]
+                        [start (line->char-offset pane (char-offset->line pane head))]
+                        [insert (hash 'start-char head 'end-char head 'text prefix)])
+                   (if (< start head)
+                       (list (hash 'start-char start 'end-char head 'text "") insert)
+                       (list insert)))
+                 '()))
+           sels
+           prefixes))))
 
 ;;; See docs/lists.md's "Order of edits".
 (define (md-lists/enter! pane)
@@ -102,10 +102,10 @@
          [line-of (car reader)]
          [line-info (cdr reader)]
          [heads (map selection-head (buffer-selections pane))]
-         [groups (md-lists/groups pane (map line-of heads))]
-         [items (map (lambda (head)
-                       (let ([item (md-lists/item (line-of head) groups line-info)])
-                         (and item (md-lists/past-prefix? item head) item)))
+         [lines (map line-of heads)]
+         [groups (md-lists/groups pane lines)]
+         [items (map (lambda (item head) (and item (md-lists/past-prefix? item head) item))
+                     (md-lists/items lines groups line-info)
                      heads)])
     (if (null? (filter (lambda (item) (not (and item (md-lists/empty? item)))) items))
         (edit-text! pane
@@ -117,11 +117,6 @@
           (insert-key! pane "enter")
           (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items (cdr plan))))))))
 
-(define (md-lists/distinct lines)
-  (reverse (foldl (lambda (line kept) (if (and (pair? kept) (= (car kept) line)) kept (cons line kept)))
-                  '()
-                  lines)))
-
 ;;; See docs/lists.md's "Order of edits".
 (define (md-lists/open! pane below?)
   (let* ([reader (md-preview/line-reader pane)]
@@ -132,7 +127,7 @@
                            (line-of (if below? (- (selection-end-char sel) 1) (selection-start-char sel))))
                          (buffer-selections pane)))]
          [groups (md-lists/groups pane sources)]
-         [items (map (lambda (line) (md-lists/item line groups line-info)) sources)]
+         [items (md-lists/items sources groups line-info)]
          [plan (md-lists/renumber groups (md-lists/events items (if below? 'after 'before))
                                   line-of line-info)]
          [opened (map (lambda (line) (if below? (+ line 1) line)) sources)]
