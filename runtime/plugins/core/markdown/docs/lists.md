@@ -101,23 +101,26 @@ renumbering is a second one. The handler skips a read-only buffer
 and an event whose hunks are `#f`.
 
 `md-lists/line-markers` reads the ordered markers at the start of a line, past blanks,
-`>` and bullets, as `(col . number)`. `md-lists/edited-hunks` keeps a hunk when, at some
+`>` and bullets, each with its column, number and delimiter. `md-lists/edited-hunks` keeps a hunk when, at some
 column, the numbers its old lines hold there differ from those its new lines hold. Typing
 in an item's text, deleting a word, or rewriting a line around its marker leaves them equal,
 so that hunk is dropped before the tree is read. Both sides go through the same reader, so a
 line it misreads counts the same on both.
 
-The list query runs over each kept hunk's new lines, or the lines on both sides of a
-deletion that leaves none. For each list it returns, a hunk that changed one of the list's
-marker columns gives `md-lists/list-events`:
+The list query runs over each kept hunk's new lines, reaching back to the last non-blank
+line before them and on through the first one after them, so a list that now starts after
+a blanked item or a blank line comes back with them. For each list it returns, a hunk that
+changed one of the list's marker columns gives `md-lists/list-events`:
 
 - an `'anchor` for each of the list's markers on the hunk's new lines: an edited number, a
   pasted item, an item outdented into the list;
 - with none there, a `'resume` on the list's last item before the hunk: deleted items, or an
   item indented into a nested list;
 - with no item before the hunk either, a `'start` on its first item after, carrying `n`,
-  the first number the hunk's old lines held at that column, so deleting `1.` from `1.`,
-  `2.`, `3.` leaves `1.`, `2.`.
+  the first number the hunk's old lines held at that column with the list's delimiter, so
+  deleting `1.` from `1.`, `2.`, `3.` leaves `1.`, `2.`. A marker with the other delimiter
+  belonged to another list, since a new delimiter starts a new list, so deleting `3. a`
+  leaves the `1)` list after it alone.
 
 A later anchor starts the counting again, so a pasted run of items keeps its own numbers.
 The pass reads its own edit in the next event: the renumbered markers anchor there, and the

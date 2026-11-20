@@ -120,11 +120,19 @@
 ;;; `start` is the number a `'start` event gives its marker, `#f` for any other kind.
 (struct md-lists/event (marker kind start))
 
-(define (md-lists/digits marker line-of line-info)
+;;; The line `marker` sits on, as `(text col end)`: its text, `marker`'s column and the column past its digits.
+(define (md-lists/digit-run marker line-of line-info)
   (let* ([info (md-preview/capture-line marker line-of line-info)]
          [text (cdr info)]
          [col (md-preview/start-col marker (car info))])
-    (substring text col (md-preview/skip-while text col char-digit?))))
+    (list text col (md-preview/skip-while text col char-digit?))))
+
+(define (md-lists/digits marker line-of line-info)
+  (apply substring (md-lists/digit-run marker line-of line-info)))
+
+(define (md-lists/delimiter marker line-of line-info)
+  (let ([run (md-lists/digit-run marker line-of line-info)])
+    (string-ref (car run) (list-ref run 2))))
 
 ;;; See docs/lists.md's "Renumbering".
 (define (md-lists/renumber groups events line-of line-info)
@@ -206,7 +214,10 @@
                           (hash-ref item 'markers)))))
          items)))
 
-;;; The ordered markers in `text`'s container prefix, as `(col . number)`.
+;;; An ordered marker a line's text holds, `delimiter` being `#\.` or `#\)`.
+(struct md-lists/line-marker (col number delimiter))
+
+;;; The ordered markers in `text`'s container prefix.
 (define (md-lists/line-markers text)
   (let ([len (string-length text)])
     (define (ends? col) (or (= col len) (md-preview/blank? (string-ref text col))))
@@ -222,11 +233,13 @@
                 [(and (< col end) (<= (- end col) 9) (< end len)
                       (or (char=? (string-ref text end) #\.) (char=? (string-ref text end) #\)))
                       (ends? (+ end 1)))
-                 (loop (+ end 1) (cons (cons col (string->number (substring text col end))) out))]
+                 (loop (+ end 1)
+                       (cons (md-lists/line-marker col (string->number (substring text col end)) (string-ref text end))
+                             out))]
                 [else (reverse out)])))))))
 
 (define (md-lists/numbers-at markers col)
-  (map cdr (filter (lambda (m) (= (car m) col)) markers)))
+  (map md-lists/line-marker-number (filter (lambda (m) (= (md-lists/line-marker-col m) col)) markers)))
 
 ;;; `old` is the ordered markers of `hunk`'s old lines, `cols` the columns whose numbers it changed.
 (struct md-lists/edited (hunk old cols))
@@ -242,18 +255,24 @@
                                     old
                                     (filter (lambda (col) (not (equal? (md-lists/numbers-at old col)
                                                                        (md-lists/numbers-at new col))))
-                                            (md-lists/distinct (sort (map car (append old new)) <))))))
+                                            (md-lists/distinct (sort (map md-lists/line-marker-col (append old new)) <))))))
                hunks)))
 
-;;; The line ranges the lists `edited` renumbers lie on, as `(start . end)`, in a text of `line-count` lines.
-(define (md-lists/edited-spans edited line-count)
+;;; The line ranges the lists `edited` renumbers lie on, as `(start . end)`, in a text of `line-count` lines:
+;;; each hunk's new lines, from the last non-blank line before them through the first one after them.
+(define (md-lists/edited-spans edited line-count line-info)
+  (define (blank? line)
+    (let ([text (cdr (line-info line))])
+      (= (md-preview/skip-blanks text 0) (string-length text))))
   (map (lambda (e)
-         (let* ([hunk (md-lists/edited-hunk e)]
-                [start (hash-ref hunk 'new-start-line)]
-                [end (hash-ref hunk 'new-end-line)])
-           (if (= start end)
-               (cons (max 0 (- start 1)) (min line-count (+ end 1)))
-               (cons start end))))
+         (let ([hunk (md-lists/edited-hunk e)])
+           (cons (let back ([line (- (hash-ref hunk 'new-start-line) 1)])
+                   (if (and (> line 0) (blank? line)) (back (- line 1)) (max line 0)))
+                 (let forward ([line (hash-ref hunk 'new-end-line)])
+                   (cond
+                     [(>= line line-count) line-count]
+                     [(blank? line) (forward (+ line 1))]
+                     [else (+ line 1)])))))
        edited))
 
 ;;; The events `edited` gives the list of `markers`. See docs/lists.md's "Renumbering after an edit".
@@ -261,7 +280,9 @@
   (let* ([lines (map (lambda (m) (line-of (md-preview/capture-start m))) markers)]
          [cols (map (lambda (m line) (md-preview/start-col m (car (line-info line)))) markers lines)]
          [placed (map cons lines markers)]
-         [markers-where (lambda (keep?) (map cdr (filter (lambda (p) (keep? (car p))) placed)))])
+         [markers-where (lambda (keep?) (map cdr (filter (lambda (p) (keep? (car p))) placed)))]
+         [delimiter (md-lists/delimiter (car markers) line-of line-info)]
+         [delimited (lambda (old) (filter (lambda (m) (char=? (md-lists/line-marker-delimiter m) delimiter)) old))])
     (call! "stdlib/concat"
       (map (lambda (e)
              (let ([col (findf (lambda (c) (member c cols)) (md-lists/edited-cols e))])
@@ -272,7 +293,7 @@
                           [inside (markers-where (lambda (line) (and (<= start line) (< line end))))]
                           [before (markers-where (lambda (line) (< line start)))]
                           [after (markers-where (lambda (line) (>= line end)))]
-                          [old-numbers (md-lists/numbers-at (md-lists/edited-old e) col)])
+                          [old-numbers (md-lists/numbers-at (delimited (md-lists/edited-old e)) col)])
                      (cond
                        [(pair? inside) (map (lambda (m) (md-lists/event m 'anchor #f)) inside)]
                        [(pair? before) (list (md-lists/event (last before) 'resume #f))]

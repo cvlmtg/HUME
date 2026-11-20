@@ -347,6 +347,30 @@ fn deleting_the_first_item_renumbers_the_rest_from_its_number() {
 }
 
 #[test]
+fn blanking_the_first_items_text_renumbers_the_rest() {
+    let p = edited("-[1. a]>\n2. b\n3. c\n", "d");
+    assert_eq!(text(&p.ed), "\n1. b\n2. c\n");
+}
+
+#[test]
+fn deleting_the_first_item_of_a_loose_list_renumbers_the_rest() {
+    let p = edited("-[1]>. a\n\n2. b\n\n3. c\n", "xd");
+    assert_eq!(text(&p.ed), "\n1. b\n\n2. c\n");
+}
+
+#[test]
+fn deleting_a_list_leaves_the_next_list_with_another_delimiter_alone() {
+    let p = edited("-[3]>. a\n1) b\n2) c\n", "xd");
+    assert_eq!(text(&p.ed), "1) b\n2) c\n");
+}
+
+#[test]
+fn editing_a_number_leaves_the_next_list_with_another_delimiter_alone() {
+    let p = edited("-[3]>. a\n1) b\n", "r5");
+    assert_eq!(text(&p.ed), "5. a\n1) b\n");
+}
+
+#[test]
 fn a_deletion_undoes_its_renumbering_first() {
     let mut p = edited("1. a\n-[2]>. b\n3. c\n4. d\n", "xd");
     press(&mut p.ed, "u");

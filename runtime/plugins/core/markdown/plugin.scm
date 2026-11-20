@@ -163,7 +163,7 @@
              [reader (md-preview/line-reader pane)]
              [line-of (car reader)]
              [line-info (cdr reader)]
-             [groups (md-lists/groups pane (md-lists/edited-spans edited (buffer-line-count pane)))]
+             [groups (md-lists/groups pane (md-lists/edited-spans edited (buffer-line-count pane) line-info))]
              [edits (car (md-lists/renumber groups (md-lists/edited-events groups edited line-of line-info)
                                             line-of line-info))])
         (unless (null? edits)
