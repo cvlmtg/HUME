@@ -5,6 +5,8 @@
 (require "lib/text.scm")
 (require "lib/links.scm")
 (require "lib/paths.scm")
+(require "lib/queries.scm")
+(require "lib/lists.scm")
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
@@ -13,6 +15,8 @@
   (call! "stdlib/config-boolean" "core:markdown" md-preview/cfg 'preview #t))
 (define md-preview/rule-width
   (call! "stdlib/config-integer" "core:markdown" md-preview/cfg 'rule-width 40 1))
+(define md-lists/enabled
+  (call! "stdlib/config-boolean" "core:markdown" md-preview/cfg 'continue-lists #t))
 
 ;; ── Rendering ─────────────────────────────────────────────────────────────────
 
@@ -37,7 +41,10 @@
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 (register-hook! 'on-buffer-open
-  (lambda (pane) (md-preview/warn-missing-grammars!)))
+  (lambda (pane)
+    (md-preview/warn-missing-grammars!)
+    (when md-lists/enabled
+      (attach-keymap! pane md-lists/keymap))))
 
 (register-hook! 'on-viewport-change
   (lambda (pane range headers) (md-preview/render! pane)))
@@ -52,7 +59,9 @@
   (lambda (pane)
     (md-preview/remove-buffer! pane)
     (when (buffer-live? pane)
-      (md-preview/clear! pane))))
+      (md-preview/clear! pane)
+      (when md-lists/enabled
+        (detach-keymap! pane md-lists/keymap)))))
 
 ;; ── Links ─────────────────────────────────────────────────────────────────────
 
@@ -63,6 +72,100 @@
   #:target 'buffer #:priority 20 #:token-chars "/.-")
 
 (set-completion-triggers! "markdown" "markdown:paths" (list #\( #\/))
+
+;; ── Lists ─────────────────────────────────────────────────────────────────────
+
+(define md-lists/keymap "markdown/lists")
+
+(define (md-lists/groups pane lines)
+  (md-preview/group
+    (if (language-has-grammar? "markdown")
+        (syntax-captures pane "markdown" md-lists/query
+                         #:ranges (map (lambda (l) (hash 'start-line l 'end-line (+ l 1))) lines))
+        '())))
+
+(define (md-lists/prefix-edits pane prefixes)
+  (let loop ([sels (buffer-selections pane)] [prefixes prefixes] [edits '()])
+    (if (null? prefixes)
+        edits
+        (loop (cdr sels) (cdr prefixes)
+              (let ([prefix (car prefixes)] [head (selection-head (car sels))])
+                (if prefix
+                    (let ([start (line->char-offset pane (char-offset->line pane head))]
+                          [insert (hash 'start-char head 'end-char head 'text prefix)])
+                      (if (< start head)
+                          (cons (hash 'start-char start 'end-char head 'text "") (cons insert edits))
+                          (cons insert edits)))
+                    edits))))))
+
+;;; See docs/lists.md's "Order of edits".
+(define (md-lists/enter! pane)
+  (let* ([reader (md-preview/line-reader pane)]
+         [line-of (car reader)]
+         [line-info (cdr reader)]
+         [heads (map selection-head (buffer-selections pane))]
+         [groups (md-lists/groups pane (map line-of heads))]
+         [items (map (lambda (head)
+                       (let ([item (md-lists/item (line-of head) groups line-info)])
+                         (and item (md-lists/past-prefix? item head) item)))
+                     heads)])
+    (if (null? (filter (lambda (item) (not (and item (md-lists/empty? item)))) items))
+        (edit-text! pane
+                    (append (map md-lists/ended-edit items)
+                            (car (md-lists/renumber groups (md-lists/events items 'remove)
+                                                    line-of line-info))))
+        (let ([plan (md-lists/renumber groups (md-lists/events items 'after) line-of line-info)])
+          (edit-text! pane (car plan))
+          (insert-key! pane "enter")
+          (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items (cdr plan))))))))
+
+;;; See docs/lists.md's "Order of edits".
+(define (md-lists/open! pane below?)
+  (let* ([reader (md-preview/line-reader pane)]
+         [line-of (car reader)]
+         [line-info (cdr reader)]
+         [sources (map (lambda (sel)
+                         (line-of (if below? (- (selection-end-char sel) 1) (selection-start-char sel))))
+                       (buffer-selections pane))]
+         [groups (md-lists/groups pane sources)]
+         [items (map (lambda (line) (md-lists/item line groups line-info)) sources)]
+         [plan (md-lists/renumber groups (md-lists/events items (if below? 'after 'before))
+                                  line-of line-info)]
+         [opened (map (lambda (line) (if below? (+ line 1) line)) sources)]
+         [moves (map (lambda (edit)
+                       (let* ([start (hash-ref edit 'start-char)] [line (line-of start)])
+                         (list line (- start (car (line-info line))) edit)))
+                     (car plan))])
+    (call! (if below? "open-line-below" "open-line-above") pane)
+    (edit-text! pane
+                (append
+                  (map (lambda (move)
+                         (let* ([line (car move)]
+                                [edit (list-ref move 2)]
+                                [shift (length (filter (lambda (at) (<= at line)) opened))]
+                                [start (+ (line->char-offset pane (+ line shift)) (list-ref move 1))])
+                           (hash 'start-char start
+                                 'end-char (+ start (- (hash-ref edit 'end-char) (hash-ref edit 'start-char)))
+                                 'text (hash-ref edit 'text))))
+                       moves)
+                  (md-lists/prefix-edits pane (md-lists/prefixes items (cdr plan)))))))
+
+(define-command! "markdown/enter"
+  "In a Markdown list item or quote, start the next item or quote line, renumbering an ordered list; on an empty item, end the list. Elsewhere, break the line as Enter does."
+  md-lists/enter!)
+
+(define-command! "markdown/open-below"
+  "Open a line below each selection as `o` does, continuing the list item or quote it is on and renumbering an ordered list."
+  (lambda (pane) (md-lists/open! pane #t)))
+
+(define-command! "markdown/open-above"
+  "Open a line above each selection as `O` does, continuing the list item or quote it is on and renumbering an ordered list."
+  (lambda (pane) (md-lists/open! pane #f)))
+
+(when md-lists/enabled
+  (bind-key! 'insert "enter" "markdown/enter" #:keymap md-lists/keymap)
+  (bind-key! 'normal "o" "markdown/open-below" #:keymap md-lists/keymap)
+  (bind-key! 'normal "O" "markdown/open-above" #:keymap md-lists/keymap))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

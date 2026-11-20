@@ -75,6 +75,8 @@ The table-specific limitations are under [Limitations](architecture.md#limitatio
 Checked against the pinned grammar fixtures (`tests/fixtures/grammars`):
 
 - **Lists:** `list_marker_minus` and its siblings include the space after the marker.
+  Ordered items carry a `list_marker_dot` or `list_marker_parenthesis`, which the preview
+  leaves raw and [`lists.md`](lists.md#renumbering) renumbers.
   `task_list_marker_unchecked` follows the marker directly; the space after the box
   belongs to the paragraph.
 - **Headings:** `atx_hN_marker` is the `#` run alone. The text is an `inline` child,

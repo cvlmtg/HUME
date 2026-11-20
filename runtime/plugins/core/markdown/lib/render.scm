@@ -6,7 +6,7 @@
 (require "inline.scm")
 (require "table.scm")
 
-(provide md-preview/render-buffer! md-preview/clear! md-preview/elements)
+(provide md-preview/render-buffer! md-preview/clear! md-preview/elements md-preview/line-reader)
 
 (define md-preview/source "markdown-preview")
 

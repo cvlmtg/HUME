@@ -28,6 +28,8 @@
   key or command pasted it. The kill ring keeps the bare URL.
 - **Link paths** complete relative to the Markdown file's own folder, the way a renderer
   resolves them, never the working directory.
+- **Lists:** Enter, `o` and `O` are bound in a keymap attached to each Markdown buffer, and
+  fall back to the editor's own behaviour off a list or quote line (see [`lists.md`](lists.md)).
 - **Rust surface:** `set-conceals!`, `syntax-captures` with `#:ranges`, the
   `on-syntax-changed` hook, and for popups the `format-text/<lang>` command and
   `parsed-text-captures`. There is no query handle. Link paste rests on the `on-paste`
@@ -61,20 +63,21 @@
 
 | File | Role |
 |---|---|
-| `manifest.scm` | Lazy activation on the language and the three commands |
-| `plugin.scm` | Config, the hooks, the commands, the `on-paste` handler and the `markdown:paths` completion source |
+| `manifest.scm` | Lazy activation on the language and the six commands |
+| `plugin.scm` | Config, the hooks, the commands, the `on-paste` handler, the `markdown:paths` completion source and the list keymap |
 | `lib/state.scm` | Per-buffer state keyed by `(buffer-key pane)` (preview on or off, the generation of the last parsed tree), the grammars warned about, and `md-preview/box-insert!` |
-| `lib/queries.scm` | The block and inline queries, capture names and accessors, grouping by name, the conceal constructor and order |
+| `lib/queries.scm` | The block, inline and list queries, capture names and accessors, grouping by name, the conceal constructor and order |
 | `lib/blocks.scm` | Block captures to conceals, line backgrounds and highlights |
 | `lib/table.scm` | Table captures to conceals, and each table's line span, which the inline query also covers. Cells are measured with `string-width` |
 | `lib/inline.scm` | Inline captures to conceals |
 | `lib/entities.scm` | The named entities replaced, and the numeric references accepted |
-| `lib/render.scm` | `md-preview/elements` (fenced-block filter, inline ranges, conceal order), and for a buffer the ranges, the two `syntax-captures` calls and the three setters |
+| `lib/render.scm` | `md-preview/elements` (fenced-block filter, inline ranges, conceal order), and for a buffer the ranges, the line reader, the two `syntax-captures` calls and the three setters |
 | `lib/text.scm` | `md-preview/elements` over a popup's text and the result `format-text/markdown` returns |
 | `lib/links.scm` | `md-links/paste-link`, the `on-paste` handler's text: see [`links.md`](links.md#link-paste) |
 | `lib/paths.scm` | `md-paths/items`, the completion source's answer: see [`links.md`](links.md#link-paths) |
+| `lib/lists.scm` | A line's prefix, the next line's, ending a list, and renumbering: see [`lists.md`](lists.md) |
 
-`blocks.scm`, `table.scm` and `inline.scm` call no editor function: lines come in as
+`blocks.scm`, `table.scm`, `inline.scm` and `lists.scm` call no editor function: lines come in as
 procedures.
 
 ## Rendering

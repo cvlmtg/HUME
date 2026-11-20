@@ -299,7 +299,11 @@ In a link's destination, right after `](`, `Ctrl-Space` lists the files and fold
 - Start the name with `.` to list hidden files.
 - A name with a space is inserted as it is, which Markdown doesn't read as a link.
 
-Ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block are left as written.
+In a list, `Enter` starts the next item: a bullet gets the same bullet, a numbered item the next number, and a task item an unchecked box. A nested item continues at its own indent, and a quote line gets the next line's `>`. `o` and `O` open a line below or above in the same way. Adding an item to a numbered list renumbers the items after it, so a new item after `2.` turns the `3.` below it into `4.`.
+
+`Enter` on an item with nothing after its marker ends the list instead: the marker goes, and the items after it are renumbered to close the gap. On an empty quote line, it ends the quote.
+
+The preview draws ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block as written.
 
 The colors and bands come from the [theme](themes.md#scopes-hume-adds); to change them without editing it, [style the scopes from your config](themes.md#styling-scopes-from-your-config).
 
@@ -309,6 +313,8 @@ Only the lines on screen are drawn. After you scroll, the lines that came into v
 |---------|--------|
 | `:toggle-markdown-preview` | Turn the preview off for the current buffer, or back on |
 | `markdown/toggle-preview` | The same, as an editor command you can bind to a key |
+| `markdown/enter` | What `Enter` does in a Markdown buffer |
+| `markdown/open-below`, `markdown/open-above` | What `o` and `O` do in a Markdown buffer |
 
 Configure with `#:config`:
 
@@ -321,6 +327,7 @@ Configure with `#:config`:
 |---|---|---|---|
 | `'preview` | boolean | `#t` | Whether the preview starts on in each buffer. Popups and the completion documentation box are drawn either way |
 | `'rule-width` | integer (≥ 1) | `40` | How many `─` a horizontal rule draws |
+| `'continue-lists` | boolean | `#t` | Whether `Enter`, `o` and `O` continue a list or quote |
 
 A table wider than the pane draws a broken grid when soft wrap is on. A table's top and bottom border appear only on an empty line next to it. A tab inside a table cell throws its column out of line.
 

@@ -5,7 +5,8 @@
          md-preview/line-slice md-preview/bucket md-preview/extent md-preview/records
          md-preview/conceal
          md-preview/conceal-before? md-preview/group md-preview/captured
-         md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text)
+         md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text
+         md-lists/query)
 
 (define md-preview/atx-levels '(1 2 3 4 5 6))
 (define md-preview/setext-levels '(1 2))
@@ -117,3 +118,11 @@
     "[(uri_autolink) (email_autolink)] @autolink\n"
     "(backslash_escape) @escape\n"
     "[(entity_reference) (numeric_character_reference)] @entity\n"))
+
+(define md-lists/query
+  (string-append
+    "(list) @list\n"
+    "(list (list_item [(list_marker_minus) (list_marker_plus) (list_marker_star)] @bullet))\n"
+    "(list (list_item [(list_marker_dot) (list_marker_parenthesis)] @ordered))\n"
+    "[(task_list_marker_unchecked) (task_list_marker_checked)] @task\n"
+    "[(block_quote_marker) (block_continuation)] @quote-prefix\n"))
