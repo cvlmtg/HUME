@@ -216,10 +216,8 @@
     (if decider
         (let ([check? (not (md-lists/checked? decider))])
           (map (lambda (item)
-                 (let ([task (hash-ref item 'task)])
-                   (hash 'start-char (md-preview/capture-start task)
-                         'end-char (md-preview/capture-end task)
-                         'text (if check? "[x]" "[ ]"))))
+                 (let ([mark (+ (md-preview/capture-start (hash-ref item 'task)) 1)])
+                   (hash 'start-char mark 'end-char (+ mark 1) 'text (if check? "x" " "))))
                (filter (lambda (item) (and (md-lists/task? item) (not (eq? (md-lists/checked? item) check?))))
                        items)))
         '())))

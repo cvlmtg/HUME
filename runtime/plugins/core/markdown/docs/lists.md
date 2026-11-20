@@ -98,4 +98,5 @@ character to the line of its last, as `md-lists/item` reads it. A line's box is 
 The first box on the primary selection's lines decides, or the first box of all when those
 lines hold none: when it is checked, `[x]` or `[X]`, every box becomes `[ ]`, and otherwise
 every box becomes `[x]`. Only a box whose state changes gets an edit, and a line with no box
-gets none.
+gets none. The edit replaces only the character between the brackets, so a cursor or
+selection end on the box stays where it was.

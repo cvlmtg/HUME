@@ -67,6 +67,16 @@ fn a_primary_without_a_box_leaves_the_first_box_to_decide() {
 }
 
 #[test]
+fn a_cursor_inside_the_box_stays_on_it() {
+    assert_eq!(toggled("- [-[ ]>] a\n"), "- [-[x]>] a\n");
+}
+
+#[test]
+fn a_selection_starting_inside_the_box_keeps_its_start() {
+    assert_eq!(toggled("- [-[ ] a]>\n"), "- [-[x] a]>\n");
+}
+
+#[test]
 fn an_item_without_a_box_is_left_alone() {
     assert_eq!(toggled("- -[a]>\n"), "- -[a]>\n");
 }
