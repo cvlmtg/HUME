@@ -256,3 +256,66 @@ fn continue_lists_off_leaves_enter_as_usual() {
     p.ed.feed_keys([key('i'), key_enter()]);
     assert_eq!(state(&p.ed), "- foo\n-[\n]>");
 }
+
+/// The plugin's editor on `marked` after `typed` is pressed, once the
+/// edited text's tree has landed and the hooks it fires have run.
+fn edited(marked: &str, typed: &str) -> Preview {
+    let mut p = editing(marked);
+    press(&mut p.ed, typed);
+    p.render();
+    p
+}
+
+/// Two ordered lists with a paragraph between them, the second one's first
+/// number selected.
+const SPLIT_LISTS: &str = "1. a\n2. b\n\nx\n\n-[3]>. c\n4. d\n";
+
+#[test]
+fn editing_an_item_number_renumbers_the_items_after_it() {
+    let p = edited("1. a\n-[5]>. b\n6. c\n7. d\n", "r2");
+    assert_eq!(text(&p.ed), "1. a\n2. b\n3. c\n4. d\n");
+}
+
+#[test]
+fn a_list_after_a_paragraph_renumbers_from_its_new_first_number() {
+    let p = edited(SPLIT_LISTS, "r1");
+    assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n1. c\n2. d\n");
+}
+
+#[test]
+fn typing_in_an_items_text_renumbers_nothing() {
+    let mut p = edited("1. a\n1. b-[\n]>1. c\n", "ix");
+    p.ed.feed_key(key_esc());
+    p.render();
+    assert_eq!(text(&p.ed), "1. a\n1. bx\n1. c\n");
+}
+
+#[test]
+fn a_renumbering_while_typing_undoes_with_the_edit() {
+    let mut p = edited(SPLIT_LISTS, "c1");
+    assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n1. c\n2. d\n");
+    p.ed.feed_key(key_esc());
+    press(&mut p.ed, "u");
+    p.render();
+    assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n3. c\n4. d\n");
+}
+
+#[test]
+fn a_normal_mode_edit_undoes_its_renumbering_first() {
+    let mut p = edited(SPLIT_LISTS, "r1");
+    press(&mut p.ed, "u");
+    p.render();
+    assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n1. c\n4. d\n");
+    press(&mut p.ed, "u");
+    p.render();
+    assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n3. c\n4. d\n");
+}
+
+#[test]
+fn continue_lists_off_renumbers_nothing_after_an_edit() {
+    let mut p = preview_with(Some("(hash 'continue-lists #f)"), true);
+    p.open_marked("a.md", SPLIT_LISTS);
+    press(&mut p.ed, "r1");
+    p.render();
+    assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n1. c\n4. d\n");
+}

@@ -5,7 +5,7 @@
 
 (provide md-lists/distinct md-lists/items md-lists/past-prefix? md-lists/empty? md-lists/ended-edit
          md-lists/events md-lists/removed-events md-lists/renumber md-lists/prefixes
-         md-lists/task-edits)
+         md-lists/edited-markers md-lists/task-edits)
 
 (define (md-lists/distinct lines)
   (reverse (foldl (lambda (line kept) (if (and (pair? kept) (= (car kept) line)) kept (cons line kept)))
@@ -164,9 +164,11 @@
                      [of-kind (lambda (k) (filter (lambda (e) (equal? (kind-of e) k)) at))]
                      [befores (of-kind 'before)]
                      [removes (of-kind 'remove)]
+                     [anchors (of-kind 'anchor)]
                      [afters (of-kind 'after)]
                      [counter (if (pair? befores) (assign! befores (or counter (number m))) counter)]
                      [counter (cond
+                                [(pair? anchors) (+ (number m) 1)]
                                 [(pair? removes) (or counter (number m))]
                                 [counter (renumber! m counter) (+ counter 1)]
                                 [else #f])]
@@ -189,6 +191,34 @@
                   (filter (lambda (m) (>= (md-lists/col m start) kept))
                           (hash-ref item 'markers)))))
          items)))
+
+;;; Whether `hunks` changed the ordered marker `m`'s number. See docs/lists.md's "Renumbering after an edit".
+(define (md-lists/number-changed? hunks line-of line-info m)
+  (let* ([start (md-preview/capture-start m)]
+         [line (line-of start)]
+         [hunk (findf (lambda (h) (and (<= (hash-ref h 'new-start-line) line)
+                                       (< line (hash-ref h 'new-end-line))))
+                      hunks)])
+    (and hunk
+         (let ([words (hash-ref hunk 'words)])
+           (or (not words)
+               (let* ([info (line-info line)]
+                      [line-end (+ (car info) (string-length (cdr info)))]
+                      [digits-end (+ start (string-length (md-lists/digits m line-of line-info)))]
+                      [on-line (filter (lambda (span) (let ([s (hash-ref span 'start-char)])
+                                                        (and (<= (car info) s) (<= s line-end))))
+                                       (hash-ref words 'new))])
+                 (or (null? on-line)
+                     (and (findf (lambda (span) (and (< (hash-ref span 'start-char) digits-end)
+                                                     (> (hash-ref span 'end-char) start)))
+                                 on-line)
+                          #t))))))))
+
+;;; An `'anchor` event per ordered marker in `groups` whose number `hunks` changed.
+(define (md-lists/edited-markers groups hunks line-of line-info)
+  (map (lambda (m) (cons m 'anchor))
+       (filter (lambda (m) (md-lists/number-changed? hunks line-of line-info m))
+               (call! "stdlib/concat" (map md-preview/children (md-preview/runs-of groups "list"))))))
 
 ;;; Per item, its next line's prefix, or `#f` for a line with no prefix.
 (define (md-lists/prefixes items numbers)

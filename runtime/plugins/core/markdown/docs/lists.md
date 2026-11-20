@@ -7,7 +7,8 @@ stays open with another language. `markdown/enter` handles Enter, `markdown/open
 `'continue-lists` off, only `G X` is bound.
 
 The list query (`md-lists/query`) runs over the lines Enter's cursors are on, the lines `o`
-and `O` open from, and every line a selection touches for `G X`. Its marker patterns are
+and `O` open from, every line a selection touches for `G X`, and the lines an edit changed
+for [renumbering after it](#renumbering-after-an-edit). Its marker patterns are
 rooted at `list_item`, as the block query's bullet pattern is, and a task box comes in a
 match with the marker before it, as `@task-checked` or `@task-unchecked`. An ordered marker
 also comes in a match with the list holding it, rooted at `list`, so every ordered marker of
@@ -62,7 +63,9 @@ A deletion rather than a replacement leaves the cursor at the end of what is kep
 - `'after`: a new item after the line's last marker (Enter, `o`);
 - `'before`: a new item before it (`O`);
 - `'remove`: the marker is gone, one event for each marker an ended list deletes, so ending
-  `1. - ` renumbers the outer list too.
+  `1. - ` renumbers the outer list too;
+- `'anchor`: the marker's number was edited, so it keeps that number and the items after it
+  count on from it (see [Renumbering after an edit](#renumbering-after-an-edit)).
 
 Only ordered markers count. Each list that holds an event is walked in order. The walk starts
 at its first event: an item before it keeps its number, and each later slot, new items
@@ -73,6 +76,28 @@ the marker.
 
 The result is the renumbering edits and, per event, its new item's number. A bullet gets
 `#f`, and so does an event with no marker: a quote line's, or a plain line's.
+
+## Renumbering after an edit
+
+When an edit changes the number of an ordered item, the items after it in its list count on
+from the new number: changing `3.` to `1.` turns the `4.` after it into `2.`. The items
+before it keep theirs. The pass needs the edited text's tree, so it runs from the
+`on-syntax-changed` handler, and `md-lists/renumber-edited!` reads what changed since its last
+pass with `buffer-changes-since`. It skips a buffer with no unsaved edits, so a reload from
+disk or an undo back to the saved text renumbers nothing, and a read-only one.
+
+`md-lists/number-changed?` tells an edited number from the hunks alone. A hunk's new-side word
+spans mark what changed inside a line and leave out a line that changed whole, so a marker's
+number changed when its line has no span (an inserted or rewritten line), when the hunk has no
+word spans (too large to compare), or when a span overlaps its digits. Typing in an item's
+text leaves its digits outside every span. Each such marker is an `'anchor` event; a later
+anchor starts the counting again, so a pasted run of items keeps its own numbers.
+
+The edit goes through the first pane `buffer-panes` returns, the focused one when it shows the
+buffer, so while typing it joins the Insert session's undo group. A Normal-mode edit such as
+`r1` has already made its undo step, so the renumbering is a second one. Undoing it fires no
+new renumbering: each restored number already follows the one before it. The pass notes the
+generation after its own edit, so it does not read that edit as the user's.
 
 ## Order of edits
 

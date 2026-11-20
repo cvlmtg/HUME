@@ -23,7 +23,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 |---|---|---|---|
 | `'preview` | bool | `#t` | Whether the preview starts on for each buffer. Popups are drawn either way |
 | `'rule-width` | integer ≥ 1 | `40` | How many `─` a horizontal rule draws. Plugins cannot read the pane width |
-| `'continue-lists` | bool | `#t` | Whether Enter, `o` and `O` continue a list or quote in each Markdown buffer |
+| `'continue-lists` | bool | `#t` | Whether Enter, `o` and `O` continue a list or quote in each Markdown buffer, and an edited item number renumbers the items after it |
 
 ## Commands
 
