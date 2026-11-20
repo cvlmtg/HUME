@@ -50,6 +50,16 @@ fn a_task_item_continues_with_an_unchecked_box() {
 }
 
 #[test]
+fn an_ordered_task_item_continues_numbered_with_an_unchecked_box() {
+    assert_eq!(entered("1. [x] a-[\n]>"), "1. [x] a\n2. [ ] -[\n]>");
+}
+
+#[test]
+fn a_task_bullet_after_an_ordered_marker_continues_the_inner_list_with_a_box() {
+    assert_eq!(entered("1. - [ ] a-[\n]>"), "1. - [ ] a\n   - [ ] -[\n]>");
+}
+
+#[test]
 fn a_nested_bullet_continues_at_its_own_indent() {
     assert_eq!(entered("- a\n  - b-[\n]>"), "- a\n  - b\n  - -[\n]>");
 }

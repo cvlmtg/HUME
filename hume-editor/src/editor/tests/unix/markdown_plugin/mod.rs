@@ -429,6 +429,14 @@ fn task_boxes_become_checkboxes() {
 }
 
 #[test]
+fn an_ordered_items_task_box_stays_raw() {
+    let mut p = preview();
+    let bid = p.open("a.md", "1. [ ] a\n");
+    p.render();
+    assert_eq!(p.conceals(bid), []);
+}
+
+#[test]
 fn quote_marker_becomes_a_bar() {
     let mut p = preview();
     // "> a\n" 0..4, "> > b\n" 4..10: one `>` per quote level, the space

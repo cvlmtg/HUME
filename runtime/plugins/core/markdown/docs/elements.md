@@ -12,7 +12,7 @@ Each element is one or two capture names in `queries.scm` and one function in
 | ATX heading | the `atx_hN_marker` of an `atx_heading` | The marker becomes a Braille glyph of N dots and `▌` (`⠈▌`, `⠘▌`, `⠸▌`, `⠹▌`, `⠻▌`, `⠿▌`), scope `markup.heading.N.marker`; the space after it stays. The `inline` gets `markup.heading.N.text`, the line `markup.heading.N.line` |
 | Setext heading | `setext_heading` with `setext_hN_underline` | No conceal: the `inline` gets `markup.heading.N.text`, every line of the heading `markup.heading.N.line` |
 | Bullet | `list_marker_minus`, `_plus`, `_star` | Its first char becomes `•`, unscoped, keeping its syntax color. Ordered markers stay raw |
-| Task | `task_list_marker_unchecked`, `_checked` | Bullet and box become `☐` or `☑`, scope `markup.list.unchecked` or `markup.list.checked`. A box starts where its bullet ends |
+| Task | `task_list_marker_unchecked`, `_checked` after a bullet in its `list_item` | Bullet and box become `☐` or `☑`, scope `markup.list.unchecked` or `markup.list.checked`. An ordered item's box stays raw |
 | Quote marker | `block_quote_marker`, and each `>` in a `block_continuation` | `┃`, scope `markup.quote`; the space after it stays |
 | Lazy quote line | a `block_quote` line with no marker | `┃ ` inserted at the first non-blank char |
 | Rule | `thematic_break` | `─` × `'rule-width`, scope `punctuation.special` |

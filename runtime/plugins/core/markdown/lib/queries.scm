@@ -6,7 +6,7 @@
          md-preview/quote-cols md-preview/bucket md-preview/extent
          md-preview/conceal md-preview/hidden-revealing
          md-preview/conceal-before? md-preview/group md-preview/runs-of md-preview/runs md-preview/children
-         md-preview/captured
+         md-preview/child md-preview/captured
          md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text
          md-lists/query)
 
@@ -103,6 +103,10 @@
 ;;; The second entry of each match in `run`.
 (define (md-preview/children run) (map car (cdr run)))
 
+;;; The second entry of the first match in `run` that has one, or `#f`.
+(define (md-preview/child run)
+  (let ([tail (findf pair? (cdr run))]) (and tail (car tail))))
+
 (define (md-preview/captured groups name)
   (map car (md-preview/runs-of groups name)))
 
@@ -127,9 +131,8 @@
   (string-append
     (apply string-append (map md-preview/atx-patterns md-preview/atx-levels))
     (apply string-append (map md-preview/setext-patterns md-preview/setext-levels))
-    "[(list_marker_minus) (list_marker_plus) (list_marker_star)] @bullet\n"
-    "(task_list_marker_unchecked) @task-unchecked\n"
-    "(task_list_marker_checked) @task-checked\n"
+    "(list_item [(list_marker_minus) (list_marker_plus) (list_marker_star)] @bullet\n"
+    "           . [(task_list_marker_unchecked) @task-unchecked (task_list_marker_checked) @task-checked]?)\n"
     "(block_quote) @quote\n"
     "(block_quote_marker) @quote-marker\n"
     "(block_continuation) @continuation\n"
@@ -158,7 +161,9 @@
 
 (define md-lists/query
   (string-append
-    "(list (list_item [(list_marker_minus) (list_marker_plus) (list_marker_star)] @bullet))\n"
+    "(list (list_item [(list_marker_minus) (list_marker_plus) (list_marker_star)] @bullet\n"
+    "                 . [(task_list_marker_unchecked) (task_list_marker_checked)]? @task))\n"
+    "(list (list_item [(list_marker_dot) (list_marker_parenthesis)] @ordered\n"
+    "                 . [(task_list_marker_unchecked) (task_list_marker_checked)]? @task))\n"
     "(list (list_item [(list_marker_dot) (list_marker_parenthesis)] @ordered)) @list\n"
-    "[(task_list_marker_unchecked) (task_list_marker_checked)] @task\n"
     "[(block_quote_marker) (block_continuation)] @quote-prefix\n"))

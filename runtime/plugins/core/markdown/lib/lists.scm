@@ -24,18 +24,18 @@
   (md-preview/skip-blanks text (+ (apply max bars) 1)))
 
 ;;; See docs/lists.md's "Prefixes".
-(define (md-lists/item info bullets ordered tasks quote-prefixes)
+(define (md-lists/item info marked quote-prefixes)
   (let* ([start (car info)]
          [text (cdr info)]
-         [markers (sort (append bullets ordered) md-preview/capture-before?)]
+         [markers (map car marked)]
          [bars (call! "stdlib/concat"
                       (map (lambda (c) (md-preview/quote-cols c start text)) quote-prefixes))]
          [item (hash 'start start 'text text 'markers markers 'bars bars 'marker #f 'task #f)])
-    (if (pair? markers)
-        (let* ([marker (last markers)]
-               [after (md-lists/end-col marker start text)]
-               [task (findf (lambda (c) (= (md-lists/col c start) after)) tasks)]
-               [after (if task (md-lists/end-col task start text) after)]
+    (if (pair? marked)
+        (let* ([last-marked (last marked)]
+               [marker (car last-marked)]
+               [task (cdr last-marked)]
+               [after (md-lists/end-col (or task marker) start text)]
                [inner (filter (lambda (col) (>= col after)) bars)])
           (if (pair? inner)
               (hash-insert item 'prefix-end (md-lists/past-bars inner text))
@@ -49,15 +49,14 @@
   (let* ([unique (md-lists/distinct lines)]
          [infos (map line-info unique)]
          [spans (map (lambda (info) (cons (car info) (+ (car info) (string-length (cdr info))))) infos)]
-         [on-lines (lambda (captures) (md-preview/bucket spans captures md-preview/capture-start))]
-         [ordered (sort (call! "stdlib/concat" (map md-preview/children (md-preview/runs-of groups "list")))
-                        md-preview/capture-before?)]
+         [marked (sort (map (lambda (run) (cons (car run) (md-preview/child run)))
+                            (append (md-preview/runs-of groups "bullet") (md-preview/runs-of groups "ordered")))
+                       (lambda (a b) (md-preview/capture-before? (car a) (car b))))]
          [items (map md-lists/item
                      infos
-                     (on-lines (md-preview/captured groups "bullet"))
-                     (on-lines ordered)
-                     (on-lines (md-preview/captured groups "task"))
-                     (on-lines (md-preview/captured groups "quote-prefix")))])
+                     (md-preview/bucket spans marked (lambda (m) (md-preview/capture-start (car m))))
+                     (md-preview/bucket spans (md-preview/captured groups "quote-prefix")
+                                        md-preview/capture-start))])
     (let loop ([lines lines] [unique unique] [items items] [out '()])
       (cond
         [(null? lines) (reverse out)]

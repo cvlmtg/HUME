@@ -58,20 +58,16 @@
         "task-checked" (cons "☑" "markup.list.checked")))
 
 (define (md-preview/lists! groups emit!)
-  (let ([tasks (foldl (lambda (t table) (hash-insert table (md-preview/capture-start t) t))
-                      (hash)
-                      (append (md-preview/captured groups "task-unchecked")
-                              (md-preview/captured groups "task-checked")))])
-    (for-each
-      (lambda (bullet)
-        (let* ([start (md-preview/capture-start bullet)]
-               [task (hash-try-get tasks (md-preview/capture-end bullet))])
-          (emit! 'conceals
-                 (if task
-                     (let ([glyph (hash-ref md-preview/boxes (car task))])
-                       (md-preview/conceal start (md-preview/capture-end task) (car glyph) (cdr glyph) #f))
-                     (md-preview/conceal start (+ start 1) "•" #f #f)))))
-      (md-preview/captured groups "bullet"))))
+  (for-each
+    (lambda (run)
+      (let ([start (md-preview/capture-start (car run))]
+            [task (md-preview/child run)])
+        (emit! 'conceals
+               (if task
+                   (let ([glyph (hash-ref md-preview/boxes (car task))])
+                     (md-preview/conceal start (md-preview/capture-end task) (car glyph) (cdr glyph) #f))
+                   (md-preview/conceal start (+ start 1) "•" #f #f)))))
+    (md-preview/runs-of groups "bullet")))
 
 (define (md-preview/content-start text)
   (let ([at (md-preview/skip-blanks text 0)])

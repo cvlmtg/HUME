@@ -166,7 +166,8 @@ visible lines an element is fetched:
 | Headings | `atx_heading`, `setext_heading` | Only those on the given lines, a heading in a header row included |
 | Fences | `fenced_code_block` | Whole, when one line is visible: both fence lines and the span its band and reveal need |
 | Tables | `pipe_table` | Whole, when one row is visible: every row padded to the same widths, every conceal revealing over the table |
-| Bullets, task boxes, quote markers, continuations, rules | themselves | Only those on the visible lines. A code block's continuations are also rooted at `code_fence_content` and come back with the block (see [Fenced blocks](#fenced-blocks)) |
+| Bullets, task boxes | their `list_item` | Those whose item overlaps the ranges |
+| Quote markers, continuations, rules | themselves | Only those on the visible lines. A code block's continuations are also rooted at `code_fence_content` and come back with the block (see [Fenced blocks](#fenced-blocks)) |
 | Inline delimiters | their construct, e.g. `(emphasis (emphasis_delimiter) @span-delimiter) @span` | An emphasis starting on the last visible line returns both delimiters |
 | Links; escapes, entities, autolinks | the link; themselves | Those overlapping the ranges |
 
@@ -183,7 +184,8 @@ hiding more wins; the dropped one lay in hidden text anyway.
 first. Where the plugin needs a child together with its parent, the pattern captures the
 parent too: a fence with each of its hidden parts, a table with each row and each cell, a
 span with each delimiter, a link with its text, a list with each ordered marker.
-Tree-sitter reports one match per child, the parent repeated in each.
+Tree-sitter reports one match per child, the parent repeated in each. A list marker comes
+in one match with the task box after it, its sibling in their `list_item`.
 
 - `md-preview/runs` joins adjacent matches with one first capture into a run: that
   capture and the rest of each match. Matches are sorted by their captures, so a parent's

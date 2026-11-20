@@ -8,9 +8,9 @@ attached.
 
 The list query (`md-lists/query`) runs over the lines the cursors are on. Its marker
 patterns are rooted at `list`, so every marker of a list on those lines comes back,
-however far the list runs. An ordered marker comes in a match with the list holding it. A
-line in a fenced block that is not Markdown has no marker, so Enter, `o` and `O` act there
-as they always do.
+however far the list runs. A task box comes in a match with the marker before it, and an
+ordered marker also in one with the list holding it. A line in a fenced block that is not
+Markdown has no marker, so Enter, `o` and `O` act there as they always do.
 
 ## Prefixes
 
