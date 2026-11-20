@@ -109,6 +109,11 @@ fn ending_an_ordered_list_renumbers_the_items_after_it() {
 }
 
 #[test]
+fn ending_an_ordered_item_with_no_blank_after_its_marker_renumbers() {
+    assert_eq!(entered("1. a\n2.-[\n]>3. c\n"), "1. a\n-[\n]>2. c\n");
+}
+
+#[test]
 fn ending_a_nested_item_on_an_ordered_line_renumbers_the_outer_list() {
     assert_eq!(
         entered("1. - -[\n]>2. b\n3. c\n"),

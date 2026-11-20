@@ -141,12 +141,14 @@
          lists))
 
 (define (md-lists/digits marker line-of line-info)
-  (let ([text (md-preview/line-slice (md-preview/capture-start marker)
-                                     (md-preview/capture-end marker) line-of line-info)])
-    (let loop ([n 0])
-      (if (and (< n (string-length text)) (md-lists/digit? (string-ref text n)))
-          (loop (+ n 1))
-          (substring text 0 n)))))
+  (let* ([start (md-preview/capture-start marker)]
+         [info (line-info (line-of start))]
+         [text (cdr info)]
+         [col (- start (car info))])
+    (let loop ([end col])
+      (if (and (< end (string-length text)) (md-lists/digit? (string-ref text end)))
+          (loop (+ end 1))
+          (substring text col end)))))
 
 (define (md-lists/number marker line-of line-info)
   (string->number (md-lists/digits marker line-of line-info)))
@@ -179,13 +181,14 @@
              counter
              es))
     (define (renumber! m counter)
-      (unless (= counter (number m))
-        (let ([s (md-preview/capture-start m)])
-          (set-box! edits
-                    (cons (hash 'start-char s
-                                'end-char (+ s (string-length (md-lists/digits m line-of line-info)))
-                                'text (number->string counter))
-                          (unbox edits))))))
+      (let ([digits (md-lists/digits m line-of line-info)])
+        (unless (= counter (string->number digits))
+          (let ([s (md-preview/capture-start m)])
+            (set-box! edits
+                      (cons (hash 'start-char s
+                                  'end-char (+ s (string-length digits))
+                                  'text (number->string counter))
+                            (unbox edits)))))))
     (for-each
       (lambda (l)
         (let walk ([items (filter (lambda (m) (equal? (md-lists/list-of lists m) l)) ordered)]
