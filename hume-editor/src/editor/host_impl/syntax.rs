@@ -35,10 +35,9 @@ impl<'a> SyntaxHost for EditorHostImpl<'a> {
         );
         let buf = self.state.buffers.get(bid);
         let text = buf.text();
-        let mut matches = Vec::new();
-        if let Some(layers) = buf.current_layers() {
-            query.collect(layers, text.rope(), ranges, &mut matches);
-        }
+        let matches = buf.current_layers().map_or_else(Vec::new, |layers| {
+            query.collect(layers, text.rope(), ranges)
+        });
         Ok(captures_of(&query, matches))
     }
 }

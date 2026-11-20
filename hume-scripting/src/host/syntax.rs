@@ -31,13 +31,10 @@ pub struct CaptureEntry {
 pub trait SyntaxHost {
     /// The matches of `query`, compiled against `language`'s grammar, over
     /// each layer of `bid`'s tree parsed with that grammar, injected layers
-    /// included, each as the entries of its captures, sorted as
-    /// `hume_treesitter::captures::CaptureQuery::collect` sorts them: within
-    /// a match by start then end descending, enclosing node first, and the
-    /// matches by their entries, each distinct match once and none empty. A
-    /// node several matches capture is in each. The tree is brought up to
-    /// date with the text first; empty when the buffer has no tree for its
-    /// current text. `Err` naming the language when it has no grammar, and
+    /// included, each as the entries of its captures, sorted and deduplicated
+    /// as `hume_treesitter::captures::CaptureQuery::collect` does. The tree is
+    /// brought up to date with the text first; empty when the buffer has no
+    /// tree for its current text. `Err` naming the language when it has no grammar, and
     /// with the position and kind of the error when `query` does not compile.
     ///
     /// A match counts when the node its pattern is rooted at intersects the

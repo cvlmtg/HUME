@@ -4,8 +4,9 @@
          md-preview/capture-start md-preview/capture-end md-preview/capture-before? md-preview/line-span
          md-preview/inside? md-preview/line-slice md-preview/blank? md-preview/skip-while md-preview/skip-blanks
          md-preview/quote-cols md-preview/bucket md-preview/extent
-         md-preview/conceal
-         md-preview/conceal-before? md-preview/group md-preview/matched md-preview/runs md-preview/captured
+         md-preview/conceal md-preview/hidden-revealing
+         md-preview/conceal-before? md-preview/group md-preview/runs-of md-preview/runs md-preview/children
+         md-preview/captured
          md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text
          md-lists/query)
 
@@ -71,19 +72,23 @@
          [c (if scope (hash-insert c 'scope scope) c)])
     (if reveal (hash-insert c 'reveal reveal) c)))
 
+(define (md-preview/hidden-revealing captures reveal)
+  (map (lambda (c) (md-preview/conceal (md-preview/capture-start c) (md-preview/capture-end c) #f #f reveal))
+       captures))
+
 (define (md-preview/conceal-before? a b)
   (let ([a-start (hash-ref a 'start-char)] [b-start (hash-ref b 'start-char)])
     (or (< a-start b-start)
         (and (= a-start b-start) (> (hash-ref a 'end-char) (hash-ref b 'end-char))))))
 
 (define (md-preview/group matches)
-  (foldl (lambda (m groups)
-           (let ([name (car (car m))])
-             (hash-insert groups name (cons m (or (hash-try-get groups name) '())))))
+  (foldl (lambda (run groups)
+           (let ([name (car (car run))])
+             (hash-insert groups name (cons run (or (hash-try-get groups name) '())))))
          (hash)
-         (reverse matches)))
+         (reverse (md-preview/runs matches))))
 
-(define (md-preview/matched groups name)
+(define (md-preview/runs-of groups name)
   (or (hash-try-get groups name) '()))
 
 ;;; Per run of adjacent matches with one first entry, `(head . tails)`: that entry, and each match's other entries.
@@ -95,9 +100,11 @@
          '()
          (reverse matches)))
 
-;;; The first entry of each match of a kind whose patterns capture one node.
+;;; The second entry of each match in `run`.
+(define (md-preview/children run) (map car (cdr run)))
+
 (define (md-preview/captured groups name)
-  (map car (md-preview/matched groups name)))
+  (map car (md-preview/runs-of groups name)))
 
 (define (md-preview/heading n) (string-append "heading." (number->string n)))
 (define (md-preview/heading-text n) (string-append "heading-text." (number->string n)))

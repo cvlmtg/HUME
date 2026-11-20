@@ -68,7 +68,7 @@ impl CaptureQuery {
         &self.names
     }
 
-    /// Replace `out` with the matches over each layer of `layers` parsed
+    /// The matches over each layer of `layers` parsed
     /// with this query's bundle over the lines of `lines`, injected layers
     /// included, predicates evaluated against `rope`, each match as its
     /// captures. The ranges may come in any order and overlap; no line is
@@ -91,9 +91,8 @@ impl CaptureQuery {
         layers: &SyntaxLayers,
         rope: &Rope,
         lines: &[ExclusiveRange<ContentLine>],
-        out: &mut Vec<Vec<Capture>>,
-    ) {
-        out.clear();
+    ) -> Vec<Vec<Capture>> {
+        let mut out = Vec::new();
         let mut cursor = QueryCursor::new();
         for lines in join_line_ranges(lines.iter().copied()) {
             let (bytes, covering) = layers.covering_lines(rope, lines);
@@ -122,8 +121,9 @@ impl CaptureQuery {
                 }
             }
         }
-        out.sort_by(|a, b| a.iter().map(order_key).cmp(b.iter().map(order_key)));
+        out.sort_unstable_by(|a, b| a.iter().map(order_key).cmp(b.iter().map(order_key)));
         out.dedup();
+        out
     }
 }
 

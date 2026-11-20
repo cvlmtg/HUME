@@ -51,15 +51,14 @@ impl<'a> LanguageHost for EditorHostImpl<'a> {
                 "the parsed text is only valid during its format-text call".to_owned()
             })?;
         let (_, query) = self.capture_query(language, query)?;
-        let mut matches = Vec::new();
-        if let Some(layers) = markup.syntax.layers() {
+        let matches = markup.syntax.layers().map_or_else(Vec::new, |layers| {
             let text = &markup.text;
             let lines = [ExclusiveRange::new(
                 ContentLine::default(),
                 text.content_line_count().end_exclusive(),
             )];
-            query.collect(layers, text.rope(), &lines, &mut matches);
-        }
+            query.collect(layers, text.rope(), &lines)
+        });
         Ok(captures_of(&query, matches))
     }
 }

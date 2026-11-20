@@ -167,7 +167,7 @@ visible lines an element is fetched:
 | Fences | `fenced_code_block` | Whole, when one line is visible: both fence lines and the span its band and reveal need |
 | Tables | `pipe_table` | Whole, when one row is visible: every row padded to the same widths, every conceal revealing over the table |
 | Bullets, task boxes, quote markers, continuations, rules | themselves | Only those on the visible lines. A code block's continuations are also rooted at `code_fence_content` and come back with the block (see [Fenced blocks](#fenced-blocks)) |
-| Inline delimiters | their construct, e.g. `(emphasis (emphasis_delimiter) @span-delimiter)` | An emphasis starting on the last visible line returns both delimiters |
+| Inline delimiters | their construct, e.g. `(emphasis (emphasis_delimiter) @span-delimiter) @span` | An emphasis starting on the last visible line returns both delimiters |
 | Links; escapes, entities, autolinks | the link; themselves | Those overlapping the ranges |
 
 ## Overlapping conceals
@@ -185,11 +185,11 @@ parent too: a fence with each of its hidden parts, a table with each row and eac
 span with each delimiter, a link with its text, a list with each ordered marker.
 Tree-sitter reports one match per child, the parent repeated in each.
 
-- `md-preview/group` files a match under its first capture's name, the parent's when the
-  pattern captures one.
 - `md-preview/runs` joins adjacent matches with one first capture into a run: that
   capture and the rest of each match. Matches are sorted by their captures, so a parent's
-  matches are adjacent. A table's run nests a run per row.
+  matches are adjacent.
+- `md-preview/group` files each run under its first capture's name, the parent's when the
+  pattern captures one. A table's run groups its rows the same way, a run per row.
 
 ## Fenced blocks
 

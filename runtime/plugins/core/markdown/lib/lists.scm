@@ -50,7 +50,7 @@
          [infos (map line-info unique)]
          [spans (map (lambda (info) (cons (car info) (+ (car info) (string-length (cdr info))))) infos)]
          [on-lines (lambda (captures) (md-preview/bucket spans captures md-preview/capture-start))]
-         [ordered (sort (map (lambda (m) (car (cdr m))) (md-preview/matched groups "list"))
+         [ordered (sort (call! "stdlib/concat" (map md-preview/children (md-preview/runs-of groups "list")))
                         md-preview/capture-before?)]
          [items (map md-lists/item
                      infos
@@ -165,7 +165,7 @@
                             (unbox edits)))))))
     (for-each
       (lambda (run)
-        (let walk ([items (map car (cdr run))] [counter #f])
+        (let walk ([items (md-preview/children run)] [counter #f])
           (unless (null? items)
             (let* ([m (car items)]
                    [at (or (hash-try-get at-marker (md-preview/capture-start m)) '())]
@@ -180,7 +180,7 @@
                               [else #f])]
                    [counter (if (pair? afters) (assign! afters (or counter (+ (number m) 1))) counter)])
               (walk (cdr items) counter)))))
-      (md-preview/runs (md-preview/matched groups "list")))
+      (md-preview/runs-of groups "list"))
     (cons (unbox edits)
           (map (lambda (e) (hash-try-get (unbox numbers) (car e))) indexed))))
 

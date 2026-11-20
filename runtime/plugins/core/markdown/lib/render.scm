@@ -76,7 +76,7 @@
   (let* ([contents (md-preview/fence-contents blocks)]
          [groups (md-preview/group (md-preview/outside-fences blocks contents))]
          [elements (md-preview/block-elements groups ranges line-of line-info rule-width)]
-         [table-runs (md-preview/runs (md-preview/matched groups "table"))]
+         [table-runs (md-preview/runs-of groups "table")]
          [inline-ranges (append ranges
                                 (map (lambda (run) (md-preview/line-span line-of (car run))) table-runs))]
          [inline (if (language-has-grammar? "markdown.inline")

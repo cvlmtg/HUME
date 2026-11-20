@@ -182,11 +182,11 @@
   (let* ([spans (map (lambda (run) (md-preview/extent (car run))) runs)]
          [inline (sort inline md-preview/conceal-before?)]
          [layouts (map (lambda (run conceals)
-                         (let* ([rows (map (lambda (row) (cons (car row) (map car (cdr row))))
-                                           (md-preview/runs (cdr run)))]
-                                [of-kind (lambda (name)
-                                           (filter (lambda (row) (equal? (car (car row)) name)) rows))])
-                           (md-preview/layout (car run) (of-kind "table-row") (of-kind "table-delimiter-row")
+                         (let* ([kinds (md-preview/group (cdr run))]
+                                [rows (lambda (name)
+                                        (map (lambda (row) (cons (car row) (md-preview/children row)))
+                                             (md-preview/runs-of kinds name)))])
+                           (md-preview/layout (car run) (rows "table-row") (rows "table-delimiter-row")
                                               conceals line-of line-info)))
                        runs
                        (md-preview/bucket spans inline md-preview/char-start))])

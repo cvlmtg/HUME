@@ -124,12 +124,9 @@
     (lambda (run)
       (let ([span (md-preview/line-span line-of (car run))])
         (emit! 'bands (md-preview/band span "markup.raw.block.line"))
-        (for-each
-          (lambda (d)
-            (emit! 'conceals (md-preview/conceal (md-preview/capture-start d) (md-preview/capture-end d)
-                                                 #f #f span)))
-          (map car (cdr run)))))
-    (md-preview/runs (md-preview/matched groups "fence"))))
+        (for-each (lambda (c) (emit! 'conceals c))
+                  (md-preview/hidden-revealing (md-preview/children run) span))))
+    (md-preview/runs-of groups "fence")))
 
 (define (md-preview/block-elements groups ranges line-of line-info rule-width)
   (let* ([found (box (hash 'conceals '() 'bands '() 'highlights '()))]

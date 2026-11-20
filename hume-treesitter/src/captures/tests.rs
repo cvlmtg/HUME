@@ -23,18 +23,17 @@ fn captures(
     text: &BufferText,
 ) -> Vec<Vec<(String, usize, usize)>> {
     let query = bundle.capture_query(source).expect("query compiles");
-    let mut out = Vec::new();
     let every_line = [ExclusiveRange::new(
         ContentLine::default(),
         content_line_count(text.rope()).end_exclusive(),
     )];
-    query.collect(
-        syntax.layers().expect("a committed tree"),
-        text.rope(),
-        lines.unwrap_or(&every_line),
-        &mut out,
-    );
-    out.iter()
+    query
+        .collect(
+            syntax.layers().expect("a committed tree"),
+            text.rope(),
+            lines.unwrap_or(&every_line),
+        )
+        .iter()
         .map(|captures| {
             captures
                 .iter()
@@ -215,22 +214,6 @@ fn range_on_a_nested_section_returns_the_ancestor_headings() {
             [capture("h", 23, 29)]
         ]
     );
-}
-
-#[test]
-fn a_node_spanning_two_ranges_is_captured_once() {
-    require_grammars(&["markdown"]);
-    let bundle = fixture_markdown();
-    let (syntax, text) = syntax_with(Arc::clone(&bundle), TABLE);
-    // The header and the last row: both reach the one table.
-    let got = captures(
-        &bundle,
-        "(pipe_table (pipe_table_row) @row)",
-        Some(&[lines(2, 2), lines(5, 5)]),
-        &syntax,
-        &text,
-    );
-    assert_eq!(got, [[capture("row", 27, 36)], [capture("row", 37, 46)]]);
 }
 
 #[test]

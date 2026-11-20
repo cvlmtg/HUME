@@ -75,16 +75,14 @@ fn bench_captures_in_a_range(c: &mut Criterion) {
 
     let first = ContentLine::new(PARAGRAPHS);
     let ranges = [ExclusiveRange::new(first, first.advance(ROWS))];
-    let mut out = Vec::new();
-    query.collect(layers, text.rope(), &ranges, &mut out);
     assert_eq!(
-        out.len(),
+        query.collect(layers, text.rope(), &ranges).len(),
         ROWS / 2,
         "one emphasis for each paragraph the range holds"
     );
 
     c.bench_function("captures_inline_range", |b| {
-        b.iter(|| query.collect(layers, text.rope(), black_box(&ranges), &mut out));
+        b.iter(|| query.collect(layers, text.rope(), black_box(&ranges)));
     });
 }
 
