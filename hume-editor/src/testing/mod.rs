@@ -7,12 +7,14 @@
 //! The headless editors the benches drive: [`SelectionHistoryBench`] for
 //! `benches/selection_history.rs`, [`ConcealBench`] for `benches/conceal.rs`,
 //! [`PluginRenderBench`] for `benches/markdown_preview.rs` and
-//! `benches/colorizer.rs`, and [`OnPasteBench`] for `benches/on_paste.rs`.
+//! `benches/colorizer.rs`, [`OnPasteBench`] for `benches/on_paste.rs`, and
+//! [`ListRenumberBench`] for `benches/markdown_lists.rs`.
 
 mod mock_host;
 pub use crate::editor::bench::{
-    ColorizerSample, ConcealBench, Keys, OnPasteBench, PasteHandlers, PluginRenderBench,
-    PreviewSample, SelectionHistoryBench, StoreSize, colorizer_bench, markdown_preview_bench,
+    ColorizerSample, ConcealBench, Keys, ListRenumberBench, ListSample, OnPasteBench,
+    PasteHandlers, PluginRenderBench, PreviewSample, SelectionHistoryBench, StoreSize,
+    colorizer_bench, markdown_preview_bench,
 };
 pub use mock_host::MockHost;
 

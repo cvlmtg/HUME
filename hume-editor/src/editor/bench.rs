@@ -2,8 +2,9 @@
 //! history (`benches/selection_history.rs`), a concealed Markdown buffer
 //! (`benches/conceal.rs`), and a file drawn by a real plugin: a Markdown
 //! buffer by `core:markdown` (`benches/markdown_preview.rs`) and color
-//! literals by `core:colorizer` (`benches/colorizer.rs`); and a paste over
-//! many selections with `on-paste` handlers (`benches/on_paste.rs`).
+//! literals by `core:colorizer` (`benches/colorizer.rs`); a paste over
+//! many selections with `on-paste` handlers (`benches/on_paste.rs`); and an
+//! ordered Markdown list `core:markdown` renumbers (`benches/markdown_lists.rs`).
 
 use std::path::Path;
 
@@ -862,5 +863,103 @@ impl OnPasteBench {
         self.editor
             .handle_input(termina::event::Event::Paste(text.to_owned()));
         self.editor.settle();
+    }
+}
+
+/// The ordered list a [`ListRenumberBench`] opens, one `<number>. item <k>`
+/// line per item.
+#[derive(Clone, Copy, Debug)]
+pub enum ListSample {
+    /// This many items, numbered from 1 on.
+    Ordered(usize),
+    /// This many items, each numbered 1.
+    Uniform(usize),
+}
+
+impl ListSample {
+    /// How many items the list holds.
+    pub fn items(self) -> usize {
+        match self {
+            Self::Ordered(n) | Self::Uniform(n) => n,
+        }
+    }
+
+    /// The number the item at `index`, from 0, carries in a list numbered as
+    /// this sample is.
+    pub fn number(self, index: usize) -> usize {
+        match self {
+            Self::Ordered(_) => index + 1,
+            Self::Uniform(_) => 1,
+        }
+    }
+
+    fn text(self) -> String {
+        (0..self.items())
+            .map(|k| format!("{}. item {k}\n", self.number(k)))
+            .collect()
+    }
+}
+
+/// A headless editor on a Markdown file holding one ordered list, with
+/// `core:markdown` loaded by its `init.scm` and the preview off, so a render
+/// debounce that fires inside a timed loop draws nothing.
+pub struct ListRenumberBench {
+    editor: Editor,
+}
+
+impl ListRenumberBench {
+    /// Writes `sample` to `<root>/list.md` and the `init.scm` that loads
+    /// `core:markdown`, its `'continue-lists` set to `lists`, under `root`,
+    /// starts the editor on the file with the `<root>/data/` data dir and the
+    /// repo's `runtime/`, and waits for the file's first parse.
+    ///
+    /// # Panics
+    /// Panics if the editor cannot start, the parse does not land, or the
+    /// setup logs an error.
+    pub fn new(root: &Path, sample: ListSample, lists: bool) -> Self {
+        let config = root.join("config");
+        std::fs::create_dir_all(&config).expect("the config dir is made");
+        let init = format!(
+            "(load-plugin! \"core:stdlib\")\n\
+             (load-plugin! \"core:markdown\" #:config (hash 'preview #f 'continue-lists {}))\n",
+            if lists { "#t" } else { "#f" }
+        );
+        std::fs::write(config.join("init.scm"), init).expect("init.scm is written");
+        let file = root.join("list.md");
+        std::fs::write(&file, sample.text()).expect("the bench file is written");
+        let dirs = Dirs {
+            config: Some(config),
+            data: Some(root.join("data")),
+            runtime: Some(
+                Path::new(env!("CARGO_MANIFEST_DIR"))
+                    .parent()
+                    .expect("hume-editor sits under the workspace root")
+                    .join("runtime"),
+            ),
+            ..Dirs::none()
+        };
+        let mut editor = headless_editor(&file, dirs, ConfigSource::Default);
+        let parsed = (0..SETUP_TRIES).any(|_| {
+            editor.settle();
+            let parsed = editor.doc().current_layers().is_some();
+            if !parsed {
+                std::thread::sleep(SETUP_PAUSE);
+            }
+            parsed
+        });
+        assert!(parsed, "the list's first parse did not land");
+        Keys::parse(UNDO_LEVELS).press(&mut editor);
+        assert_setup_clean(&editor);
+        Self { editor }
+    }
+
+    /// Feeds `keys` one at a time, settling after each as `run_keys` does.
+    pub fn press(&mut self, keys: &Keys) {
+        keys.press(&mut self.editor);
+    }
+
+    /// The focused buffer's text.
+    pub fn text(&self) -> String {
+        self.editor.doc().text().to_string()
     }
 }

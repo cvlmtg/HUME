@@ -97,3 +97,7 @@ harness = false
 [[bench]]
 name = "on_paste"
 harness = false
+
+[[bench]]
+name = "markdown_lists"
+harness = false
