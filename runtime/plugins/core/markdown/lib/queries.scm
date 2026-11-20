@@ -2,7 +2,7 @@
 
 (provide md-preview/block-query md-preview/inline-query md-preview/atx-levels md-preview/setext-levels
          md-preview/capture-start md-preview/capture-end md-preview/line-span md-preview/inside?
-         md-preview/line-slice md-preview/bucket md-preview/extent md-preview/records
+         md-preview/line-slice md-preview/blank? md-preview/skip-blanks md-preview/bucket md-preview/extent md-preview/records
          md-preview/conceal
          md-preview/conceal-before? md-preview/group md-preview/captured
          md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text
@@ -21,6 +21,13 @@
 (define (md-preview/inside? capture container)
   (and (>= (md-preview/capture-start capture) (md-preview/capture-start container))
        (<= (md-preview/capture-end capture) (md-preview/capture-end container))))
+
+(define (md-preview/blank? c) (or (char=? c #\space) (char=? c #\tab)))
+
+(define (md-preview/skip-blanks text col)
+  (if (and (< col (string-length text)) (md-preview/blank? (string-ref text col)))
+      (md-preview/skip-blanks text (+ col 1))
+      col))
 
 (define (md-preview/bucket spans items item-start)
   (let loop ([spans spans] [items items] [buckets '()])

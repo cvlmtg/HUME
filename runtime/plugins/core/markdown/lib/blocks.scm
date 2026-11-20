@@ -74,8 +74,8 @@
       (md-preview/captured groups "bullet"))))
 
 (define (md-preview/content-start text)
-  (let ([rest (trim-start text)])
-    (and (not (string=? rest "")) (- (string-length text) (string-length rest)))))
+  (let ([at (md-preview/skip-blanks text 0)])
+    (and (< at (string-length text)) at)))
 
 (define (md-preview/quotes! groups ranges line-of line-info emit!)
   (let ([marked (box (hash))])

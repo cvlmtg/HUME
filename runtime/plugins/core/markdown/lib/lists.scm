@@ -10,14 +10,7 @@
                            (< (md-preview/capture-start c) end)))
           captures))
 
-(define (md-lists/blank? c) (or (char=? c #\space) (char=? c #\tab)))
-
 (define (md-lists/digit? c) (and (char>=? c #\0) (char<=? c #\9)))
-
-(define (md-lists/skip-blanks text col)
-  (if (and (< col (string-length text)) (md-lists/blank? (string-ref text col)))
-      (md-lists/skip-blanks text (+ col 1))
-      col))
 
 (define (md-lists/last-index-of text ch end)
   (let loop ([i (- end 1)])
@@ -27,7 +20,7 @@
       [else (loop (- i 1))])))
 
 (define (md-lists/token-length text col)
-  (if (and (< col (string-length text)) (not (md-lists/blank? (string-ref text col))))
+  (if (and (< col (string-length text)) (not (md-preview/blank? (string-ref text col))))
       (+ 1 (md-lists/token-length text (+ col 1)))
       0))
 
@@ -46,7 +39,7 @@
           (md-lists/on-line (md-preview/captured groups "quote-prefix") start end)))
 
 (define (md-lists/past-quotes quotes start text)
-  (md-lists/skip-blanks text (apply max (map (lambda (c) (md-lists/end-col c start text)) quotes))))
+  (md-preview/skip-blanks text (apply max (map (lambda (c) (md-lists/end-col c start text)) quotes))))
 
 ;;; See docs/lists.md's "Prefixes".
 (define (md-lists/item line groups line-info)
@@ -69,7 +62,7 @@
           (if (pair? quotes)
               (hash-insert item 'prefix-end (md-lists/past-quotes quotes start text))
               (hash-insert (hash-insert (hash-insert item 'marker marker) 'task task)
-                           'prefix-end (md-lists/skip-blanks text after))))
+                           'prefix-end (md-preview/skip-blanks text after))))
         (let ([quotes (md-lists/quotes groups start end text 0)])
           (and (pair? quotes)
                (hash-insert item 'prefix-end (md-lists/past-quotes quotes start text)))))))
@@ -115,7 +108,7 @@
                [bar (md-lists/last-index-of text #\> cut)])
           (cond
             [(not bar) 0]
-            [(and (< (+ bar 1) cut) (md-lists/blank? (string-ref text (+ bar 1))))
+            [(and (< (+ bar 1) cut) (md-preview/blank? (string-ref text (+ bar 1))))
              (+ bar 2)]
             [else (+ bar 1)]))
         (or (md-lists/last-index-of text #\> (hash-ref item 'prefix-end)) 0))))
