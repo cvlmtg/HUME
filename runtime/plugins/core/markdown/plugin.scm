@@ -172,10 +172,11 @@
                     (range (line-of (selection-start-char sel))
                            (+ (line-of (- (selection-end-char sel) 1)) 1)))]
          [lines (md-lists/distinct (call! "stdlib/concat" (map covered sels)))]
-         [groups (md-lists/groups pane lines)]
-         [edits (md-lists/task-edits
-                  (md-lists/items lines groups line-info)
-                  (md-lists/items (covered (car (filter selection-primary? sels))) groups line-info))])
+         [items (md-lists/items lines (md-lists/groups pane lines) line-info)]
+         [primary-lines (covered (car (filter selection-primary? sels)))]
+         [primary-items (map cdr (filter (lambda (line-item) (member (car line-item) primary-lines))
+                                         (map cons lines items)))]
+         [edits (md-lists/task-edits items primary-items)])
     (unless (null? edits)
       (edit-text! pane edits))))
 

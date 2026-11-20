@@ -162,8 +162,8 @@
 (define md-lists/query
   (string-append
     "(list (list_item [(list_marker_minus) (list_marker_plus) (list_marker_star)] @bullet\n"
-    "                 . [(task_list_marker_unchecked) (task_list_marker_checked)]? @task))\n"
+    "                 . [(task_list_marker_unchecked) @task-unchecked (task_list_marker_checked) @task-checked]?))\n"
     "(list (list_item [(list_marker_dot) (list_marker_parenthesis)] @ordered\n"
-    "                 . [(task_list_marker_unchecked) (task_list_marker_checked)]? @task))\n"
+    "                 . [(task_list_marker_unchecked) @task-unchecked (task_list_marker_checked) @task-checked]?))\n"
     "(list (list_item [(list_marker_dot) (list_marker_parenthesis)] @ordered)) @list\n"
     "[(block_quote_marker) (block_continuation)] @quote-prefix\n"))

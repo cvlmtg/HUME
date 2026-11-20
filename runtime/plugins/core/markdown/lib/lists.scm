@@ -204,27 +204,22 @@
 
 ;; ── Task boxes ────────────────────────────────────────────────────────────────
 
-(define (md-lists/tasks items)
-  (filter (lambda (item) (and item (hash-ref item 'task))) items))
-
-(define (md-lists/box-end-col item)
-  (md-lists/end-col (hash-ref item 'task) (hash-ref item 'start) (hash-ref item 'text)))
+(define (md-lists/task? item)
+  (and item (hash-ref item 'task)))
 
 (define (md-lists/checked? item)
-  (not (equal? (substring (hash-ref item 'text)
-                          (md-lists/col (hash-ref item 'task) (hash-ref item 'start))
-                          (md-lists/box-end-col item))
-               "[ ]")))
+  (equal? (car (hash-ref item 'task)) "task-checked"))
 
 ;;; See docs/lists.md's "Task boxes".
 (define (md-lists/task-edits items primary-items)
-  (let* ([tasks (md-lists/tasks items)]
-         [deciders (append (md-lists/tasks primary-items) tasks)])
-    (if (null? deciders)
-        '()
-        (let ([check? (not (md-lists/checked? (car deciders)))])
+  (let ([decider (or (findf md-lists/task? primary-items) (findf md-lists/task? items))])
+    (if decider
+        (let ([check? (not (md-lists/checked? decider))])
           (map (lambda (item)
-                 (hash 'start-char (md-preview/capture-start (hash-ref item 'task))
-                       'end-char (+ (hash-ref item 'start) (md-lists/box-end-col item))
-                       'text (if check? "[x]" "[ ]")))
-               (filter (lambda (item) (not (eq? (md-lists/checked? item) check?))) tasks))))))
+                 (let ([task (hash-ref item 'task)])
+                   (hash 'start-char (md-preview/capture-start task)
+                         'end-char (md-preview/capture-end task)
+                         'text (if check? "[x]" "[ ]"))))
+               (filter (lambda (item) (and (md-lists/task? item) (not (eq? (md-lists/checked? item) check?))))
+                       items)))
+        '())))
