@@ -63,11 +63,13 @@ folder through its trigger; a folder the bare form cannot hold gets the opening 
 that listing continues in the angle form. An entry neither form can hold is left out.
 
 The source leaves the filtering to the menu's fuzzy matcher, so typing a name does not read
-the folder on every keystroke. Its `#:token-chars "/.-"` keep the answer while a path is
-typed; a space drops it until `Ctrl-Space` or a trigger character asks again. The answer is
-incomplete only while the part after the last `/` is empty: the first character typed asks
-it again, which a leading `.` needs to list the hidden entries, and every later one only
-narrows that answer. A typed `/` asks again through its trigger and lists the folder it
+the folder on every keystroke. Its `#:token-chars` hold every ASCII punctuation character
+but `(`, `)`, `<`, `>`, `#` and `\`, so the answer stays while a path is typed. A `(` among
+them would carry the token start back past `](`, and a `)` ends the link. A space or a
+parenthesis drops the answer until `Ctrl-Space` or a trigger character asks again. The
+answer is incomplete only while the part after the last `/` is empty: the first character
+typed asks it again, which a leading `.` needs to list the hidden entries, and every later
+one only narrows that answer. A typed `/` asks again through its trigger and lists the folder it
 ends. Erasing back over a `/` keeps the folder's answer, whose paths still match what is
 typed, until a `/` or `Ctrl-Space` asks again. Its empty answer outside a destination is
 complete, so typing elsewhere does not ask it again. `(`, `<` and `/` are Markdown trigger

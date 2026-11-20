@@ -59,6 +59,18 @@ fn typing_past_the_first_character_reads_the_folder_once() {
 }
 
 #[test]
+fn typing_a_plus_keeps_the_paths_listed() {
+    let mut p = inserting("a.md", "[x](-[\n]>");
+    p.write_notes(&["c++.md"]);
+    trigger_completion(&mut p.ed);
+    p.ed.feed_key(key('c'));
+    p.ed.settle();
+    p.ed.feed_key(key('+'));
+    p.ed.settle();
+    assert_eq!(menu_labels(&p.ed), ["c++.md"]);
+}
+
+#[test]
 fn a_directory_in_the_destination_lists_its_files() {
     let mut p = inserting("a.md", "[x](sub/-[\n]>");
     trigger_completion(&mut p.ed);
