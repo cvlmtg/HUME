@@ -105,10 +105,10 @@ fn a_url_in_another_language_pastes_as_is() {
 
 /// The plugin's editor on `notes/a.md` holding `marked`'s text, selected as
 /// `marked` marks it. `notes/` also holds `todo.md`, `my notes.md`,
-/// `(draft).md` and the folder `sub/`.
+/// `(draft).md`, `draft).md` and the folder `sub/`.
 fn editing_in_notes(marked: &str) -> Preview {
     let mut p = preview();
-    p.write_notes(&["todo.md", "my notes.md", "(draft).md"]);
+    p.write_notes(&["todo.md", "my notes.md", "(draft).md", "draft).md"]);
     p.open_marked("notes/a.md", marked);
     p
 }
@@ -150,14 +150,50 @@ fn an_absolute_path_makes_a_link_as_pasted() {
 }
 
 #[test]
-fn a_path_with_a_space_or_a_parenthesis_makes_an_angle_bracketed_link() {
+fn a_path_with_a_space_makes_an_angle_bracketed_link() {
     assert_eq!(
         pasted_in_notes("see -[foo]> here\n", "my notes.md"),
         "see [foo](<my notes.md>) here\n"
     );
+}
+
+#[test]
+fn a_path_with_paired_parentheses_makes_a_bare_link() {
     assert_eq!(
         pasted_in_notes("see -[foo]> here\n", "(draft).md"),
-        "see [foo](<(draft).md>) here\n"
+        "see [foo]((draft).md) here\n"
+    );
+}
+
+#[test]
+fn a_path_with_an_unpaired_parenthesis_makes_an_angle_bracketed_link() {
+    assert_eq!(
+        pasted_in_notes("see -[foo]> here\n", "draft).md"),
+        "see [foo](<draft).md>) here\n"
+    );
+}
+
+#[test]
+fn a_path_with_a_fragment_makes_a_link() {
+    assert_eq!(
+        pasted_in_notes("see -[foo]> here\n", "todo.md#intro"),
+        "see [foo](todo.md#intro) here\n"
+    );
+}
+
+#[test]
+fn a_fragment_alone_replaces_the_selection() {
+    assert_eq!(
+        pasted_in_notes("see -[foo]> here\n", "#intro"),
+        "see #intro here\n"
+    );
+}
+
+#[test]
+fn a_url_with_an_unpaired_parenthesis_makes_an_angle_bracketed_link() {
+    assert_eq!(
+        pasted_over("see -[foo]> here\n", "https://bar.baz/a(b"),
+        "see [foo](<https://bar.baz/a(b>) here\n"
     );
 }
 

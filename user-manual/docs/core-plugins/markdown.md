@@ -25,15 +25,16 @@ Every line the cursor or a selection touches shows its source, in every mode. Wh
 
 Pasting a URL over selected text makes a link: select `foo`, paste `https://example.com`, and get `[foo](https://example.com)`. It works with `p`, `P` and your terminal's paste shortcut, and one `u` brings the selected text back.
 
-Pasting the path of a file or folder does the same: over `foo`, `notes/todo.md` gives `[foo](notes/todo.md)`. It makes a link when the file or folder exists, a relative path being read from the Markdown file's folder. A path with a space or a parenthesis goes between `<` and `>`, as Markdown needs. In a buffer not yet saved to a file, only a URL makes a link.
+Pasting the path of a file or folder does the same: over `foo`, `notes/todo.md` gives `[foo](notes/todo.md)`. It makes a link when the file or folder exists, a relative path being read from the Markdown file's folder. A path to a heading works too: `notes/todo.md#today` makes a link when `notes/todo.md` exists. A URL or a path with a space, or with a parenthesis that has no partner, goes between `<` and `>`, as Markdown needs. In a buffer not yet saved to a file, only a URL makes a link.
 
 Pasting a URL or a path over a URL or a link replaces it, as does pasting at a cursor, over text that spans lines, or over text that holds a `[` or `]` or ends with `\`.
 
-In a link's destination, right after `](`, `Ctrl-Space` lists the files and folders next to the Markdown file. After a folder you have typed, such as `](notes/`, it lists the ones in that folder. Typing `(` right after `]`, or `/` after a folder's name, opens the list too.
+In a link's destination, right after `](` or `](<`, `Ctrl-Space` lists the files and folders next to the Markdown file. After a folder you have typed, such as `](notes/`, it lists the ones in that folder. Typing `(` right after `]`, `<` right after `](`, or `/` after a folder's name, opens the list too.
 
 - The list narrows as you type, and the letters need only appear in order, so `rdm` finds `README.md`.
 - Start the name with `.` to list hidden files.
-- A name with a space is inserted as it is, which Markdown doesn't read as a link.
+- A name with a space, or with a parenthesis that has no partner, goes between `<` and `>`. A folder's name gets only the `<`, so you can go on to a file inside it, which adds the `>`.
+- Typing a space inside `<` and `>` closes the list; `Ctrl-Space` opens it again.
 
 In a list, `Enter` starts the next item: a bullet gets the same bullet, a numbered item the next number, and a task item an unchecked box. A nested item continues at its own indent, and a quote line gets the next line's `>`. `o` and `O` open a line below or above in the same way. Adding an item to a numbered list renumbers the items after it, so a new item after `2.` turns the `3.` below it into `4.`.
 

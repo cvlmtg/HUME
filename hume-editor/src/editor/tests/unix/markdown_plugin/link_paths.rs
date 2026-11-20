@@ -76,6 +76,99 @@ fn accepting_a_directory_inserts_its_name_without_the_slash() {
 }
 
 #[test]
+fn accepting_a_name_with_a_space_puts_it_between_angle_brackets() {
+    let mut p = inserting("a.md", "[x](-[\n]>");
+    p.write_notes(&["my notes.md"]);
+    trigger_completion(&mut p.ed);
+    p.ed.feed_keys([key('m'), key('y')]);
+    p.ed.settle();
+    p.ed.feed_key(key_enter());
+    assert_eq!(text(&p.ed), "[x](<my notes.md>\n");
+}
+
+#[test]
+fn accepting_a_directory_with_a_space_leaves_its_angle_bracket_open() {
+    let mut p = inserting("a.md", "[x](-[\n]>");
+    p.write_notes(&["my dir/c.md"]);
+    trigger_completion(&mut p.ed);
+    p.ed.feed_keys([key('m'), key('y')]);
+    p.ed.settle();
+    p.ed.feed_key(key_enter());
+    assert_eq!(text(&p.ed), "[x](<my dir\n");
+    p.ed.feed_key(key('/'));
+    p.ed.settle();
+    assert_eq!(menu_labels(&p.ed), ["c.md"]);
+    p.ed.feed_key(key_enter());
+    assert_eq!(text(&p.ed), "[x](<my dir/c.md>\n");
+}
+
+#[test]
+fn ctrl_space_after_an_angle_bracket_lists_the_files() {
+    let mut p = inserting("a.md", "[x](<-[\n]>");
+    trigger_completion(&mut p.ed);
+    assert_eq!(menu_labels(&p.ed), ["a.md", "sub/", "todo.md"]);
+}
+
+#[test]
+fn accepting_after_an_angle_bracket_closes_it() {
+    let mut p = inserting("a.md", "[x](<-[\n]>");
+    trigger_completion(&mut p.ed);
+    p.ed.feed_key(key('t'));
+    p.ed.settle();
+    p.ed.feed_key(key_enter());
+    assert_eq!(text(&p.ed), "[x](<todo.md>\n");
+}
+
+#[test]
+fn accepting_before_a_closing_angle_bracket_keeps_one() {
+    let mut p = inserting("a.md", "[x](<sub/-[>]>)\n");
+    trigger_completion(&mut p.ed);
+    p.ed.feed_key(key_enter());
+    assert_eq!(text(&p.ed), "[x](<sub/b.md>)\n");
+}
+
+#[test]
+fn a_destination_with_an_opening_parenthesis_lists_its_paths() {
+    let mut p = inserting("a.md", "[x]((dr-[\n]>");
+    p.write_notes(&["(draft).md"]);
+    trigger_completion(&mut p.ed);
+    assert_eq!(menu_labels(&p.ed), ["(draft).md"]);
+}
+
+#[test]
+fn accepting_a_name_with_paired_parentheses_inserts_it_bare() {
+    let mut p = inserting("a.md", "[x](-[\n]>");
+    p.write_notes(&["(draft).md"]);
+    trigger_completion(&mut p.ed);
+    p.ed.feed_keys([key('d'), key('r')]);
+    p.ed.settle();
+    p.ed.feed_key(key_enter());
+    assert_eq!(text(&p.ed), "[x]((draft).md\n");
+}
+
+#[test]
+fn typing_an_angle_bracket_after_a_destination_opens_the_menu() {
+    let mut p = inserting("a.md", "[x](-[\n]>");
+    p.ed.feed_key(key('<'));
+    p.ed.settle();
+    assert_eq!(menu_labels(&p.ed), ["a.md", "sub/", "todo.md"]);
+}
+
+#[test]
+fn a_destination_with_a_fragment_lists_no_paths() {
+    let mut p = inserting("a.md", "[x](todo.md#in-[\n]>");
+    trigger_completion(&mut p.ed);
+    assert_eq!(menu_labels(&p.ed), Vec::<String>::new());
+}
+
+#[test]
+fn ctrl_space_after_a_closed_link_lists_no_paths() {
+    let mut p = inserting("a.md", "[a](b) c-[\n]>");
+    trigger_completion(&mut p.ed);
+    assert_eq!(menu_labels(&p.ed), Vec::<String>::new());
+}
+
+#[test]
 fn a_parent_directory_lists_its_files() {
     let mut p = inserting("sub/c.md", "[x](../-[\n]>");
     trigger_completion(&mut p.ed);

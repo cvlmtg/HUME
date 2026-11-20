@@ -73,6 +73,7 @@
 | `lib/entities.scm` | The named entities replaced, and the numeric references accepted |
 | `lib/render.scm` | `md-preview/elements` (fenced-block filter, inline ranges with each table's lines, conceal order), and for a buffer the ranges, the line reader, the two `syntax-captures` calls and the three setters |
 | `lib/text.scm` | `md-preview/elements` over a popup's text and the result `format-text/markdown` returns |
+| `lib/destinations.scm` | A destination written bare or between `<` and `>`, and a path read from the buffer's folder: see [`links.md`](links.md#destinations) |
 | `lib/links.scm` | `md-links/paste-link`, the `on-paste` handler's text: see [`links.md`](links.md#link-paste) |
 | `lib/paths.scm` | `md-paths/complete!`, the completion source's answer: see [`links.md`](links.md#link-paths) |
 | `lib/lists.scm` | A line's prefix, the next line's, ending a list, and renumbering: see [`lists.md`](lists.md) |

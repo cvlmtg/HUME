@@ -1,12 +1,10 @@
 ;;; core:markdown — links.scm. See docs/links.md.
 
-(require "paths.scm")
+(require "destinations.scm")
 
 (provide md-links/paste-link)
 
 (define md-links/url-pattern (regex "^[a-z][a-z0-9+.-]*://[^\\s]+$"))
-
-(define md-links/needs-angles-pattern (regex "[\\s()]"))
 
 (define md-links/breaks-link-pattern (regex "[\\[\\]]|\\\\$"))
 
@@ -24,10 +22,12 @@
 
 (define (md-links/destination pane pasted)
   (if (md-links/matches? pasted md-links/url-pattern)
-      pasted
-      (let ([path (and (not (string-contains? pasted "\n")) (md-paths/resolve pane pasted))])
-        (and path
-             (path-exists? path)
-             (if (md-links/matches? pasted md-links/needs-angles-pattern)
-                 (string-append "<" pasted ">")
-                 pasted)))))
+      (md-destinations/encode pasted)
+      (let ([path (and (not (starts-with? pasted "#"))
+                       (not (string-contains? pasted "\n"))
+                       (md-destinations/resolve pane (md-links/before-fragment pasted)))])
+        (and path (path-exists? path) (md-destinations/encode pasted)))))
+
+(define (md-links/before-fragment pasted)
+  (let ([parts (split-once pasted "#")])
+    (if (pair? parts) (car parts) pasted)))

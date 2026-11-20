@@ -156,13 +156,15 @@ impl Preview {
         select_marked(&mut self.ed, marked);
     }
 
-    /// Makes the folders `<tmp>/notes/sub/` and writes each of `files`,
-    /// empty, under `<tmp>/notes/`.
+    /// Makes the folder `<tmp>/notes/sub/` and writes each of `files`,
+    /// empty, under `<tmp>/notes/`, making the folders it names.
     fn write_notes(&self, files: &[&str]) {
         let notes = self.tmp.path().join("notes");
         std::fs::create_dir_all(notes.join("sub")).unwrap();
         for file in files {
-            std::fs::write(notes.join(file), "").unwrap();
+            let path = notes.join(file);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, "").unwrap();
         }
     }
 
