@@ -6,13 +6,11 @@
 (provide md-preview/format-text)
 
 (define (md-preview/text-lines text)
-  (let loop ([chars (string->list text)] [at 0] [start 0] [line '()] [lines '()])
-    (cond
-      [(null? chars) (list->vector (reverse lines))]
-      [(char=? (car chars) #\newline)
-       (loop (cdr chars) (+ at 1) (+ at 1) '()
-             (cons (cons start (list->string (reverse line))) lines))]
-      [else (loop (cdr chars) (+ at 1) start (cons (car chars) line) lines)])))
+  (let loop ([parts (split-many text "\n")] [start 0] [lines '()])
+    (if (null? (cdr parts))
+        (list->vector (reverse lines))
+        (loop (cdr parts) (+ start (string-length (car parts)) 1)
+              (cons (cons start (car parts)) lines)))))
 
 (define (md-preview/text-line-of lines)
   (lambda (char)
@@ -30,9 +28,7 @@
          [found (md-preview/elements
                   (parsed-text-captures parsed "markdown" md-preview/block-query)
                   (lambda (ranges)
-                    (if (language-has-grammar? "markdown.inline")
-                        (parsed-text-captures parsed "markdown.inline" md-preview/inline-query)
-                        '()))
+                    (parsed-text-captures parsed "markdown.inline" md-preview/inline-query))
                   (list (hash 'start-line 0 'end-line line-count))
                   (md-preview/text-line-of lines)
                   (lambda (line) (vector-ref lines line))

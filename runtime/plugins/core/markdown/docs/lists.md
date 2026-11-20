@@ -22,7 +22,7 @@ always do.
   line inside the item: its prefix runs past the last such `>` and the blanks that follow, and
   it has no last marker of its own.
 - **Quote line:** no marker starts on it, but a `block_quote_marker` or
-  `block_continuation` on it holds a `>`. Its prefix runs past the last of these and the
+  `block_continuation` on it holds a `>`. Its prefix runs past the last `>` in these and the
   blanks that follow.
 - **Otherwise** it is `#f`: plain text, and an item's continuation line, whose
   `block_continuation` is blanks only.
@@ -66,8 +66,8 @@ is `n+1`, a new item before `n.` is `n`, and a removed `n.` hands `n` to the ite
 it. Several cursors in one list number together. A wider number does not move the text after
 the marker.
 
-The result is the renumbering edits and, per event, its new item's number. A bullet, and a
-quote line's event, which has no marker, get `#f`.
+The result is the renumbering edits and, per event, its new item's number. A bullet gets
+`#f`, and so does an event with no marker: a quote line's, or a plain line's.
 
 ## Order of edits
 

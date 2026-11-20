@@ -75,10 +75,13 @@
          [groups (md-preview/group (md-preview/outside-fences blocks contents))]
          [elements (md-preview/block-elements groups ranges line-of line-info rule-width)]
          [inline-ranges (append ranges
-                                (md-preview/table-spans (md-preview/captured groups "table") line-of))]
-         [inline (md-preview/inline-elements
-                   (md-preview/outside-fences (inline-captures inline-ranges) contents)
-                   line-of line-info)]
+                                (map (lambda (t) (md-preview/line-span line-of t))
+                                     (md-preview/captured groups "table")))]
+         [inline (if (language-has-grammar? "markdown.inline")
+                     (md-preview/inline-elements
+                       (md-preview/outside-fences (inline-captures inline-ranges) contents)
+                       line-of line-info)
+                     '())]
          [tables (md-preview/table-elements groups inline ranges line-of line-info line-count)])
     (hash 'conceals (sort (map (lambda (c) (md-preview/clamped line-of line-info c))
                                (append (hash-ref elements 'conceals)
@@ -94,10 +97,8 @@
          [found (md-preview/elements
                   blocks
                   (lambda (inline-ranges)
-                    (if (language-has-grammar? "markdown.inline")
-                        (syntax-captures pane "markdown.inline" md-preview/inline-query
-                                         #:ranges inline-ranges)
-                        '()))
+                    (syntax-captures pane "markdown.inline" md-preview/inline-query
+                                     #:ranges inline-ranges))
                   ranges (car lines) (cdr lines) (buffer-line-count pane) rule-width)])
     (set-conceals! pane md-preview/source (hash-ref found 'conceals) #:overlaps 'drop)
     (set-line-backgrounds! pane md-preview/source (hash-ref found 'bands))

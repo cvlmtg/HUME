@@ -1,8 +1,9 @@
 ;;; core:markdown — queries.scm. See docs/elements.md.
 
 (provide md-preview/block-query md-preview/inline-query md-preview/atx-levels md-preview/setext-levels
-         md-preview/capture-start md-preview/capture-end md-preview/line-span md-preview/inside?
-         md-preview/line-slice md-preview/blank? md-preview/skip-blanks md-preview/bucket md-preview/extent md-preview/records
+         md-preview/capture-start md-preview/capture-end md-preview/capture-before? md-preview/line-span
+         md-preview/inside? md-preview/line-slice md-preview/blank? md-preview/skip-while md-preview/skip-blanks
+         md-preview/quote-cols md-preview/bucket md-preview/extent md-preview/records
          md-preview/conceal
          md-preview/conceal-before? md-preview/group md-preview/captured
          md-preview/heading md-preview/heading-text md-preview/setext md-preview/setext-text
@@ -14,6 +15,9 @@
 (define (md-preview/capture-start capture) (list-ref capture 1))
 (define (md-preview/capture-end capture) (list-ref capture 2))
 
+(define (md-preview/capture-before? a b)
+  (< (md-preview/capture-start a) (md-preview/capture-start b)))
+
 (define (md-preview/line-span line-of capture)
   (hash 'start-line (line-of (md-preview/capture-start capture))
         'end-line (+ (line-of (- (md-preview/capture-end capture) 1)) 1)))
@@ -24,10 +28,23 @@
 
 (define (md-preview/blank? c) (or (char=? c #\space) (char=? c #\tab)))
 
-(define (md-preview/skip-blanks text col)
-  (if (and (< col (string-length text)) (md-preview/blank? (string-ref text col)))
-      (md-preview/skip-blanks text (+ col 1))
+(define (md-preview/skip-while text col keep?)
+  (if (and (< col (string-length text)) (keep? (string-ref text col)))
+      (md-preview/skip-while text (+ col 1) keep?)
       col))
+
+(define (md-preview/skip-blanks text col)
+  (md-preview/skip-while text col md-preview/blank?))
+
+;;; The column of each `>` in `capture`, which lies on the line `text` starting at `start`, in order.
+(define (md-preview/quote-cols capture start text)
+  (let ([from (- (md-preview/capture-start capture) start)])
+    (let loop ([col (- (min (string-length text) (- (md-preview/capture-end capture) start)) 1)]
+               [cols '()])
+      (cond
+        [(< col from) cols]
+        [(char=? (string-ref text col) #\>) (loop (- col 1) (cons col cols))]
+        [else (loop (- col 1) cols)]))))
 
 (define (md-preview/bucket spans items item-start)
   (let loop ([spans spans] [items items] [buckets '()])

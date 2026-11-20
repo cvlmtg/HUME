@@ -35,9 +35,7 @@
             (map (lambda (entry)
                    (let* ([folder? (ends-with? entry "/")]
                           [target (string-append dir-part
-                                                 (if folder?
-                                                     (substring entry 0 (- (string-length entry) 1))
-                                                     entry))])
+                                                 (if folder? (trim-end-matches entry "/") entry))])
                      (hash "label" entry
                            "insertText" target
                            "filterText" target

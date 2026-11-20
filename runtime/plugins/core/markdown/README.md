@@ -9,7 +9,7 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 (load-plugin! "core:markdown" #:config (hash 'preview #t 'rule-width 40))
 ```
 
-- **Depends on:** `core:stdlib`, for config validation.
+- **Depends on:** `core:stdlib`, for config validation and the cursor offset link-path completion reads.
 - **Activates on:** the first `markdown` buffer, or any of its six commands
   (`manifest.scm`), the first Markdown popup's `format-text/markdown` call included. The
   manifest lists no events: a `#:languages` manifest may list no buffer event.
@@ -31,9 +31,9 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 |---|---|
 | `:toggle-markdown-preview` | Turn the preview off for the current buffer, clearing everything it drew, or back on, rendering at once |
 | `markdown/toggle-preview` | The same function, bindable |
-| `format-text/markdown` | `(format-text/markdown text parsed)`: what the preview draws for a text and its parsed tree, as the hash a text formatter returns. The editor calls it for every Markdown popup and the completion documentation box, and `call!` reaches it |
-| `markdown/enter` | Enter in a Markdown buffer: start the next list item or quote line, renumbering an ordered list, or end the list on an empty item; elsewhere, Enter's normal behaviour |
-| `markdown/open-below`, `markdown/open-above` | `o` and `O` in a Markdown buffer: open a line, continuing the list item or quote and renumbering an ordered list |
+| `format-text/markdown` | `(format-text/markdown text parsed)`, as the hash a text formatter returns; `call!` reaches it |
+| `markdown/enter` | Enter in a Markdown buffer |
+| `markdown/open-below`, `markdown/open-above` | `o` and `O` in a Markdown buffer |
 
 ## Documentation
 

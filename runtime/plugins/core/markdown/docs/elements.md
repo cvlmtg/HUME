@@ -65,8 +65,7 @@ selection on any row shows the whole table raw.
 - **Alignment** comes from the delimiter row: `:` at the start is left, at the end right,
   at both ends centre, none left. Odd centring padding puts the extra blank after.
 - **Borders:** one empty line between two tables carries the upper table's bottom border
-  alone. A top border needs the line above its line in the render's ranges, or no such
-  line: only a returned table tells the plugin where a table ends.
+  alone.
 
 The table-specific limitations are under [Limitations](architecture.md#limitations).
 

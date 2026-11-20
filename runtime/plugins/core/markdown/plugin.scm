@@ -41,10 +41,7 @@
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
 (register-hook! 'on-buffer-open
-  (lambda (pane)
-    (md-preview/warn-missing-grammars!)
-    (when md-lists/enabled
-      (attach-keymap! pane md-lists/keymap))))
+  (lambda (pane) (md-preview/warn-missing-grammars!)))
 
 (register-hook! 'on-viewport-change
   (lambda (pane range headers) (md-preview/render! pane)))
@@ -59,9 +56,7 @@
   (lambda (pane)
     (md-preview/remove-buffer! pane)
     (when (buffer-live? pane)
-      (md-preview/clear! pane)
-      (when md-lists/enabled
-        (detach-keymap! pane md-lists/keymap)))))
+      (md-preview/clear! pane))))
 
 ;; ── Links ─────────────────────────────────────────────────────────────────────
 
@@ -85,18 +80,21 @@
         '())))
 
 (define (md-lists/prefix-edits pane prefixes)
-  (let loop ([sels (buffer-selections pane)] [prefixes prefixes] [edits '()])
-    (if (null? prefixes)
-        edits
-        (loop (cdr sels) (cdr prefixes)
-              (let ([prefix (car prefixes)] [head (selection-head (car sels))])
-                (if prefix
-                    (let ([start (line->char-offset pane (char-offset->line pane head))]
-                          [insert (hash 'start-char head 'end-char head 'text prefix)])
-                      (if (< start head)
-                          (cons (hash 'start-char start 'end-char head 'text "") (cons insert edits))
-                          (cons insert edits)))
-                    edits))))))
+  (let ([sels (buffer-selections pane)])
+    (unless (= (length sels) (length prefixes))
+      (error "markdown: the selection count differs from the list prefixes planned for it"))
+    (apply append
+           (map (lambda (sel prefix)
+                  (if prefix
+                      (let* ([head (selection-head sel)]
+                             [start (line->char-offset pane (char-offset->line pane head))]
+                             [insert (hash 'start-char head 'end-char head 'text prefix)])
+                        (if (< start head)
+                            (list (hash 'start-char start 'end-char head 'text "") insert)
+                            (list insert)))
+                      '()))
+                sels
+                prefixes))))
 
 ;;; See docs/lists.md's "Order of edits".
 (define (md-lists/enter! pane)
@@ -173,7 +171,13 @@
 (when md-lists/enabled
   (bind-key! 'insert "enter" "markdown/enter" #:keymap md-lists/keymap)
   (bind-key! 'normal "o" "markdown/open-below" #:keymap md-lists/keymap)
-  (bind-key! 'normal "O" "markdown/open-above" #:keymap md-lists/keymap))
+  (bind-key! 'normal "O" "markdown/open-above" #:keymap md-lists/keymap)
+  (register-hook! 'on-buffer-open
+    (lambda (pane) (attach-keymap! pane md-lists/keymap)))
+  (register-hook! 'on-buffer-close
+    (lambda (pane)
+      (when (buffer-live? pane)
+        (detach-keymap! pane md-lists/keymap)))))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

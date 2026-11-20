@@ -2,25 +2,20 @@
 
 (require "queries.scm")
 
-(provide md-preview/table-spans md-preview/table-elements)
+(provide md-preview/table-elements)
 
 (define md-preview/table-scope "punctuation.special")
 
-(define (md-preview/table-spans tables line-of)
-  (map (lambda (t) (md-preview/line-span line-of t)) tables))
-
 (define (md-preview/char-start conceal) (hash-ref conceal 'start-char))
 
-(define (md-preview/cell-span cell line-of line-info)
+(define (md-preview/cell-span cell slice)
   (let ([start (md-preview/capture-start cell)])
     (cons start
-          (+ start (string-length
-                     (trim-end (md-preview/line-slice start (md-preview/capture-end cell)
-                                                      line-of line-info)))))))
+          (+ start (string-length (trim-end (slice start (md-preview/capture-end cell))))))))
 
-(define (md-preview/shown-width span conceals line-of line-info)
+(define (md-preview/shown-width span conceals slice)
   (let loop ([cs conceals] [at (car span)] [width 0])
-    (let ([raw (lambda (end) (string-width (md-preview/line-slice at end line-of line-info)))])
+    (let ([raw (lambda (end) (string-width (slice at end)))])
       (cond
         [(null? cs) (+ width (raw (cdr span)))]
         [(< (md-preview/char-start (car cs)) at) (loop (cdr cs) at width)]
@@ -32,12 +27,14 @@
                     (string-width (or (hash-try-get c 'text) "")))))]))))
 
 (define (md-preview/measure-row row cells conceals line-of line-info)
-  (let* ([spans (map (lambda (c) (md-preview/cell-span c line-of line-info)) cells)]
+  (let* ([info (line-info (line-of (md-preview/capture-start row)))]
+         [slice (lambda (start end) (substring (cdr info) (- start (car info)) (- end (car info))))]
+         [spans (map (lambda (c) (md-preview/cell-span c slice)) cells)]
          [owned (md-preview/bucket (map (lambda (s) (cons (car s) (- (cdr s) 1))) spans)
                                    conceals
                                    md-preview/char-start)])
     (cons row
-          (map (lambda (s cs) (list (car s) (cdr s) (md-preview/shown-width s cs line-of line-info)))
+          (map (lambda (s cs) (list (car s) (cdr s) (md-preview/shown-width s cs slice)))
                spans
                owned))))
 
@@ -70,8 +67,6 @@
     [else (cons (max (car widths) (car row-widths))
                 (md-preview/widen (cdr widths) (cdr row-widths)))]))
 
-(define (md-preview/spaces n) (make-string n #\space))
-
 (define (md-preview/rule left middle right widths)
   (string-append left
                  (string-join (map (lambda (w) (make-string (+ w 2) #\─)) widths) middle)
@@ -88,7 +83,7 @@
                 (string-append lead "│"
                                (apply string-append
                                       (map (lambda (column)
-                                             (string-append " " (md-preview/spaces (car column)) " │"))
+                                             (string-append " " (make-string (car column) #\space) " │"))
                                            columns)))
                 reveal)
               out)
@@ -98,9 +93,9 @@
           (loop (list-ref cell 1)
                 (cdr cells)
                 (cdr columns)
-                (string-append (md-preview/spaces (cdr pads)) " ")
+                (string-append (make-string (cdr pads) #\space) " ")
                 (cons (md-preview/table-conceal from (car cell)
-                                                (string-append lead "│ " (md-preview/spaces (car pads)))
+                                                (string-append lead "│ " (make-string (car pads) #\space))
                                                 reveal)
                       out))))))
 
@@ -122,9 +117,10 @@
                         (map (lambda (_) 0) alignments)
                         measured)]
          [line-start (car (line-info (hash-ref reveal 'start-line)))]
-         [indent (md-preview/spaces
+         [indent (make-string
                    (string-width (md-preview/line-slice line-start (md-preview/capture-start table)
-                                                        line-of line-info)))]
+                                                        line-of line-info))
+                   #\space)]
          [columns (md-preview/columns widths alignments)]
          [rules (map (lambda (d)
                        (md-preview/table-conceal (md-preview/capture-start (car d))
@@ -151,10 +147,7 @@
       '()))
 
 (define (md-preview/in-ranges? line ranges)
-  (and (call! "stdlib/find"
-              (lambda (r) (and (<= (hash-ref r 'start-line) line) (< line (hash-ref r 'end-line))))
-              ranges)
-       #t))
+  (findf (lambda (r) (and (<= (hash-ref r 'start-line) line) (< line (hash-ref r 'end-line)))) ranges))
 
 (define (md-preview/edges layouts ranges line-info line-count)
   (let* ([bottoms (map (lambda (t)
