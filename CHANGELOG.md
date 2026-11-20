@@ -8,6 +8,7 @@
 ### Plugins & scripting
 - `core:markdown` turns a URL or a file's path pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
 - `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and renumbers a numbered list.
+- `core:markdown` checks or unchecks a list's task boxes with `G X`.
 - The `on-paste` hook lets a plugin change the text a paste puts in a buffer.
 
 ## [0.22.2] - 2026-11-19

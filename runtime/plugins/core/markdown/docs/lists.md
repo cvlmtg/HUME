@@ -1,10 +1,10 @@
 # core:markdown — Lists
 
-Enter, `o` and `O` in a Markdown buffer go through the `"markdown/lists"` keymap. The
-`on-buffer-open` hook attaches it, and `on-buffer-close` detaches it from a buffer that stays
-open with another language. `markdown/enter` handles Enter, and `markdown/open-below` and
-`markdown/open-above` handle `o` and `O`. With `'continue-lists` off, nothing is bound or
-attached.
+Enter, `o`, `O` and `G X` in a Markdown buffer go through the `"markdown/lists"` keymap.
+The `on-buffer-open` hook attaches it, and `on-buffer-close` detaches it from a buffer that
+stays open with another language. `markdown/enter` handles Enter, `markdown/open-below` and
+`markdown/open-above` handle `o` and `O`, and `markdown/toggle-task` handles `G X`. With
+`'continue-lists` off, only `G X` is bound.
 
 The list query (`md-lists/query`) runs over the lines the cursors are on. Its marker
 patterns are rooted at `list`, so every marker of a list on those lines comes back,
@@ -89,3 +89,13 @@ them by index.
 `open-line-above` would be an undo step of its own. So the open runs first. The planned
 renumbering is then moved to the new text: each line shifts down by the lines opened at or
 above it, and keeps its column. One `edit-text!` applies it with the prefixes.
+
+## Task boxes
+
+`markdown/toggle-task` reads every line a selection touches, from the line of its first
+character to the line of its last, as `md-lists/item` reads it. A line's box is its item's
+`'task`, the box right after its last marker, so `1. - [ ] a` toggles the inner item's box.
+The first box on the primary selection's lines decides, or the first box of all when those
+lines hold none: when it is checked, `[x]` or `[X]`, every box becomes `[ ]`, and otherwise
+every box becomes `[x]`. Only a box whose state changes gets an edit, and a line with no box
+gets none.

@@ -163,16 +163,41 @@
   (lambda (pane) (md-lists/open! pane #f))
   #:repeatable #t)
 
+(define (md-lists/toggle-tasks! pane)
+  (let* ([reader (md-preview/line-reader pane)]
+         [line-of (car reader)]
+         [line-info (cdr reader)]
+         [sels (buffer-selections pane)]
+         [covered (lambda (sel)
+                    (range (line-of (selection-start-char sel))
+                           (+ (line-of (- (selection-end-char sel) 1)) 1)))]
+         [lines (md-lists/distinct (call! "stdlib/concat" (map covered sels)))]
+         [groups (md-lists/groups pane lines)]
+         [edits (md-lists/task-edits
+                  (md-lists/items lines groups line-info)
+                  (md-lists/items (covered (car (filter selection-primary? sels))) groups line-info))])
+    (unless (null? edits)
+      (edit-text! pane edits))))
+
+(define-command! "markdown/toggle-task"
+  "Check or uncheck the task boxes on the lines each selection touches: when the first box on the primary selection's lines, or else the first box of all, is checked, uncheck them all, and otherwise check them all."
+  md-lists/toggle-tasks!
+  #:repeatable #t)
+
+(bind-key! 'normal "G X" "markdown/toggle-task" #:keymap md-lists/keymap)
+
 (when md-lists/enabled
   (bind-key! 'insert "enter" "markdown/enter" #:keymap md-lists/keymap)
   (bind-key! 'normal "o" "markdown/open-below" #:keymap md-lists/keymap)
-  (bind-key! 'normal "O" "markdown/open-above" #:keymap md-lists/keymap)
-  (register-hook! 'on-buffer-open
-    (lambda (pane) (attach-keymap! pane md-lists/keymap)))
-  (register-hook! 'on-buffer-close
-    (lambda (pane)
-      (when (buffer-live? pane)
-        (detach-keymap! pane md-lists/keymap)))))
+  (bind-key! 'normal "O" "markdown/open-above" #:keymap md-lists/keymap))
+
+(register-hook! 'on-buffer-open
+  (lambda (pane) (attach-keymap! pane md-lists/keymap)))
+
+(register-hook! 'on-buffer-close
+  (lambda (pane)
+    (when (buffer-live? pane)
+      (detach-keymap! pane md-lists/keymap))))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

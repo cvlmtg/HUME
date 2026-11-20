@@ -1,0 +1,92 @@
+//! `G X` on a Markdown task item checks or unchecks its box.
+
+use super::*;
+
+/// The state after `G X` in Normal mode.
+fn toggled(marked: &str) -> String {
+    let mut p = editing(marked);
+    p.ed.feed_keys([key('G'), key('X')]);
+    state(&p.ed)
+}
+
+#[test]
+fn an_unchecked_box_gets_checked() {
+    assert_eq!(toggled("- [ ] -[a]>\n"), "- [x] -[a]>\n");
+}
+
+#[test]
+fn a_checked_box_gets_unchecked() {
+    assert_eq!(toggled("- [x] -[a]>\n"), "- [ ] -[a]>\n");
+}
+
+#[test]
+fn an_uppercase_checked_box_gets_unchecked() {
+    assert_eq!(toggled("- [X] -[a]>\n"), "- [ ] -[a]>\n");
+}
+
+#[test]
+fn an_ordered_task_item_gets_checked() {
+    assert_eq!(toggled("1. [ ] -[a]>\n"), "1. [x] -[a]>\n");
+}
+
+#[test]
+fn a_nested_task_item_gets_its_own_box_checked() {
+    assert_eq!(toggled("1. - [ ] -[a]>\n"), "1. - [x] -[a]>\n");
+}
+
+#[test]
+fn a_checked_first_box_unchecks_every_line_the_selection_covers() {
+    assert_eq!(
+        toggled("-[- [x] a\n- [ ] b\n- [x] c]>\n"),
+        "-[- [ ] a\n- [ ] b\n- [ ] c]>\n"
+    );
+}
+
+#[test]
+fn an_unchecked_first_box_checks_every_line_the_selection_covers() {
+    assert_eq!(
+        toggled("-[- [ ] a\n- [x] b\n- [ ] c]>\n"),
+        "-[- [x] a\n- [x] b\n- [x] c]>\n"
+    );
+}
+
+#[test]
+fn the_primary_selection_decides_for_the_others() {
+    assert_eq!(
+        toggled("- [ ] -[a]>\n- [x] -{b}>\n"),
+        "- [ ] -[a]>\n- [ ] -{b}>\n"
+    );
+}
+
+#[test]
+fn a_primary_without_a_box_leaves_the_first_box_to_decide() {
+    assert_eq!(
+        toggled("-{p}>lain\n\n- [x] -[a]>\n- [ ] -[b]>\n"),
+        "-{p}>lain\n\n- [ ] -[a]>\n- [ ] -[b]>\n"
+    );
+}
+
+#[test]
+fn an_item_without_a_box_is_left_alone() {
+    assert_eq!(toggled("- -[a]>\n"), "- -[a]>\n");
+}
+
+#[test]
+fn a_plain_line_is_left_alone() {
+    assert_eq!(toggled("-[[ ] a]>\n"), "-[[ ] a]>\n");
+}
+
+#[test]
+fn continue_lists_off_still_toggles_a_box() {
+    let mut p = preview_with(Some("(hash 'continue-lists #f)"), true);
+    p.open_marked("a.md", "- [ ] -[a]>\n");
+    p.ed.feed_keys([key('G'), key('X')]);
+    assert_eq!(state(&p.ed), "- [x] -[a]>\n");
+}
+
+#[test]
+fn g_x_in_another_language_leaves_the_text_alone() {
+    let mut p = editing_plain("- [ ] -[a]>\n");
+    p.ed.feed_keys([key('G'), key('X')]);
+    assert_eq!(state(&p.ed), "- [ ] -[a]>\n");
+}

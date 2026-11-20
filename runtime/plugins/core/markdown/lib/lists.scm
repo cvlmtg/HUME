@@ -4,7 +4,8 @@
 (require "state.scm")
 
 (provide md-lists/distinct md-lists/items md-lists/past-prefix? md-lists/empty? md-lists/ended-edit
-         md-lists/events md-lists/removed-events md-lists/renumber md-lists/prefixes)
+         md-lists/events md-lists/removed-events md-lists/renumber md-lists/prefixes
+         md-lists/task-edits)
 
 (define (md-lists/distinct lines)
   (reverse (foldl (lambda (line kept) (if (and (pair? kept) (= (car kept) line)) kept (cons line kept)))
@@ -200,3 +201,30 @@
 ;;; Per item, its next line's prefix, or `#f` for a line with no prefix.
 (define (md-lists/prefixes items numbers)
   (map (lambda (item number) (and item (md-lists/next-prefix item number))) items numbers))
+
+;; ── Task boxes ────────────────────────────────────────────────────────────────
+
+(define (md-lists/tasks items)
+  (filter (lambda (item) (and item (hash-ref item 'task))) items))
+
+(define (md-lists/box-end-col item)
+  (md-lists/end-col (hash-ref item 'task) (hash-ref item 'start) (hash-ref item 'text)))
+
+(define (md-lists/checked? item)
+  (not (equal? (substring (hash-ref item 'text)
+                          (md-lists/col (hash-ref item 'task) (hash-ref item 'start))
+                          (md-lists/box-end-col item))
+               "[ ]")))
+
+;;; See docs/lists.md's "Task boxes".
+(define (md-lists/task-edits items primary-items)
+  (let* ([tasks (md-lists/tasks items)]
+         [deciders (append (md-lists/tasks primary-items) tasks)])
+    (if (null? deciders)
+        '()
+        (let ([check? (not (md-lists/checked? (car deciders)))])
+          (map (lambda (item)
+                 (hash 'start-char (md-preview/capture-start (hash-ref item 'task))
+                       'end-char (+ (hash-ref item 'start) (md-lists/box-end-col item))
+                       'text (if check? "[x]" "[ ]")))
+               (filter (lambda (item) (not (eq? (md-lists/checked? item) check?))) tasks))))))

@@ -76,7 +76,7 @@
 | `lib/destinations.scm` | A destination written bare or between `<` and `>`, and a path read from the buffer's folder: see [`links.md`](links.md#destinations) |
 | `lib/links.scm` | `md-links/paste-link`, the `on-paste` handler's text: see [`links.md`](links.md#link-paste) |
 | `lib/paths.scm` | `md-paths/complete!`, the completion source's answer: see [`links.md`](links.md#link-paths) |
-| `lib/lists.scm` | A line's prefix, the next line's, ending a list, and renumbering: see [`lists.md`](lists.md) |
+| `lib/lists.scm` | A line's prefix, the next line's, ending a list, renumbering, and toggling task boxes: see [`lists.md`](lists.md) |
 
 `blocks.scm`, `table.scm`, `inline.scm` and `lists.scm` read no buffer: lines come in as
 procedures.
