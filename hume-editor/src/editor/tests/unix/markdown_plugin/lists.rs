@@ -222,12 +222,13 @@ fn two_cursors_in_one_list_each_start_an_item() {
 }
 
 #[test]
-fn enter_and_o_in_another_language_break_the_line_as_usual() {
+fn enter_and_o_in_another_language_run_their_global_bindings() {
     let mut p = editing_plain("- foo-[\n]>");
+    bind_global_probe(&mut p, &[("insert", "enter"), ("normal", "o")]);
     p.ed.feed_keys([key('i'), key_enter()]);
-    assert_eq!(state(&p.ed), "- foo\n-[\n]>");
-    p.ed.feed_keys([key_esc(), key('k'), key('o')]);
-    assert_eq!(state(&p.ed), "- foo\n-[\n]>\n");
+    assert_eq!(state(&p.ed), "!- foo-[\n]>");
+    p.ed.feed_keys([key_esc(), key('o')]);
+    assert_eq!(state(&p.ed), "!!- foo-[\n]>");
 }
 
 #[test]

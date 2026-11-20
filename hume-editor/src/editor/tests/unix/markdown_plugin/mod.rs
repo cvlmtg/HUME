@@ -120,6 +120,23 @@ fn editing_plain(marked: &str) -> Preview {
     p
 }
 
+/// Binds each `(mode, keys)` of `bindings` everywhere to a command that
+/// writes `!` at the start of the buffer. The plugin's keymap hides these
+/// bindings in a buffer it is attached to, so the `!` shows it is absent.
+fn bind_global_probe(p: &mut Preview, bindings: &[(&str, &str)]) {
+    let binds: String = bindings
+        .iter()
+        .map(|(mode, keys)| format!(r#"(bind-key! '{mode} "{keys}" "global-probe")"#))
+        .collect();
+    run(
+        &mut p.ed,
+        p.tmp.path(),
+        &format!(
+            r#"(define-command! "global-probe" "" (lambda (pane) (edit-text! pane (list (hash 'start-char 0 'end-char 0 'text "!"))))) {binds}"#
+        ),
+    );
+}
+
 impl Preview {
     /// Draws every frame at `width` x `height` cells.
     fn sized(self, width: u16, height: u16) -> Self {

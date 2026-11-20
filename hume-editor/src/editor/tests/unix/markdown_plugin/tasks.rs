@@ -77,6 +77,20 @@ fn a_selection_starting_inside_the_box_keeps_its_start() {
 }
 
 #[test]
+fn a_task_item_in_a_quote_gets_checked() {
+    assert_eq!(toggled("> - [ ] -[a]>\n"), "> - [x] -[a]>\n");
+}
+
+#[test]
+fn dot_repeats_the_toggle_on_the_line_it_is_on() {
+    let mut p = editing("- [ ] -[a]>\n- [ ] b\n");
+    p.ed.feed_keys([key('G'), key('X'), key('j'), key('.')]);
+    assert_eq!(state(&p.ed), "- [x] a\n- [x] -[b]>\n");
+    p.ed.feed_keys([key('.')]);
+    assert_eq!(state(&p.ed), "- [x] a\n- [ ] -[b]>\n");
+}
+
+#[test]
 fn an_item_without_a_box_is_left_alone() {
     assert_eq!(toggled("- -[a]>\n"), "- -[a]>\n");
 }
@@ -95,8 +109,9 @@ fn continue_lists_off_still_toggles_a_box() {
 }
 
 #[test]
-fn g_x_in_another_language_leaves_the_text_alone() {
+fn g_x_in_another_language_runs_its_global_binding() {
     let mut p = editing_plain("- [ ] -[a]>\n");
+    bind_global_probe(&mut p, &[("normal", "G X")]);
     p.ed.feed_keys([key('G'), key('X')]);
-    assert_eq!(state(&p.ed), "- [ ] -[a]>\n");
+    assert_eq!(state(&p.ed), "!- [ ] -[a]>\n");
 }
