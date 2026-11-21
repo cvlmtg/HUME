@@ -1,9 +1,10 @@
 # core:markdown — Lists
 
-Enter, `o`, `O` and `G X` in a Markdown buffer go through the `"markdown/lists"` keymap.
-The `on-buffer-open` hook attaches it, and `on-buffer-close` detaches it from a buffer that
-stays open with another language. `markdown/enter` handles Enter, `markdown/open-below` and
-`markdown/open-above` handle `o` and `O`, and `markdown/toggle-task` handles `G X`. With
+Enter, `o`, `O` and `G X` in a Markdown buffer go through the `"markdown"` keymap, as do
+`m i |`, `m a |` and `m |` ([`tables.md`](tables.md)). The `on-buffer-open` hook attaches it, and
+`on-buffer-close` detaches it from a buffer that stays open with another language.
+`markdown/enter` handles Enter, `markdown/open-below` and `markdown/open-above` handle `o`
+and `O`, and `markdown/toggle-task` handles `G X`. With
 `'continue-lists` off, only `G X` is bound and no `on-text-changed` handler is registered.
 
 The list query (`md-lists/query`) runs over the lines Enter's cursors are on, the lines `o`

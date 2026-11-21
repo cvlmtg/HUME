@@ -1,6 +1,6 @@
 # core:markdown
 
-Draws Markdown without its syntax, in the style of Obsidian's live preview. Every line a selection touches shows its source, and a code block or a table shows its source as a whole while a selection is inside it. It also turns a URL or a file's path pasted over selected text into a link, completes the path in a link's destination, continues a list or quote on Enter, `o` and `O`, and checks or unchecks task boxes on `G X`.
+Draws Markdown without its syntax, in the style of Obsidian's live preview. Every line a selection touches shows its source, and a code block or a table shows its source as a whole while a selection is inside it. It also turns a URL or a file's path pasted over selected text into a link, completes the path in a link's destination, continues a list or quote on Enter, `o` and `O`, checks or unchecks task boxes on `G X`, and selects a table cell on `m i |` or `m a |` or a table column on `m |`.
 
 ## Usage
 
@@ -9,8 +9,8 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 (load-plugin! "core:markdown" #:config (hash 'preview #t 'rule-width 40))
 ```
 
-- **Depends on:** `core:stdlib`, for config validation, list joins, the primary selection `G X` reads and the cursor offset link-path completion reads.
-- **Activates on:** the first `markdown` buffer, or any of its seven commands
+- **Depends on:** `core:stdlib`, for config validation, list joins, the primary selection `G X` and the table keys read and the cursor offset link-path completion reads.
+- **Activates on:** the first `markdown` buffer, or any of its ten commands
   (`manifest.scm`), the first Markdown popup's `format-text/markdown` call included. The
   manifest lists no events: a `#:languages` manifest may list no buffer event.
 - **Grammars:** `markdown` and `markdown.inline`. The first buffer opened without one
@@ -35,6 +35,9 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 | `markdown/enter` | Enter in a Markdown buffer |
 | `markdown/open-below`, `markdown/open-above` | `o` and `O` in a Markdown buffer |
 | `markdown/toggle-task` | `G X` in a Markdown buffer |
+| `markdown/select-cell` | `m i \|` in a Markdown buffer |
+| `markdown/select-around-cell` | `m a \|` in a Markdown buffer |
+| `markdown/select-column` | `m \|` in a Markdown buffer |
 
 ## Documentation
 
@@ -44,3 +47,4 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 | [`docs/elements.md`](docs/elements.md) | Block elements, inline elements, tables, node shapes |
 | [`docs/links.md`](docs/links.md) | Link paste and link-path completion |
 | [`docs/lists.md`](docs/lists.md) | List and quote continuation, ending a list, renumbering, task boxes |
+| [`docs/tables.md`](docs/tables.md) | Selecting table cells and columns |

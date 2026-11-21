@@ -46,6 +46,8 @@ A list numbered `1.`, `1.`, `1.`, or with any one number on every item, keeps it
 
 `G X` checks the task boxes on the lines your selections touch, or unchecks them all when the first box on the main selection's lines is checked. When the main selection's lines have no box, the first box of all decides. Lines without a box don't change.
 
+In a table, `m i |` selects the text of the cell each selection is in, without the blanks around it, and `m |` selects the cells of the main selection's column, one per row, the header included. A blank cell gets a cursor instead. `m a |` also takes the `|` before the cell and the blanks after it, so `d` removes the cell from its row; on the whole column `m |` selects, it takes the column's `---` too, so `m |`, `m a |`, `d` deletes the column. Cells follow the text: `\|` is a `|` inside a cell, `||` holds an empty cell, and lines count as a table only below a header with a `---` row. `m i |` and `m a |` drop the selections outside a table. `m |` leaves out a row with no cell in that column, or an empty one, and tells you how many it left out.
+
 With a Markdown [language server](../lsp.md#install-a-server) installed (`:lsp-install markdown` installs marksman), the symbol keys jump between sections. `z s` lists the file's headings to pick one, and `z S` searches the headings of every Markdown file in the project as you type. marksman reads the files you haven't opened only when the project's folder is a git repository or holds a `.marksman.toml` file.
 
 The preview draws ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block as written.
@@ -61,6 +63,9 @@ Only the lines on screen are drawn. After you scroll, the lines that came into v
 | `markdown/enter` | What `Enter` does in a Markdown buffer |
 | `markdown/open-below`, `markdown/open-above` | What `o` and `O` do in a Markdown buffer |
 | `markdown/toggle-task` | What `G X` does in a Markdown buffer |
+| `markdown/select-cell` | What `m i \|` does in a Markdown buffer |
+| `markdown/select-around-cell` | What `m a \|` does in a Markdown buffer |
+| `markdown/select-column` | What `m \|` does in a Markdown buffer |
 
 Configure with `#:config`:
 

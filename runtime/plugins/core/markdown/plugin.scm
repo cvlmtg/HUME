@@ -7,6 +7,7 @@
 (require "lib/paths.scm")
 (require "lib/queries.scm")
 (require "lib/lists.scm")
+(require "lib/cells.scm")
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
@@ -40,12 +41,12 @@
 
 ;; ── Lifecycle ─────────────────────────────────────────────────────────────────
 
-(define md-lists/keymap "markdown/lists")
+(define md-preview/keymap "markdown")
 
 (register-hook! 'on-buffer-open
   (lambda (pane)
     (md-preview/warn-missing-grammars!)
-    (attach-keymap! pane md-lists/keymap)))
+    (attach-keymap! pane md-preview/keymap)))
 
 (register-hook! 'on-viewport-change
   (lambda (pane range headers) (md-preview/render! pane)))
@@ -61,7 +62,7 @@
     (md-preview/remove-buffer! pane)
     (when (buffer-live? pane)
       (md-preview/clear! pane)
-      (detach-keymap! pane md-lists/keymap))))
+      (detach-keymap! pane md-preview/keymap))))
 
 ;; ── Links ─────────────────────────────────────────────────────────────────────
 
@@ -203,14 +204,230 @@
   md-lists/toggle-tasks!
   #:repeatable #t)
 
-(bind-key! 'normal "G X" "markdown/toggle-task" #:keymap md-lists/keymap)
+(bind-key! 'normal "G X" "markdown/toggle-task" #:keymap md-preview/keymap)
+
+;; ── Tables ────────────────────────────────────────────────────────────────────
+
+;;; A reader of the lines of `pane`'s text: `(info line)` is `(start-char . text)`, and `(row-at line)` the line's
+;;; row, `#f` for a line with no row or past the text.
+(define (md-tables/reader pane)
+  (let ([info (cdr (md-preview/line-reader pane))]
+        [count (buffer-line-count pane)]
+        [rows (box (hash))])
+    (cons info
+          (lambda (line)
+            (and (<= 0 line)
+                 (< line count)
+                 (if (hash-contains? (unbox rows) line)
+                     (hash-ref (unbox rows) line)
+                     (let ([row (md-cells/row (cdr (info line)))])
+                       (md-preview/box-insert! rows line row)
+                       row)))))))
+
+;;; The cell of a table under offset `head` as `(table (line . index))`, or `#f`. `tables` is a box of the tables
+;;; found so far, so that heads in one table look it up once.
+(define (md-tables/locate pane reader tables head)
+  (let* ([line (char-offset->line pane head)]
+         [row ((cdr reader) line)]
+         [table (and row
+                     (or (findf (lambda (t) (<= (md-cells/table-header t) line (md-cells/table-last t)))
+                                (unbox tables))
+                         (let ([found (md-cells/table-at (cdr reader) line)])
+                           (when found (set-box! tables (cons found (unbox tables))))
+                           found)))]
+         [index (and table (md-cells/index-at row (- head (car ((car reader) line)))))])
+    (and index (list table (cons line index)))))
+
+(define (md-tables/cell reader target)
+  (list-ref (md-cells/cells ((cdr reader) (car target))) (cdr target)))
+
+;;; The `(start . end)` chars of `target`, a `(line . index)` cell, as the `m a |` pattern finds it when
+;;; `around?`, else as the `m i |` one does.
+(define (md-tables/range reader target around?)
+  (let ([start (car ((car reader) (car target)))]
+        [cell (md-tables/cell reader target)])
+    (cons (+ start (if around? (md-cells/around-start cell) (md-cells/text-start cell)))
+          (+ start (md-cells/text-end cell)))))
+
+(define (md-tables/has-cell? reader line index)
+  (< index (length (md-cells/cells ((cdr reader) line)))))
+
+(define (md-tables/run-length flags)
+  (let loop ([rest (cdr flags)] [n 1])
+    (if (and (pair? rest) (equal? (car rest) (car flags))) (loop (cdr rest) (+ n 1)) n)))
+
+(define (md-tables/index-where pred? items)
+  (let loop ([items items] [i 0])
+    (cond
+      [(null? items) #f]
+      [(pred? (car items)) i]
+      [else (loop (cdr items) (+ i 1))])))
+
+;;; Drops the selections whose `flags` entry is `#f`, `primary` being the primary's index. See docs/tables.md's
+;;; "Dropping selections".
+(define (md-tables/keep! pane flags primary)
+  (let loop ([flags (append (list-tail flags primary) (take flags primary))])
+    (when (pair? flags)
+      (let ([n (md-tables/run-length flags)])
+        (call! (if (car flags) "cycle-primary-forward" "remove-primary-selection") pane n)
+        (loop (list-tail flags n))))))
+
+;;; Moves the primary `delta` places along the `n` selections, the shorter way round.
+(define (md-tables/cycle! pane delta n)
+  (cond
+    [(= delta 0) #f]
+    [(<= delta (- n delta)) (call! "cycle-primary-forward" pane delta)]
+    [else (call! "cycle-primary-backward" pane (- n delta))]))
+
+;;; The `(start . end)` chars of every match the sift with `pattern` finds in the selections `sels`, each on one
+;;; line.
+(define (md-tables/predicted pane reader sels around?)
+  (foldr (lambda (sel predicted)
+           (let* ([info ((car reader) (char-offset->line pane (selection-start-char sel)))]
+                  [start (car info)])
+             (foldr cons
+                    predicted
+                    (filter (lambda (token)
+                              (and (<= (selection-start-char sel) (car token))
+                                   (<= (cdr token) (selection-end-char sel))))
+                            (map (lambda (token) (cons (+ start (car token)) (+ start (cdr token))))
+                                 (md-cells/tokens (cdr info) around?))))))
+         '()
+         sels))
+
+;;; A map from the start of each `(start . end)` range in `ranges` to its end.
+(define (md-tables/by-start ranges)
+  (foldl (lambda (range m) (hash-insert m (car range) (cdr range))) (hash) ranges))
+
+(define (md-tables/in? by-start range)
+  (equal? (hash-try-get by-start (car range)) (cdr range)))
+
+;;; Turns the selections, one per line, into one per cell of `targets`, `(line . index)` cells, with the one of
+;;; `primary` primary. See docs/tables.md's "Selecting".
+(define (md-tables/select! pane reader targets primary around?)
+  (let* ([wanted (md-tables/by-start (map (lambda (target) (md-tables/range reader target around?)) targets))]
+         [predicted (md-tables/predicted pane reader (buffer-selections pane) around?)])
+    (unless (= (length targets) (length (filter (lambda (range) (md-tables/in? wanted range)) predicted)))
+      (error "markdown: a table cell lies outside the selected lines"))
+    (call! "sift-within" pane (if around? md-cells/around-pattern md-cells/inner-pattern))
+    (let* ([sels (buffer-selections pane)]
+           [found (map (lambda (sel) (cons (selection-start-char sel) (selection-end-char sel))) sels)])
+      (unless (equal? found predicted)
+        (error "markdown: the cells sift-within found differ from the line text"))
+      (let* ([flags (map (lambda (range) (md-tables/in? wanted range)) found)]
+             [from (md-tables/index-where selection-primary? sels)]
+             [kept (filter (lambda (range) (md-tables/in? wanted range)) found)]
+             [first-kept (findf (lambda (range) (md-tables/in? wanted range))
+                                (append (list-tail found from) (take found from)))]
+             [rank (lambda (range) (md-tables/index-where (lambda (r) (equal? r range)) kept))])
+        (md-tables/keep! pane flags from)
+        (md-tables/cycle! pane
+                          (modulo (- (rank (md-tables/range reader primary around?)) (rank first-kept)) (length kept))
+                          (length kept))
+        (unless around? (call! "trim-selection-whitespace" pane))))))
+
+;;; For `m a |`, `cells`, `(line . index)` cells, with the delimiter cell and the empty cells of each column of
+;;; `found`, `(table cell)` pairs, whose header and body cells with text `cells` all hold. See
+;;; docs/tables.md's "Cells and columns".
+(define (md-tables/with-whole-columns reader found cells)
+  (let ([held (foldl (lambda (cell m) (hash-insert m cell #t)) (hash) cells)]
+        [columns (md-tables/distinct-by (lambda (f) (cons (md-cells/table-header (car f)) (cdr (cadr f)))) found)])
+    (foldr (lambda (f targets)
+             (let* ([table (car f)]
+                    [index (cdr (cadr f))]
+                    [column (map (lambda (line) (cons line index))
+                                 (filter (lambda (line) (md-tables/has-cell? reader line index))
+                                         (md-cells/table-rows table)))]
+                    [empty-cell? (lambda (cell) (md-cells/empty? (md-tables/cell reader cell)))]
+                    [delimiter (cons (md-cells/table-delimiter table) index)])
+               (if (and (md-tables/has-cell? reader (car delimiter) index)
+                        (not (findf (lambda (cell) (and (not (empty-cell? cell)) (not (hash-contains? held cell))))
+                                    column)))
+                   (cons delimiter (foldr cons targets (filter empty-cell? column)))
+                   targets)))
+           cells
+           columns)))
+
+;;; The items of `items` whose `key` no item before them has.
+(define (md-tables/distinct-by key items)
+  (reverse (cdr (foldl (lambda (item acc)
+                         (if (hash-contains? (car acc) (key item))
+                             acc
+                             (cons (hash-insert (car acc) (key item) #t) (cons item (cdr acc)))))
+                       (cons (hash) '())
+                       items))))
+
+(define (md-tables/by-position a b)
+  (or (< (car a) (car b)) (and (= (car a) (car b)) (< (cdr a) (cdr b)))))
+
+(define (md-tables/select-cells! pane around?)
+  (let* ([reader (md-tables/reader pane)]
+         [tables (box '())]
+         [sels (buffer-selections pane)]
+         [found (filter (lambda (f) f)
+                        (map (lambda (sel) (md-tables/locate pane reader tables (selection-head sel))) sels))]
+         [selectable (filter (lambda (f) (not (md-cells/empty? (md-tables/cell reader (cadr f))))) found)]
+         [cells (map cadr selectable)]
+         [targets (sort (md-tables/distinct-by (lambda (cell) cell)
+                                               (if around? (md-tables/with-whole-columns reader selectable cells) cells))
+                        md-tables/by-position)]
+         [primary (md-tables/locate pane reader tables (selection-head (call! "stdlib/primary-selection" sels)))]
+         [primary-cell (and primary (cadr primary))])
+    (when (pair? targets)
+      (call! "collapse-selection" pane)
+      (call! (if around? "inner-paragraph" "select-line") pane)
+      (call! "split-selection-on-newlines" pane)
+      (md-tables/select! pane reader targets
+                         (if (member primary-cell targets) primary-cell (car targets))
+                         around?))))
+
+(define (md-tables/select-column! pane)
+  (let* ([reader (md-tables/reader pane)]
+         [found (md-tables/locate pane reader (box '())
+                                  (selection-head (call! "stdlib/primary-selection" (buffer-selections pane))))])
+    (when found
+      (let* ([own (cadr found)]
+             [index (cdr own)]
+             [rows (md-cells/table-rows (car found))]
+             [targets (map (lambda (line) (cons line index))
+                           (filter (lambda (line)
+                                     (and (md-tables/has-cell? reader line index)
+                                          (not (md-cells/empty? (md-tables/cell reader (cons line index))))))
+                                   rows))]
+             [skipped (- (length rows) (length targets))])
+        (when (pair? targets)
+          (call! "keep-primary-selection" pane)
+          (call! "collapse-selection" pane)
+          (call! "inner-paragraph" pane)
+          (call! "split-selection-on-newlines" pane)
+          (md-tables/select! pane reader targets (if (member own targets) own (car targets)) #f))
+        (when (> skipped 0)
+          (log! 'warning (string-append "markdown: skipped " (number->string skipped)
+                                        (if (= skipped 1) " row" " rows")
+                                        " with no selectable cell in this column")))))))
+
+(define-command! "markdown/select-cell"
+  "Select the text of the table cell under each selection, trimmed of blanks; a blank cell gives a cursor in it. Selections outside a table are dropped."
+  (lambda (pane) (md-tables/select-cells! pane #f)))
+
+(define-command! "markdown/select-around-cell"
+  "Select the table cell under each selection with the pipe before it and its blanks, so deleting it removes the cell from its row. When the selections hold every header and body cell with text of a column, the column's delimiter cell and the pipe before each of its empty cells are selected too. Selections outside a table are dropped."
+  (lambda (pane) (md-tables/select-cells! pane #t)))
+
+(define-command! "markdown/select-column"
+  "Select the text of every cell in the table column under the primary selection, one selection per row, the header included and the delimiter row left out."
+  md-tables/select-column!)
+
+(bind-key! 'normal "m i |" "markdown/select-cell" #:keymap md-preview/keymap)
+(bind-key! 'normal "m a |" "markdown/select-around-cell" #:keymap md-preview/keymap)
+(bind-key! 'normal "m |" "markdown/select-column" #:keymap md-preview/keymap)
 
 (when md-lists/enabled
   (register-hook! 'on-text-changed
     (lambda (pane changes) (md-lists/renumber-edited! pane changes)))
-  (bind-key! 'insert "enter" "markdown/enter" #:keymap md-lists/keymap)
-  (bind-key! 'normal "o" "markdown/open-below" #:keymap md-lists/keymap)
-  (bind-key! 'normal "O" "markdown/open-above" #:keymap md-lists/keymap))
+  (bind-key! 'insert "enter" "markdown/enter" #:keymap md-preview/keymap)
+  (bind-key! 'normal "o" "markdown/open-below" #:keymap md-preview/keymap)
+  (bind-key! 'normal "O" "markdown/open-above" #:keymap md-preview/keymap))
 
 ;; ── Commands ──────────────────────────────────────────────────────────────────
 

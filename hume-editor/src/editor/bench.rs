@@ -3,8 +3,9 @@
 //! (`benches/conceal.rs`), and a file drawn by a real plugin: a Markdown
 //! buffer by `core:markdown` (`benches/markdown_preview.rs`) and color
 //! literals by `core:colorizer` (`benches/colorizer.rs`); a paste over
-//! many selections with `on-paste` handlers (`benches/on_paste.rs`); and an
-//! ordered Markdown list `core:markdown` renumbers (`benches/markdown_lists.rs`).
+//! many selections with `on-paste` handlers (`benches/on_paste.rs`); and
+//! `core:markdown`'s list renumbering (`benches/markdown_lists.rs`) and table
+//! selection (`benches/markdown_tables.rs`).
 
 use std::path::Path;
 
@@ -866,7 +867,7 @@ impl OnPasteBench {
     }
 }
 
-/// The ordered list a [`ListRenumberBench`] opens, one `<number>. item <k>`
+/// An ordered list for a [`MarkdownBench`] to open, one `<number>. item <k>`
 /// line per item.
 #[derive(Clone, Copy, Debug)]
 pub enum ListSample {
@@ -893,22 +894,23 @@ impl ListSample {
         }
     }
 
-    fn text(self) -> String {
+    /// The list's text.
+    pub fn text(self) -> String {
         (0..self.items())
             .map(|k| format!("{}. item {k}\n", self.number(k)))
             .collect()
     }
 }
 
-/// A headless editor on a Markdown file holding one ordered list, with
-/// `core:markdown` loaded by its `init.scm` and the preview off, so a render
-/// debounce that fires inside a timed loop draws nothing.
-pub struct ListRenumberBench {
+/// A headless editor on a Markdown file, with `core:markdown` loaded by its
+/// `init.scm` and the preview off, so a render debounce that fires inside a
+/// timed loop draws nothing.
+pub struct MarkdownBench {
     editor: Editor,
 }
 
-impl ListRenumberBench {
-    /// Writes `sample` to `<root>/list.md` and the `init.scm` that loads
+impl MarkdownBench {
+    /// Writes `text` to `<root>/bench.md` and the `init.scm` that loads
     /// `core:markdown`, its `'continue-lists` set to `lists`, under `root`,
     /// starts the editor on the file with the `<root>/data/` data dir and the
     /// repo's `runtime/`, and waits for the file's first parse.
@@ -916,7 +918,7 @@ impl ListRenumberBench {
     /// # Panics
     /// Panics if the editor cannot start, the parse does not land, or the
     /// setup logs an error.
-    pub fn new(root: &Path, sample: ListSample, lists: bool) -> Self {
+    pub fn new(root: &Path, text: &str, lists: bool) -> Self {
         let config = root.join("config");
         std::fs::create_dir_all(&config).expect("the config dir is made");
         let init = format!(
@@ -925,8 +927,8 @@ impl ListRenumberBench {
             if lists { "#t" } else { "#f" }
         );
         std::fs::write(config.join("init.scm"), init).expect("init.scm is written");
-        let file = root.join("list.md");
-        std::fs::write(&file, sample.text()).expect("the bench file is written");
+        let file = root.join("bench.md");
+        std::fs::write(&file, text).expect("the bench file is written");
         let dirs = Dirs {
             config: Some(config),
             data: Some(root.join("data")),
@@ -947,7 +949,7 @@ impl ListRenumberBench {
             }
             parsed
         });
-        assert!(parsed, "the list's first parse did not land");
+        assert!(parsed, "the file's first parse did not land");
         Keys::parse(UNDO_LEVELS).press(&mut editor);
         assert_setup_clean(&editor);
         Self { editor }
@@ -961,5 +963,10 @@ impl ListRenumberBench {
     /// The focused buffer's text.
     pub fn text(&self) -> String {
         self.editor.doc().text().to_string()
+    }
+
+    /// How many selections the focused pane holds.
+    pub fn selection_count(&self) -> usize {
+        self.editor.current_view().len()
     }
 }

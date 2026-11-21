@@ -7,7 +7,7 @@
 use std::time::{Duration, Instant};
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use hume_editor::testing::{Keys, ListRenumberBench, ListSample};
+use hume_editor::testing::{Keys, ListSample, MarkdownBench};
 
 const SIZES: [usize; 2] = [50, 200];
 
@@ -19,7 +19,7 @@ const AT_END: &str = "geA";
 /// `iters` rounds of `before`, then `timed`, then `after`, timing only
 /// `timed`.
 fn timed_between(
-    bench: &mut ListRenumberBench,
+    bench: &mut MarkdownBench,
     iters: u64,
     [before, timed, after]: [&Keys; 3],
 ) -> Duration {
@@ -55,7 +55,7 @@ fn entered_lines(sample: ListSample, index: usize) -> Vec<String> {
 
 /// Checks once that `at` then Enter renumbers as the list's numbers say,
 /// and that the undo gives back the list.
-fn assert_renumbers(bench: &mut ListRenumberBench, sample: ListSample, at: &str, index: usize) {
+fn assert_renumbers(bench: &mut MarkdownBench, sample: ListSample, at: &str, index: usize) {
     let original = bench.text();
     bench.press(&Keys::parse(&format!("{at}<ret>")));
     let text = bench.text();
@@ -89,7 +89,7 @@ fn bench_markdown_lists(c: &mut Criterion) {
             ("uniform", ListSample::Uniform(n)),
         ] {
             let id = format!("{sample_name}/{n}");
-            let mut bench = ListRenumberBench::new(root.path(), sample, true);
+            let mut bench = MarkdownBench::new(root.path(), &sample.text(), true);
             assert_renumbers(&mut bench, sample, AT_TOP, 0);
             assert_renumbers(&mut bench, sample, AT_END, n - 1);
 
@@ -108,7 +108,7 @@ fn bench_markdown_lists(c: &mut Criterion) {
             });
         }
 
-        let mut bench = ListRenumberBench::new(root.path(), ListSample::Ordered(n), false);
+        let mut bench = MarkdownBench::new(root.path(), &ListSample::Ordered(n).text(), false);
         let at = Keys::parse(AT_TOP);
         group.bench_function(format!("floor/enter/top/ordered/{n}"), |b| {
             b.iter_custom(|iters| timed_between(&mut bench, iters, [&at, &enter, &leave_undo]));

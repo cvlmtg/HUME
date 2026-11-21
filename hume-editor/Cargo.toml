@@ -101,3 +101,7 @@ harness = false
 [[bench]]
 name = "markdown_lists"
 harness = false
+
+[[bench]]
+name = "markdown_tables"
+harness = false

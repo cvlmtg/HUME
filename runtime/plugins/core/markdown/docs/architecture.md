@@ -63,7 +63,7 @@
 | File | Role |
 |---|---|
 | `manifest.scm` | Lazy activation on the language and the commands |
-| `plugin.scm` | Config, the hooks, the commands, the `on-paste` handler, the `markdown:paths` completion source and the list keymap |
+| `plugin.scm` | Config, the hooks, the commands, the `on-paste` handler, the `markdown:paths` completion source and the buffer keymap |
 | `lib/state.scm` | Per-buffer state keyed by `(buffer-key pane)` (preview on or off, the generation of the last parsed tree), the grammars warned about, and `md-preview/box-insert!` |
 | `lib/queries.scm` | The block, inline and list queries, capture names and accessors, matches grouped by name and into runs (see [Matches](#matches)), the task-box rule, the conceal constructor and order |
 | `lib/blocks.scm` | Block captures to conceals, line backgrounds and highlights |
@@ -76,9 +76,10 @@
 | `lib/links.scm` | `md-links/paste-link`, the `on-paste` handler's text: see [`links.md`](links.md#link-paste) |
 | `lib/paths.scm` | `md-paths/complete!`, the completion source's answer: see [`links.md`](links.md#link-paths) |
 | `lib/lists.scm` | A line's prefix, the next line's, ending a list, renumbering, and toggling task boxes: see [`lists.md`](lists.md) |
+| `lib/cells.scm` | A row's prefix, pipes and cells read from its text, the table a line is in, and what the cell patterns match on a line: see [`tables.md`](tables.md) |
 
-`blocks.scm`, `table.scm`, `inline.scm` and `lists.scm` read no buffer: lines come in as
-procedures.
+`blocks.scm`, `table.scm`, `inline.scm`, `lists.scm` and `cells.scm` read no buffer: lines
+come in as procedures.
 
 ## Rendering
 
@@ -91,10 +92,10 @@ procedures.
   the first one included.
 - The toggle command, when it turns the preview on.
 
-`on-buffer-open` draws nothing: it checks the grammars and attaches the list keymap, and the
+`on-buffer-open` draws nothing: it checks the grammars and attaches the buffer keymap, and the
 first frame and the first parse follow it. `on-buffer-close` drops the buffer's state, so a
 pending render does nothing, and if the buffer stays open (its language changed away from
-`markdown`) clears the three sources and detaches the list keymap.
+`markdown`) clears the three sources and detaches the buffer keymap.
 
 A render runs the block query over the `markdown` layers, then the inline query over the
 `markdown.inline` layers. The inline query covers the same ranges plus every line of each

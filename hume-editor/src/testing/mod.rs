@@ -8,13 +8,14 @@
 //! `benches/selection_history.rs`, [`ConcealBench`] for `benches/conceal.rs`,
 //! [`PluginRenderBench`] for `benches/markdown_preview.rs` and
 //! `benches/colorizer.rs`, [`OnPasteBench`] for `benches/on_paste.rs`, and
-//! [`ListRenumberBench`] for `benches/markdown_lists.rs`.
+//! [`MarkdownBench`] for `benches/markdown_lists.rs` and
+//! `benches/markdown_tables.rs`.
 
 mod mock_host;
 pub use crate::editor::bench::{
-    ColorizerSample, ConcealBench, Keys, ListRenumberBench, ListSample, OnPasteBench,
-    PasteHandlers, PluginRenderBench, PreviewSample, SelectionHistoryBench, StoreSize,
-    colorizer_bench, markdown_preview_bench,
+    ColorizerSample, ConcealBench, Keys, ListSample, MarkdownBench, OnPasteBench, PasteHandlers,
+    PluginRenderBench, PreviewSample, SelectionHistoryBench, StoreSize, colorizer_bench,
+    markdown_preview_bench,
 };
 pub use mock_host::MockHost;
 

@@ -19,21 +19,10 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
-use hume_core::Severity;
 
 /// A theme file whose content no test asserts on: only its presence,
 /// absence, or filename matters.
 const THEME_TOML: &str = "\"ui.cursor.primary\" = { fg = \"#111111\" }";
-
-/// Warning-severity entries in `ed`'s log.
-fn warning_log(ed: &Editor) -> Vec<&str> {
-    ed.state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Warning)
-        .map(|e| e.text.as_str())
-        .collect()
-}
 
 fn plum_editor(data_dir: &Path) -> Editor {
     let mut ed = editor_from("-[x]>\n");
