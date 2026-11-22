@@ -124,3 +124,28 @@ fn all_cursors_is_false_once_one_selection_has_extent() {
     assert!(parse("-{a}>b-[c]>\n").view().all_cursors());
     assert!(!parse("-{a}>b-[cd]>\n").view().all_cursors());
 }
+
+#[test]
+fn map_sought_is_none_when_no_selection_finds_its_target() {
+    let state = parse("-{a}>b-[c]>d\n");
+    assert!(
+        state
+            .map_sought(|v| Sought::Missed(Selection::cursor(v.head())))
+            .is_none()
+    );
+}
+
+#[test]
+fn map_sought_applies_each_result_when_one_selection_finds_its_target() {
+    let state = parse("-[ab]>c-{d}>\n");
+    let sought = state
+        .map_sought(|v| {
+            if v.index() == 0 {
+                Sought::Found(Selection::cursor(v.text().snap(CharOffset::new(2))))
+            } else {
+                Sought::Missed(v.selection())
+            }
+        })
+        .expect("the first selection found its target");
+    assert_eq!(shown(&sought), "ab-[c]>-{d}>\n");
+}

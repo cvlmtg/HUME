@@ -106,6 +106,23 @@ pub(super) fn apply_pane_motion(
     doc_ops::apply_doc_motion(&state.buffers, &mut state.panes.entries, t.pid(), buf, f);
 }
 
+/// [`apply_pane_motion`] for a motion that searches from each selection:
+/// `f` returns `None` when no selection found its target, and the command
+/// is then refused with the selections left as they were.
+pub(super) fn seek_pane_motion(
+    state: &mut EditorState,
+    view: &EngineView,
+    t: CommandPane,
+    f: impl FnOnce(hume_editing::state::EditState) -> Option<hume_editing::state::EditState>,
+) -> Result<(), CommandError> {
+    let buf = t.bid(view);
+    if doc_ops::seek_doc_motion(&state.buffers, &mut state.panes.entries, t.pid(), buf, f) {
+        Ok(())
+    } else {
+        Err(CommandError::transient("no match"))
+    }
+}
+
 /// Apply an edit to `t`'s (pane, buffer) pair.
 ///
 /// Thin wrapper around [`doc_ops::apply_doc_edit`]; see [`apply_pane_motion`].

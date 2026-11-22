@@ -2,25 +2,29 @@ use super::*;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
 use hume_rope::offset::CharOffset;
-use test_fixtures::assert_state;
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 /// Helper: make a buffer + single-cursor state and run a surround
-/// command, returning the resulting selections as `(anchor, head)` pairs.
+/// command that finds its pair, returning the resulting selections as
+/// `(anchor, head)` pairs.
 fn run_surround(
     text: &str,
     cursor_pos: usize,
-    f: impl Fn(EditState, usize, MotionMode) -> EditState,
+    f: impl Fn(EditState, usize, MotionMode) -> Option<EditState>,
 ) -> Vec<(usize, usize)> {
     let text = BufferText::from(text);
     let sels = test_fixtures::testing::single(
         &text,
         test_fixtures::testing::cursor(&text, (CharOffset::new(cursor_pos)).index()),
     );
-    pairs(&f(
-        test_fixtures::testing::state(text, sels),
-        0,
-        MotionMode::Move,
-    ))
+    pairs(
+        &f(
+            test_fixtures::testing::state(text, sels),
+            0,
+            MotionMode::Move,
+        )
+        .expect("the pair is found"),
+    )
 }
 
 /// Every selection of `state` as `(anchor, head)` char offsets, in order.
@@ -69,10 +73,12 @@ fn surround_paren_nested_selects_innermost() {
 }
 
 #[test]
-fn surround_no_match_preserves_selection() {
-    // No parens at all: cursor stays put.
-    let sels = run_surround("hello\n", 2, cmd_surround_paren);
-    assert_eq!(sels, vec![(2, 2)]);
+fn surround_paren_with_no_parens_finds_nothing() {
+    assert_finds_nothing!("he-[l]>lo\n", |(text, sels)| cmd_surround_paren(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -124,9 +130,12 @@ fn surround_backtick() {
 }
 
 #[test]
-fn surround_quote_no_match() {
-    let sels = run_surround("hello\n", 2, cmd_surround_double_quote);
-    assert_eq!(sels, vec![(2, 2)]);
+fn surround_double_quote_with_no_quotes_finds_nothing() {
+    assert_finds_nothing!("he-[l]>lo\n", |(text, sels)| cmd_surround_double_quote(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 // ── Multi-cursor ─────────────────────────────────────────────────────────
@@ -150,7 +159,10 @@ fn surround_multi_cursor_different_pairs() {
     );
     // Only the first cursor is inside parens; second is not.
     // First → cursors on ( and ), second preserved.
-    assert_eq!(pairs(&result), vec![(0, 0), (2, 2), (5, 5)]);
+    assert_eq!(
+        pairs(&result.expect("the pair is found")),
+        vec![(0, 0), (2, 2), (5, 5)]
+    );
 }
 
 #[test]
@@ -171,7 +183,10 @@ fn surround_multi_cursor_same_pair_merges() {
         MotionMode::Move,
     );
     // Both produce cursors on (0,0) and (6,6); merge_overlapping deduplicates.
-    assert_eq!(pairs(&result), vec![(0, 0), (6, 6)]);
+    assert_eq!(
+        pairs(&result.expect("the pair is found")),
+        vec![(0, 0), (6, 6)]
+    );
 }
 
 #[test]
@@ -185,7 +200,10 @@ fn surround_with_range_selection_uses_head() {
         0,
         MotionMode::Move,
     );
-    assert_eq!(pairs(&result), vec![(0, 0), (6, 6)]);
+    assert_eq!(
+        pairs(&result.expect("the pair is found")),
+        vec![(0, 0), (6, 6)]
+    );
 }
 
 #[test]
@@ -199,7 +217,10 @@ fn surround_with_backward_range_selection() {
         0,
         MotionMode::Move,
     );
-    assert_eq!(pairs(&result), vec![(0, 0), (6, 6)]);
+    assert_eq!(
+        pairs(&result.expect("the pair is found")),
+        vec![(0, 0), (6, 6)]
+    );
 }
 
 // ── Pair lookup helpers ──────────────────────────────────────────────────

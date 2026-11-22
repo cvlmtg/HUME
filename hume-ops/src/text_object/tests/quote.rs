@@ -1,5 +1,5 @@
 use super::super::*;
-use test_fixtures::assert_state;
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 // ── Quotes ────────────────────────────────────────────────────────────────
 
@@ -57,16 +57,12 @@ fn inner_double_quote_cursor_on_close() {
 }
 
 #[test]
-fn inner_double_quote_empty_is_noop() {
-    assert_state!(
-        "-[\"]>\"foo\n",
-        |(text, sels)| cmd_inner_double_quote(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        "-[\"]>\"foo\n"
-    );
+fn inner_double_quote_empty_finds_nothing() {
+    assert_finds_nothing!("-[\"]>\"foo\n", |(text, sels)| cmd_inner_double_quote(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -110,16 +106,12 @@ fn inner_backtick_basic() {
 }
 
 #[test]
-fn inner_double_quote_not_inside_is_noop() {
-    assert_state!(
-        "hel-[l]>o\n",
-        |(text, sels)| cmd_inner_double_quote(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        "hel-[l]>o\n"
-    );
+fn inner_double_quote_not_inside_finds_nothing() {
+    assert_finds_nothing!("hel-[l]>o\n", |(text, sels)| cmd_inner_double_quote(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 // ── around_quote variants ─────────────────────────────────────────────────

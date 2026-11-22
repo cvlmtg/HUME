@@ -79,7 +79,7 @@ fn goto_next_paragraph_centers_view_in_extend_mode() {
 #[test]
 fn goto_next_paragraph_count_past_the_last_paragraph_still_centers() {
     // 20 paragraphs (last one's content line is 2*19 = 38); a count of 50
-    // exhausts the forward jumps after the 19th (`apply_object_motion`
+    // exhausts the forward jumps after the 19th (`seek_object_motion`
     // breaks out of its loop on the first `None`), landing on the last
     // paragraph rather than erroring or overshooting past it.
     let mut ed = paragraph_editor(20);

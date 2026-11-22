@@ -209,7 +209,7 @@ impl SettingText for WrapMode {
 /// Where a forward object jump (`}`, `goto-next-<kind>`) leaves the viewport.
 ///
 /// Exists because those motions land the selection head at the *start* of
-/// the object just found (`hume_ops::motion::object::apply_object_motion`
+/// the object just found (`hume_ops::motion::object::seek_object_motion`
 /// builds it facing backward, so a following `w` walks into the object's
 /// body), and the body then extends *below* that head. A
 /// forward jump scrolls downward, so the default per-frame scroll parks the

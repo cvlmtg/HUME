@@ -93,7 +93,7 @@ The first argument after the name is the pane the command acts through: `(call! 
 
 What `call!` returns:
 
-- For a built-in command, `#f` when the command refused (a too-small split, the last pane, …) and `#t` otherwise. `#t` means nothing was refused, not that anything changed.
+- For a built-in command, `#f` when the command refused (a too-small split, the last pane, a find or text object that found nothing, …) and `#t` otherwise. `#t` means nothing was refused, not that anything changed.
 - For a command defined by a script, whatever its body returns.
 
 `call!` raises for a name it can't reach, and for a `pane` that doesn't resolve for that command.

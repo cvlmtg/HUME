@@ -41,7 +41,7 @@ Search within the current line for a specific character:
 | `=` | Repeat last find forward |
 | `-` | Repeat last find backward |
 
-After `f`, `F`, `t`, or `T`, HUME waits for the target character; `Tab` counts as one.
+After `f`, `F`, `t`, or `T`, HUME waits for the target character; `Tab` counts as one. They search the cursor's line only. When the character isn't there, HUME shows "no match" and the selection stays as it was. `=` and `-` before any find show "no find to repeat".
 
 These are jumps, not extends: the selection collapses to a single character where you land, not a span from where the cursor started:
 
@@ -76,7 +76,7 @@ The idiomatic line movements live under the `g` prefix:
 From an opening bracket or tag, `#` jumps to the closing one, and back again from the closing side.
 
 ::: details Where the cursor needs to be
-For a bracket, `#` searches a selection that stays on one line, so it still finds `(` `)` `[` `]` `{` `}` when a motion leaves the cursor past one. For a tag, the cursor must be on the tag's own markup: its `<`, its `>`, the name, or an attribute. A count has no effect.
+For a bracket, `#` searches a selection that stays on one line, so it still finds `(` `)` `[` `]` `{` `}` when a motion leaves the cursor past one. For a tag, the cursor must be on the tag's own markup: its `<`, its `>`, the name, or an attribute. A count has no effect. With no bracket or tag to match, `#` shows "no match" and the selection stays as it was.
 :::
 
 ## Structural navigation
@@ -97,7 +97,7 @@ Lowercase jumps forward, uppercase backward, and each kind uses the same letter 
 
 - They stop at either end of the buffer instead of wrapping.
 - Each one records a jump-list entry, so `Ctrl-o` returns to where you jumped from.
-- Without a matching grammar, `g x`/`g X` find tags with a lexical scan, and the others do nothing, with no message.
+- With nothing to jump to, they show "no match" and the selection stays as it was. Without a matching grammar, `g x`/`g X` find tags with a lexical scan, and the others find nothing.
 
 ## Jump to a line by number
 
@@ -117,7 +117,7 @@ Line numbers are 1-based. A number past the end of the file lands on the last li
 | `{` | The previous paragraph |
 | `}` | The next paragraph |
 
-A paragraph is a block of non-empty lines between empty lines. Both keys select the whole paragraph they land on, plus the gap of empty lines below it, if any. Pressing `{`/`}` past the first/last paragraph does nothing.
+A paragraph is a block of non-empty lines between empty lines. Both keys select the whole paragraph they land on, plus the gap of empty lines below it, if any. Pressing `{`/`}` past the first/last paragraph shows "no match" and leaves the selection as it was.
 
 The jump is recorded, so `Ctrl-o` brings you back. To select the paragraph without moving, use `m i p` (see [Text objects](selections.md#text-objects)).
 

@@ -1,12 +1,12 @@
 use super::super::*;
 use hume_editing::selection::SelectionSet;
 use hume_editing::text::BufferText;
-use test_fixtures::assert_state;
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 // ── find_char_forward / find_char_backward ────────────────────────────────
 
 // Helper wrappers with fixed mode so assert_state! closures stay tidy.
-fn fwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditState {
+fn fwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> Option<EditState> {
     find_char_forward(
         test_fixtures::testing::state(text, sels),
         1,
@@ -15,7 +15,7 @@ fn fwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditSt
         kind,
     )
 }
-fn bwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditState {
+fn bwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> Option<EditState> {
     find_char_backward(
         test_fixtures::testing::state(text, sels),
         1,
@@ -24,7 +24,7 @@ fn bwd(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditSt
         kind,
     )
 }
-fn fwd_ext(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditState {
+fn fwd_ext(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> Option<EditState> {
     find_char_forward(
         test_fixtures::testing::state(text, sels),
         1,
@@ -39,7 +39,7 @@ fn fwd_count(
     ch: char,
     kind: FindKind,
     n: usize,
-) -> EditState {
+) -> Option<EditState> {
     find_char_forward(
         test_fixtures::testing::state(text, sels),
         n,
@@ -54,7 +54,7 @@ fn bwd_count(
     ch: char,
     kind: FindKind,
     n: usize,
-) -> EditState {
+) -> Option<EditState> {
     find_char_backward(
         test_fixtures::testing::state(text, sels),
         n,
@@ -63,7 +63,7 @@ fn bwd_count(
         kind,
     )
 }
-fn fwd_repeat(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditState {
+fn fwd_repeat(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> Option<EditState> {
     repeat_find_char_forward(
         test_fixtures::testing::state(text, sels),
         1,
@@ -72,7 +72,7 @@ fn fwd_repeat(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) ->
         kind,
     )
 }
-fn bwd_repeat(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> EditState {
+fn bwd_repeat(text: BufferText, sels: SelectionSet, ch: char, kind: FindKind) -> Option<EditState> {
     repeat_find_char_backward(
         test_fixtures::testing::state(text, sels),
         1,
@@ -104,22 +104,24 @@ fn find_forward_inclusive_first_char_on_line() {
 
 #[test]
 fn find_forward_inclusive_not_found() {
-    // No 'z' on this line: no-op.
-    assert_state!(
-        "-[h]>ello\n",
-        |(text, sels)| fwd(text, sels, 'z', FindKind::Inclusive),
-        "-[h]>ello\n"
-    );
+    // No 'z' on this line.
+    assert_finds_nothing!("-[h]>ello\n", |(text, sels)| fwd(
+        text,
+        sels,
+        'z',
+        FindKind::Inclusive
+    ));
 }
 
 #[test]
 fn find_forward_does_not_cross_newline() {
     // 'a' appears only on the second line. The motion must not cross '\n'.
-    assert_state!(
-        "-[h]>ello\nabc\n",
-        |(text, sels)| fwd(text, sels, 'a', FindKind::Inclusive),
-        "-[h]>ello\nabc\n"
-    );
+    assert_finds_nothing!("-[h]>ello\nabc\n", |(text, sels)| fwd(
+        text,
+        sels,
+        'a',
+        FindKind::Inclusive
+    ));
 }
 
 #[test]
@@ -174,21 +176,23 @@ fn find_backward_inclusive_basic() {
 
 #[test]
 fn find_backward_inclusive_not_found() {
-    assert_state!(
-        "hell-[o]>\n",
-        |(text, sels)| bwd(text, sels, 'z', FindKind::Inclusive),
-        "hell-[o]>\n"
-    );
+    assert_finds_nothing!("hell-[o]>\n", |(text, sels)| bwd(
+        text,
+        sels,
+        'z',
+        FindKind::Inclusive
+    ));
 }
 
 #[test]
 fn find_backward_does_not_cross_newline() {
     // 'z' is only on the first line; cursor on second line must not find it.
-    assert_state!(
-        "z\n-[a]>bc\n",
-        |(text, sels)| bwd(text, sels, 'z', FindKind::Inclusive),
-        "z\n-[a]>bc\n"
-    );
+    assert_finds_nothing!("z\n-[a]>bc\n", |(text, sels)| bwd(
+        text,
+        sels,
+        'z',
+        FindKind::Inclusive
+    ));
 }
 
 #[test]
@@ -236,13 +240,14 @@ fn find_forward_multi_cursor() {
 }
 
 #[test]
-fn find_backward_at_line_start_noop() {
-    // Cursor at line start: nothing to the left, no-op.
-    assert_state!(
-        "-[h]>ello\n",
-        |(text, sels)| bwd(text, sels, 'x', FindKind::Inclusive),
-        "-[h]>ello\n"
-    );
+fn find_backward_at_line_start_finds_nothing() {
+    // Cursor at line start: nothing to the left.
+    assert_finds_nothing!("-[h]>ello\n", |(text, sels)| bwd(
+        text,
+        sels,
+        'x',
+        FindKind::Inclusive
+    ));
 }
 
 // ── Normalization and clusters ────────────────────────────────────────────
@@ -331,12 +336,14 @@ fn till_backward_count_counts_an_adjacent_first_match() {
 }
 
 #[test]
-fn till_forward_count_past_the_last_match_is_a_noop() {
-    assert_state!(
-        "-[h]>xa ya\n",
-        |(text, sels)| fwd_count(text, sels, 'a', FindKind::Exclusive, 3),
-        "-[h]>xa ya\n"
-    );
+fn till_forward_count_past_the_last_match_finds_nothing() {
+    assert_finds_nothing!("-[h]>xa ya\n", |(text, sels)| fwd_count(
+        text,
+        sels,
+        'a',
+        FindKind::Exclusive,
+        3
+    ));
 }
 
 #[test]

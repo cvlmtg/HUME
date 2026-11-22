@@ -1,16 +1,16 @@
 use super::super::*;
-use test_fixtures::assert_state;
 use test_fixtures::unicode::{COMBINING, IDEO_SPACE, LONE_MARK, NBSP};
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 type FindObject = fn(&BufferText, ClusterStart) -> Option<ClusterRange>;
 
 // `inner_tag`/`around_tag` are reached from hume-editor's structural
 // dispatch as the lexical fallback, not through a `cmd_*` wrapper. This
-// drives them through the same `apply_text_object_by_mode` call.
+// drives them through the same `seek_text_object_by_mode` call.
 fn check(find: FindObject, mode: MotionMode, input: &str, expected: &str) {
     assert_state!(
         input,
-        |(text, sels)| apply_text_object_by_mode(
+        |(text, sels)| seek_text_object_by_mode(
             test_fixtures::testing::state(text, sels),
             mode,
             find
@@ -25,6 +25,14 @@ fn inner(input: &str, expected: &str) {
 
 fn around(input: &str, expected: &str) {
     check(around_tag, MotionMode::Move, input, expected);
+}
+
+fn finds_nothing(find: FindObject, input: &str) {
+    assert_finds_nothing!(input, |(text, sels)| seek_text_object_by_mode(
+        test_fixtures::testing::state(text, sels),
+        MotionMode::Move,
+        find
+    ));
 }
 
 // ── inner_tag ─────────────────────────────────────────────────────────────
@@ -66,23 +74,23 @@ fn inner_tag_on_close_markup_selects_the_parent_content() {
 }
 
 #[test]
-fn inner_tag_on_top_level_markup_is_a_noop() {
-    inner("<-[p]>>x</p>\n", "<-[p]>>x</p>\n");
+fn inner_tag_on_top_level_markup_finds_nothing() {
+    finds_nothing(inner_tag, "<-[p]>>x</p>\n");
 }
 
 #[test]
-fn inner_tag_outside_any_element_is_a_noop() {
-    inner("a-[b]>c <p>x</p>\n", "a-[b]>c <p>x</p>\n");
+fn inner_tag_outside_any_element_finds_nothing() {
+    finds_nothing(inner_tag, "a-[b]>c <p>x</p>\n");
 }
 
 #[test]
-fn inner_tag_of_an_empty_element_is_a_noop() {
-    inner("<p>-[<]>/p>\n", "<p>-[<]>/p>\n");
+fn inner_tag_of_an_empty_element_finds_nothing() {
+    finds_nothing(inner_tag, "<p>-[<]>/p>\n");
 }
 
 #[test]
-fn inner_tag_of_a_blank_element_is_a_noop() {
-    inner("<p> -[ ]> </p>\n", "<p> -[ ]> </p>\n");
+fn inner_tag_of_a_blank_element_finds_nothing() {
+    finds_nothing(inner_tag, "<p> -[ ]> </p>\n");
 }
 
 #[test]
@@ -198,7 +206,7 @@ fn inner_tag_does_not_imply_html_end_tags() {
 
 #[test]
 fn inner_tag_compares_names_case_sensitively() {
-    inner("<DIV>x-[y]></div>\n", "<DIV>x-[y]></div>\n");
+    finds_nothing(inner_tag, "<DIV>x-[y]></div>\n");
 }
 
 // ── around_tag ────────────────────────────────────────────────────────────
@@ -253,8 +261,8 @@ fn around_tag_on_a_stray_close_selects_the_enclosing_element() {
 }
 
 #[test]
-fn around_tag_outside_any_element_is_a_noop() {
-    around("a-[b]>c <p>x</p>\n", "a-[b]>c <p>x</p>\n");
+fn around_tag_outside_any_element_finds_nothing() {
+    finds_nothing(around_tag, "a-[b]>c <p>x</p>\n");
 }
 
 /// U+0600 is a Prepend character: it forms one cluster with the `<` after it.

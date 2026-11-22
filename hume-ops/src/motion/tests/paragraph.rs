@@ -1,5 +1,5 @@
 use super::super::*;
-use test_fixtures::assert_state;
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 // ── goto_next_paragraph (`}`) ────────────────────────────────────────────────
 
@@ -93,42 +93,33 @@ fn goto_next_paragraph_from_empty_line() {
 }
 
 #[test]
-fn goto_next_paragraph_no_paragraph_below_is_noop() {
-    assert_state!(
+fn goto_next_paragraph_no_paragraph_below_finds_nothing() {
+    assert_finds_nothing!(
         "-[h]>ello\nworld\n",
         |(text, sels)| cmd_goto_next_paragraph(
             test_fixtures::testing::state(text, sels),
             1,
             MotionMode::Move
-        ),
-        "-[h]>ello\nworld\n"
+        )
     );
 }
 
 #[test]
-fn goto_next_paragraph_at_eof_is_noop() {
-    assert_state!(
-        "hello-[\n]>",
-        |(text, sels)| cmd_goto_next_paragraph(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "hello-[\n]>"
-    );
+fn goto_next_paragraph_at_eof_finds_nothing() {
+    assert_finds_nothing!("hello-[\n]>", |(text, sels)| cmd_goto_next_paragraph(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 #[test]
-fn goto_next_paragraph_empty_buffer_is_noop() {
-    assert_state!(
-        "-[\n]>",
-        |(text, sels)| cmd_goto_next_paragraph(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "-[\n]>"
-    );
+fn goto_next_paragraph_empty_buffer_finds_nothing() {
+    assert_finds_nothing!("-[\n]>", |(text, sels)| cmd_goto_next_paragraph(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -224,15 +215,14 @@ fn goto_prev_paragraph_multiple_empty_lines() {
 }
 
 #[test]
-fn goto_prev_paragraph_no_paragraph_above_is_noop() {
-    assert_state!(
+fn goto_prev_paragraph_no_paragraph_above_finds_nothing() {
+    assert_finds_nothing!(
         "-[h]>ello\nworld\n",
         |(text, sels)| cmd_goto_prev_paragraph(
             test_fixtures::testing::state(text, sels),
             1,
             MotionMode::Move
-        ),
-        "-[h]>ello\nworld\n"
+        )
     );
 }
 
@@ -284,17 +274,13 @@ fn goto_prev_paragraph_from_gap_includes_blank_lines_below_the_cursor() {
 }
 
 #[test]
-fn goto_prev_paragraph_from_leading_gap_is_noop() {
+fn goto_prev_paragraph_from_leading_gap_finds_nothing() {
     // Nothing precedes the gap itself: no previous paragraph exists.
-    assert_state!(
-        "-[\n]>hello\n",
-        |(text, sels)| cmd_goto_prev_paragraph(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "-[\n]>hello\n"
-    );
+    assert_finds_nothing!("-[\n]>hello\n", |(text, sels)| cmd_goto_prev_paragraph(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -335,16 +321,12 @@ fn goto_prev_paragraph_sequential() {
 }
 
 #[test]
-fn goto_prev_paragraph_empty_buffer_is_noop() {
-    assert_state!(
-        "-[\n]>",
-        |(text, sels)| cmd_goto_prev_paragraph(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "-[\n]>"
-    );
+fn goto_prev_paragraph_empty_buffer_finds_nothing() {
+    assert_finds_nothing!("-[\n]>", |(text, sels)| cmd_goto_prev_paragraph(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 // ── Extend variants ───────────────────────────────────────────────────────────

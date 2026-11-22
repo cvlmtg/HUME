@@ -398,10 +398,25 @@ pub(in crate::editor) fn apply_doc_motion(
     buf_id: BufferId,
     f: impl FnOnce(EditState) -> EditState,
 ) {
+    seek_doc_motion(buffers, pane_state, pane_id, buf_id, |state| Some(f(state)));
+}
+
+/// [`apply_doc_motion`] for a motion that searches from each selection:
+/// whether `f` found its target. The selections are stored only then.
+pub(in crate::editor) fn seek_doc_motion(
+    buffers: &BufferStore,
+    pane_state: &mut PaneEntries,
+    pane_id: PaneId,
+    buf_id: BufferId,
+    f: impl FnOnce(EditState) -> Option<EditState>,
+) -> bool {
     let text = buffers.get(buf_id).text();
     let sels = pane_state.seeded(pane_id, buf_id).selections().clone();
-    let new_sels = f(EditState::bind(text.clone(), sels)).into_selections();
+    let Some(found) = f(EditState::bind(text.clone(), sels)) else {
+        return false;
+    };
     pane_state
         .seeded_mut(pane_id, buf_id)
-        .set_selections(new_sels, text);
+        .set_selections(found.into_selections(), text);
+    true
 }

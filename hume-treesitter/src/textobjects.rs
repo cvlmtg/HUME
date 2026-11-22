@@ -5,8 +5,8 @@
 //!
 //! Freshness (the tree matches the text before a command runs) is
 //! `Syntax::ensure_current`; selection policy (Move/Extend, count,
-//! multi-cursor) is `hume-ops`'s `apply_text_object_by_mode` and
-//! `apply_object_motion`; this module only collects spans and answers two
+//! multi-cursor) is `hume-ops`'s `seek_text_object_by_mode` and
+//! `seek_object_motion`; this module only collects spans and answers two
 //! lookups over them.
 
 // ── ObjectKind / ObjectSpan ──────────────────────────────────────────────
@@ -433,8 +433,8 @@ impl ObjectSpans {
     /// `goto-next-argument` lands on that same trimmed span. `Movement` and
     /// `Around` stay as fallbacks (reordered, not dropped) for a query that
     /// defines only one of them: a grammar with `@parameter.around` but no
-    /// `@parameter.inside` still gets a navigable span rather than a silent
-    /// no-op.
+    /// `@parameter.inside` still gets a navigable span rather than nothing
+    /// to jump to.
     pub fn collect_for_navigation(
         layers: &SyntaxLayers,
         text: &BufferText,

@@ -4,7 +4,7 @@ use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 
-use super::{apply_text_object_by_mode, inner_of_pair};
+use super::{inner_of_pair, seek_text_object_by_mode};
 use crate::MotionMode;
 use crate::pair::find_quote_pair;
 
@@ -14,11 +14,15 @@ fn inner_quote(text: &BufferText, pos: ClusterStart, quote: char) -> Option<Clus
 
 macro_rules! quote_cmds {
     ($inner_name:ident, $around_name:ident, $quote:literal) => {
-        pub fn $inner_name(state: EditState, _count: usize, mode: MotionMode) -> EditState {
-            apply_text_object_by_mode(state, mode, |t, pos| inner_quote(t, pos, $quote))
+        pub fn $inner_name(state: EditState, _count: usize, mode: MotionMode) -> Option<EditState> {
+            seek_text_object_by_mode(state, mode, |t, pos| inner_quote(t, pos, $quote))
         }
-        pub fn $around_name(state: EditState, _count: usize, mode: MotionMode) -> EditState {
-            apply_text_object_by_mode(state, mode, |t, pos| find_quote_pair(t, pos, $quote))
+        pub fn $around_name(
+            state: EditState,
+            _count: usize,
+            mode: MotionMode,
+        ) -> Option<EditState> {
+            seek_text_object_by_mode(state, mode, |t, pos| find_quote_pair(t, pos, $quote))
         }
     };
 }

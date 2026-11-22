@@ -1,6 +1,6 @@
 use super::super::*;
 use crate::WordCtx;
-use test_fixtures::assert_state;
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 // ── Brackets ──────────────────────────────────────────────────────────────
 
@@ -59,16 +59,12 @@ fn inner_paren_cursor_on_close() {
 }
 
 #[test]
-fn inner_paren_empty_is_noop() {
-    assert_state!(
-        "-[(]>)\n",
-        |(text, sels)| cmd_inner_paren(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        "-[(]>)\n"
-    );
+fn inner_paren_empty_finds_nothing() {
+    assert_finds_nothing!("-[(]>)\n", |(text, sels)| cmd_inner_paren(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -141,16 +137,12 @@ fn inner_angle_basic() {
 }
 
 #[test]
-fn inner_paren_no_match_is_noop() {
-    assert_state!(
-        "hel-[l]>o\n",
-        |(text, sels)| cmd_inner_paren(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        "hel-[l]>o\n"
-    );
+fn inner_paren_no_match_finds_nothing() {
+    assert_finds_nothing!("hel-[l]>o\n", |(text, sels)| cmd_inner_paren(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -257,21 +249,15 @@ fn extend_inner_paren_grows_selection() {
 }
 
 #[test]
-fn extend_text_object_noop_on_no_match() {
-    // When extend text-object has no match, selection is unchanged.
-    // inner_paren on "hello\n" finds no parens → returns None → sel unchanged.
-    assert_state!(
-        "-[h]>ello\n",
-        |(text, sels)| {
-            let s1 = cmd_inner_word(
-                test_fixtures::testing::state(text, sels),
-                0,
-                WordCtx::bare(MotionMode::Move),
-            ); // selects "hello" (0,4)
-            cmd_inner_paren(s1, 0, MotionMode::Extend) // no parens → no-op → "hello" unchanged
-        },
-        "-[hello]>\n"
-    );
+fn extend_text_object_finds_nothing_with_no_parens() {
+    assert_finds_nothing!("-[h]>ello\n", |(text, sels)| {
+        let word = cmd_inner_word(
+            test_fixtures::testing::state(text, sels),
+            0,
+            WordCtx::bare(MotionMode::Move),
+        );
+        cmd_inner_paren(word, 0, MotionMode::Extend)
+    });
 }
 
 #[test]
@@ -332,23 +318,19 @@ fn extend_inner_paren_from_matched_pair_grows_outward() {
 }
 
 #[test]
-fn extend_around_paren_no_outer_pair_is_noop() {
+fn extend_around_paren_no_outer_pair_finds_nothing() {
     // When the selection already covers the outermost pair, there is no
-    // enclosing pair to grow into, so the command is a no-op.
+    // enclosing pair to grow into, so the command finds nothing.
     //
     // "(a b)\n": (=0,a=1,' '=2,b=3,)=4,\n=5. Selection anchor=0, head=4.
     // First try: around_bracket(head=4=')') → (0,4). Union no-op.
     // Retry from pos 5 ('\n'): scan_left hits ')' at 4 (depth=1), then
-    // '(' at 0 (depth=0→continues), exits at i=0 → None. No-op.
-    assert_state!(
-        "-[(a b)]>\n",
-        |(text, sels)| cmd_around_paren(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Extend
-        ),
-        "-[(a b)]>\n"
-    );
+    // '(' at 0 (depth=0→continues), exits at i=0 → None.
+    assert_finds_nothing!("-[(a b)]>\n", |(text, sels)| cmd_around_paren(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Extend
+    ));
 }
 
 // ── Clusters around the delimiters ────────────────────────────────────────

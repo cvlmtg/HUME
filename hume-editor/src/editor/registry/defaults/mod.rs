@@ -35,10 +35,16 @@ macro_rules! motion {
     };
     // Forward object-jump family (`}`, `goto-next-<kind>`); see
     // `CmdMeta::aligns_view`'s doc for why only this direction opts in.
-    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump($rule:ident), aligns_view) => {
+    // `seek`: see [`SelectionBody::Seek`].
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump($rule:ident), aligns_view, seek) => {
         $crate::editor::registry::defaults::motion!(@build $reg, $name, $doc,
-            SelectionBody::Plain($fun),
+            SelectionBody::Seek($fun),
             jump: Some($crate::editor::jump_list::JumpRule::$rule), aligns_view: true)
+    };
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump($rule:ident), seek) => {
+        $crate::editor::registry::defaults::motion!(@build $reg, $name, $doc,
+            SelectionBody::Seek($fun),
+            jump: Some($crate::editor::jump_list::JumpRule::$rule), aligns_view: false)
     };
     ($reg:expr, $name:literal, $doc:literal, $fun:expr, jump($rule:ident)) => {
         $crate::editor::registry::defaults::motion!(@build $reg, $name, $doc,
@@ -79,6 +85,11 @@ macro_rules! selection {
         $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
             SelectionBody::Plain($fun),
             jump: Some($crate::editor::jump_list::JumpRule::$rule), effect: Establishes)
+    };
+    // Searches from each selection; see [`SelectionBody::Seek`].
+    ($reg:expr, $name:literal, $doc:literal, $fun:expr, seek) => {
+        $crate::editor::registry::defaults::selection!(@build $reg, $name, $doc,
+            SelectionBody::Seek($fun), jump: None, effect: Establishes)
     };
     // Transforms whatever extent is already staged instead of establishing
     // one; see `SelectionEffect::Composes`.

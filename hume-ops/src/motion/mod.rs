@@ -1,5 +1,5 @@
 use hume_editing::selection::{Selection, SelectionView};
-use hume_editing::state::EditState;
+use hume_editing::state::{EditState, Sought};
 use hume_rope::cluster::ClusterStart;
 
 use super::{LineEnd, MotionMode};
@@ -18,9 +18,9 @@ pub enum FindKind {
 /// Apply an inner motion to every selection, repeated `count` times.
 ///
 /// `motion` computes one new head, given the whole current selection. Most
-/// motions only read the head, but a motion that needs to resolve against the
-/// whole span (e.g. [`goto_matching_pair`]) can too. `apply_motion` handles
-/// the anchor semantics (via `mode`) and multi-cursor bookkeeping.
+/// motions only read the head, but one that searches for its target uses
+/// [`seek_motion`] instead. `apply_motion` handles the anchor semantics (via
+/// `mode`) and multi-cursor bookkeeping.
 ///
 /// Each step views the selection pinned to its *original* anchor with the
 /// latest head, so a multi-step motion sees a selection shaped like its caller
@@ -47,10 +47,31 @@ pub(crate) fn apply_motion(
             }
             step = step.with_selection(step.selection().with_head(head));
         }
-        match mode {
-            MotionMode::Move => Selection::cursor(step.head()),
-            MotionMode::Extend => sel.selection().with_head(step.head()),
-        }
+        land(sel, mode, step.head())
+    })
+}
+
+/// `sel` with its head moved to `head`: a cursor there in Move mode, the
+/// selection grown or shrunk to it in Extend mode.
+fn land(sel: SelectionView<'_>, mode: MotionMode, head: ClusterStart) -> Selection {
+    match mode {
+        MotionMode::Move => Selection::cursor(head),
+        MotionMode::Extend => sel.selection().with_head(head),
+    }
+}
+
+/// [`apply_motion`] for a one-step motion that searches for its target:
+/// `seek` returns `None` when the selection's target is not there, and the
+/// result is `None` when no selection found one. A selection that missed
+/// lands on its own head, as a motion that stayed put does.
+fn seek_motion(
+    state: EditState,
+    mode: MotionMode,
+    seek: impl Fn(SelectionView<'_>) -> Option<ClusterStart>,
+) -> Option<EditState> {
+    state.map_sought(|sel| match seek(sel) {
+        Some(head) => Sought::Found(land(sel, mode, head)),
+        None => Sought::Missed(land(sel, mode, sel.head())),
     })
 }
 
@@ -77,7 +98,7 @@ pub use find::{
 };
 mod object;
 pub use crate::tag::adjacent_tag;
-pub use object::apply_object_motion;
+pub use object::seek_object_motion;
 
 #[cfg(test)]
 mod tests;
@@ -164,6 +185,10 @@ motion_cmd!(
 /// to a bare `#`. Vim's `count%` means "go to N% of the file" (a different
 /// operation this motion doesn't implement), so `count` is ignored rather
 /// than given a meaning nobody asked for.
-pub fn cmd_goto_matching_pair(state: EditState, _count: usize, mode: MotionMode) -> EditState {
-    apply_motion(state, mode, 1, goto_matching_pair)
+pub fn cmd_goto_matching_pair(
+    state: EditState,
+    _count: usize,
+    mode: MotionMode,
+) -> Option<EditState> {
+    seek_motion(state, mode, goto_matching_pair)
 }

@@ -101,13 +101,18 @@ fn inner_function_selects_the_body_inside_a_function() {
 }
 
 #[test]
-fn inner_function_outside_any_function_is_unchanged() {
+fn inner_function_outside_any_function_finds_nothing() {
     let mut ed = rust_editor("-[/]>/ nothing here\nfn f() {}\n");
     let before = state(&ed);
     for ch in "mif".chars() {
         ed.handle_key(key(ch));
     }
     assert_eq!(before, state(&ed));
+    assert!(
+        status(&ed).contains("no match"),
+        "status: {:?}",
+        status(&ed)
+    );
 }
 
 /// Cursor inside a closure nested in a function: the closure (the smallest
@@ -223,7 +228,7 @@ fn goto_prev_function_extend_from_inside_selects_the_whole_enclosing_function() 
 /// Extending after a Move-mode result keeps the just-selected function fully
 /// covered while growing onto the next one: the union with the previous
 /// selection, not a plain replacement, since a Move result's own anchor sits
-/// at the object's far edge (see `apply_object_motion`'s doc in `hume-ops`).
+/// at the object's far edge (see `seek_object_motion`'s doc in `hume-ops`).
 /// No nested closure here (unlike `NAV_SRC`): that case only ever absorbs
 /// silently into the current selection on one press, covered instead by
 /// `hume-ops`'s own `extend_forward_into_a_nested_object_does_not_shrink_the_selection`.
@@ -249,13 +254,19 @@ fn goto_next_function_with_count_two_advances_two_objects() {
     assert_eq!(selected_text(&ed), "fn second() {\n    2;\n}");
 }
 
-/// No function follows the cursor: the selection is left unchanged.
+/// No function follows the cursor: the command is refused and the
+/// selection is left unchanged.
 #[test]
-fn goto_next_function_at_the_last_function_is_unchanged() {
+fn goto_next_function_at_the_last_function_finds_nothing() {
     let mut ed = rust_editor("fn only() {\n    -[3]>;\n}\n");
     let before = state(&ed);
     ed.execute_keymap_command("goto-next-function", Count::UNTYPED, false);
     assert_eq!(before, state(&ed));
+    assert!(
+        status(&ed).contains("no match"),
+        "status: {:?}",
+        status(&ed)
+    );
 }
 
 #[test]

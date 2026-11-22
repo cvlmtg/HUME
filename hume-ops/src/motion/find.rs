@@ -1,4 +1,4 @@
-use super::{FindKind, MotionMode, apply_motion};
+use super::{FindKind, MotionMode, seek_motion};
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::ClusterStart;
@@ -86,17 +86,14 @@ fn find_forward(
     ch: char,
     kind: FindKind,
     press: Press,
-) -> EditState {
+) -> Option<EditState> {
     let skipped = adjacent_skipped(kind, press);
-    apply_motion(state, mode, 1, |s| {
-        let head = s.head();
-        match nth_char_on_line_forward(s.text(), head, ch, count, skipped) {
-            Some(pos) => match kind {
-                FindKind::Inclusive => pos,
-                FindKind::Exclusive => s.text().clusters().prev(pos.into()).unwrap_or(pos),
-            },
-            None => head,
-        }
+    seek_motion(state, mode, |s| {
+        let pos = nth_char_on_line_forward(s.text(), s.head(), ch, count, skipped)?;
+        Some(match kind {
+            FindKind::Inclusive => pos,
+            FindKind::Exclusive => s.text().clusters().prev(pos.into()).unwrap_or(pos),
+        })
     })
 }
 
@@ -107,17 +104,14 @@ fn find_backward(
     ch: char,
     kind: FindKind,
     press: Press,
-) -> EditState {
+) -> Option<EditState> {
     let skipped = adjacent_skipped(kind, press);
-    apply_motion(state, mode, 1, |s| {
-        let head = s.head();
-        match nth_char_on_line_backward(s.text(), head, ch, count, skipped) {
-            Some(pos) => match kind {
-                FindKind::Inclusive => pos,
-                FindKind::Exclusive => s.text().clusters().next(pos).unwrap_or(pos),
-            },
-            None => head,
-        }
+    seek_motion(state, mode, |s| {
+        let pos = nth_char_on_line_backward(s.text(), s.head(), ch, count, skipped)?;
+        Some(match kind {
+            FindKind::Inclusive => pos,
+            FindKind::Exclusive => s.text().clusters().next(pos).unwrap_or(pos),
+        })
     })
 }
 
@@ -129,14 +123,15 @@ fn find_backward(
 ///   adjacent to the head counts, so `ta` with `a` next to the cursor is a
 ///   no-op and `2ta` lands before the `a` after it, as in Vim.
 ///
-/// No-op per selection if there are fewer than `count` matches.
+/// `None` when no selection has `count` matches; a selection with fewer
+/// lands on its own head.
 pub fn find_char_forward(
     state: EditState,
     count: usize,
     mode: MotionMode,
     ch: char,
     kind: FindKind,
-) -> EditState {
+) -> Option<EditState> {
     find_forward(state, count, mode, ch, kind, Press::First)
 }
 
@@ -147,14 +142,15 @@ pub fn find_char_forward(
 /// - `Exclusive` (`T`): cursor lands one grapheme *after* `ch`. An adjacent
 ///   match counts, as in [`find_char_forward`].
 ///
-/// No-op per selection if there are fewer than `count` matches.
+/// `None` when no selection has `count` matches; a selection with fewer
+/// lands on its own head.
 pub fn find_char_backward(
     state: EditState,
     count: usize,
     mode: MotionMode,
     ch: char,
     kind: FindKind,
-) -> EditState {
+) -> Option<EditState> {
     find_backward(state, count, mode, ch, kind, Press::First)
 }
 
@@ -167,7 +163,7 @@ pub fn repeat_find_char_forward(
     mode: MotionMode,
     ch: char,
     kind: FindKind,
-) -> EditState {
+) -> Option<EditState> {
     find_forward(state, count, mode, ch, kind, Press::Repeat)
 }
 
@@ -179,6 +175,6 @@ pub fn repeat_find_char_backward(
     mode: MotionMode,
     ch: char,
     kind: FindKind,
-) -> EditState {
+) -> Option<EditState> {
     find_backward(state, count, mode, ch, kind, Press::Repeat)
 }

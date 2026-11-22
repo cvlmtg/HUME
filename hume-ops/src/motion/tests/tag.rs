@@ -1,12 +1,17 @@
 use super::super::*;
 use hume_editing::state::EditState;
-use test_fixtures::assert_state;
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 // `adjacent_tag` is reached from hume-editor's structural dispatch as the
 // lexical `goto-next-tag`/`goto-prev-tag` finder. This drives it through
-// the same `apply_object_motion` call.
-fn cmd_goto_tag(state: EditState, count: usize, mode: MotionMode, backward: bool) -> EditState {
-    apply_object_motion(state, mode, count, backward, |text, pos| {
+// the same `seek_object_motion` call.
+fn cmd_goto_tag(
+    state: EditState,
+    count: usize,
+    mode: MotionMode,
+    backward: bool,
+) -> Option<EditState> {
+    seek_object_motion(state, mode, count, backward, |text, pos| {
         adjacent_tag(text, pos, backward)
     })
 }
@@ -22,6 +27,15 @@ fn goto(input: &str, count: usize, mode: MotionMode, backward: bool, expected: &
         ),
         expected
     );
+}
+
+fn finds_nothing(input: &str, backward: bool) {
+    assert_finds_nothing!(input, |(text, sels)| cmd_goto_tag(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move,
+        backward
+    ));
 }
 
 fn next(input: &str, expected: &str) {
@@ -80,8 +94,8 @@ fn next_tag_skips_a_comment() {
 }
 
 #[test]
-fn next_tag_after_the_last_element_is_a_noop() {
-    next("<p>x</p> -[a]>\n", "<p>x</p> -[a]>\n");
+fn next_tag_after_the_last_element_finds_nothing() {
+    finds_nothing("<p>x</p> -[a]>\n", false);
 }
 
 #[test]
@@ -168,6 +182,6 @@ fn prev_tag_past_an_arrow_skips_nothing() {
 }
 
 #[test]
-fn prev_tag_before_the_first_element_is_a_noop() {
-    prev("-[a]> <p>x</p>\n", "-[a]> <p>x</p>\n");
+fn prev_tag_before_the_first_element_finds_nothing() {
+    finds_nothing("-[a]> <p>x</p>\n", true);
 }

@@ -11,10 +11,10 @@ use std::sync::Arc;
 use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_ops::MotionMode;
-use hume_ops::motion::{adjacent_tag, apply_object_motion};
+use hume_ops::motion::{adjacent_tag, seek_object_motion};
 use hume_ops::text_object::{
-    apply_text_object_by_mode, around_argument, around_from_inner, around_tag, inner_argument,
-    inner_tag,
+    around_argument, around_from_inner, around_tag, inner_argument, inner_tag,
+    seek_text_object_by_mode,
 };
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 use hume_treesitter::textobjects::{Direction, ObjectKind, ObjectSpan, ObjectSpans, SpanSelector};
@@ -79,7 +79,7 @@ fn lexical_object(kind: ObjectKind) -> Option<LexicalObject> {
 /// cap is never reparsed on demand): `enclosing`/`adjacent` then answer
 /// "nothing here" through the same code path every other probe uses, with
 /// no early return. A body with a lexical scan falls back to it; any other
-/// is a no-op.
+/// finds nothing.
 pub(super) fn object_spans(buf: &Buffer, body: StructuralBody) -> Arc<ObjectSpans> {
     let Some(layers) = buf.current_layers() else {
         return Arc::default();
@@ -106,7 +106,7 @@ impl StructuralBody {
         count: usize,
         mode: MotionMode,
         spans: &ObjectSpans,
-    ) -> EditState {
+    ) -> Option<EditState> {
         let enclosing = |_: &BufferText, p: ClusterStart| spans.enclosing(p);
         match self {
             StructuralBody::Select { kind, span } => {
@@ -115,25 +115,25 @@ impl StructuralBody {
                     ObjectSpan::Around => Some(l.around),
                     ObjectSpan::Movement => None,
                 });
-                apply_text_object_by_mode(state, mode, |t, p| {
+                seek_text_object_by_mode(state, mode, |t, p| {
                     enclosing(t, p).or_else(|| lexical.and_then(|find| find(t, p)))
                 })
             }
             StructuralBody::Goto { kind, dir } => {
                 let backward = dir == Direction::Backward;
                 let lexical = lexical_object(kind).filter(|_| !spans.grammar_defines());
-                apply_object_motion(state, mode, count, backward, |t, p| match lexical {
+                seek_object_motion(state, mode, count, backward, |t, p| match lexical {
                     Some(l) => (l.adjacent)(t, p, backward),
                     None => spans.adjacent(p, dir),
                 })
             }
             StructuralBody::Argument { around: false } => {
-                apply_text_object_by_mode(state, mode, |t, p| {
+                seek_text_object_by_mode(state, mode, |t, p| {
                     enclosing(t, p).or_else(|| inner_argument(t, p))
                 })
             }
             StructuralBody::Argument { around: true } => {
-                apply_text_object_by_mode(state, mode, |t, p| {
+                seek_text_object_by_mode(state, mode, |t, p| {
                     enclosing(t, p)
                         .map(|s| around_from_inner(t, s))
                         .or_else(|| around_argument(t, p))

@@ -89,7 +89,8 @@ impl CommandRegistry {
             "goto-matching-pair",
             "Move cursors to the matching bracket or tag.",
             cmd_goto_matching_pair,
-            jump(Selections)
+            jump(Selections),
+            seek
         );
 
         // ── Word motions ──────────────────────────────────────────────────────
@@ -135,7 +136,7 @@ impl CommandRegistry {
         // Select the whole paragraph plus its trailing blank gap, if it has
         // one, like the structural `goto-next-<kind>` family selects its
         // object. The `finder` is a lexical scan (`hume_ops::motion::paragraph`)
-        // rather than a tree-sitter one, so this stays a `Plain` body here
+        // rather than a tree-sitter one, so this stays a `Seek` body here
         // instead of moving to `structural.rs`.
         super::motion!(
             self,
@@ -143,14 +144,16 @@ impl CommandRegistry {
             "Select the next paragraph.",
             cmd_goto_next_paragraph,
             jump(Selections),
-            aligns_view
+            aligns_view,
+            seek
         );
         super::motion!(
             self,
             "goto-prev-paragraph",
             "Select the previous paragraph.",
             cmd_goto_prev_paragraph,
-            jump(Selections)
+            jump(Selections),
+            seek
         );
 
         // ── Line selection ────────────────────────────────────────────────────

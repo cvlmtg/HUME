@@ -26,7 +26,9 @@ use crate::editor::syntax::{SyntaxUse, ensure_syntax_current};
 
 use super::structural::object_spans;
 use super::target::{CommandPane, FocusedPane, TargetError};
-use super::{apply_pane_edit, apply_pane_motion, effective_word_chars, line_end_for};
+use super::{
+    apply_pane_edit, apply_pane_motion, effective_word_chars, line_end_for, seek_pane_motion,
+};
 
 /// A native command's target: the pane its body acts through, typed by
 /// whether it is the focused pane. Private to this module: the only way to
@@ -507,10 +509,15 @@ pub(in crate::editor) fn run_body(
             match fun {
                 SelectionBody::Plain(fun) => {
                     apply_pane_motion(state, view, t, |st| fun(st, count.get(), motion_mode));
+                    Ok(())
+                }
+                SelectionBody::Seek(fun) => {
+                    seek_pane_motion(state, view, t, |st| fun(st, count.get(), motion_mode))
                 }
                 SelectionBody::LineEnd(fun) => {
                     let end = line_end_for(state, t.pid(), buf);
                     apply_pane_motion(state, view, t, |st| fun(st, count.get(), motion_mode, end));
+                    Ok(())
                 }
                 SelectionBody::Word(fun) => {
                     let doc = state.buffers.get(buf);
@@ -535,6 +542,7 @@ pub(in crate::editor) fn run_body(
                         buf,
                         |st| fun(st, count.get(), ctx),
                     );
+                    Ok(())
                 }
                 SelectionBody::Structural(body) => {
                     // Bring the tree up to date before collecting spans from it:
@@ -545,17 +553,17 @@ pub(in crate::editor) fn run_body(
                     // would yield wrong spans (or a panic on an out-of-range
                     // byte offset).
                     ensure_syntax_current(state, &mut view.registry, buf, SyntaxUse::TextObjects);
-                    // Collected before `apply_pane_motion`'s call below, which
+                    // Collected before `seek_pane_motion`'s call below, which
                     // needs `&state.buffers` and `&mut state.panes.entries` at
                     // once. `ObjectSpans` is owned precisely so its tree borrow
                     // ends here, before that call.
                     let spans = object_spans(state.buffers.get(buf), body);
-                    apply_pane_motion(state, view, t, |st| {
+                    seek_pane_motion(state, view, t, |st| {
                         body.apply(st, count.get(), motion_mode, &spans)
-                    });
+                    })
                 }
             }
-            Ok(PlannedPaste::NONE)
+            .map(|()| PlannedPaste::NONE)
         }
         Bound::Edit(fun, target) => {
             let t = target.pane();
@@ -617,8 +625,8 @@ pub(in crate::editor) fn step_paste_commit(state: &mut EditorState, defers: bool
 /// `Top`/`Center` delegate to `view_top`/`view_center` verbatim (the same
 /// primitives `z k`/`z z` call), so there is exactly one implementation of
 /// "put the head at this viewport row". `moved` is `with_jump`'s
-/// result: a `}` press already on the last paragraph is a no-op on the
-/// selection and must not yank the viewport around on every repeated press.
+/// result: a `}` press on the last paragraph finds nothing and must not
+/// yank the viewport around on every repeated press.
 pub(in crate::editor::commands::pipeline) fn step_align_view(
     state: &mut EditorState,
     view: &mut EngineView,

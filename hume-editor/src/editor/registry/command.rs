@@ -142,8 +142,8 @@ pub(in crate::editor) struct SelectionRole {
     /// to replay before the edit. `true` for every `Motion` and
     /// `Selection`; an `EditorCmd` opts in, its operand recorded with it. A
     /// command whose replay would not rebuild the same extent
-    /// (`select-last-insertion` reads the last insertion) or would change
-    /// other state replay does not put back (`search-forward` writes the
+    /// (`select-last-insertion` reads the last insertion) or would leave
+    /// changed state that a later command reads (`search-forward` writes the
     /// search pattern) is no step, and clears the recipe. A step that reads
     /// the search pattern (`select-all-matches`, `search-next`) replays with
     /// the one current at `.`, unlike `=`'s recorded find: an edit on every
@@ -235,6 +235,10 @@ pub(in crate::editor) type EditFn = fn(EditState) -> Edited;
 #[derive(Clone, Copy)]
 pub(in crate::editor) enum SelectionBody {
     Plain(fn(EditState, usize, MotionMode) -> EditState),
+    /// A command that searches from each selection for a target (a
+    /// character, pair, quote or paragraph): `None` when no selection found
+    /// one, and the pipeline then refuses the command.
+    Seek(fn(EditState, usize, MotionMode) -> Option<EditState>),
     Word(fn(EditState, usize, WordCtx<'_>) -> EditState),
     /// `goto-line-end`, whose landing the pipeline resolves per pane through
     /// `line_end_for`.

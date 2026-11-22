@@ -531,7 +531,7 @@ pub fn inner_tag(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
 /// cursor counts backward but not forward, so a backward step from inside
 /// an element lands on its own start first. The returned start always lies
 /// strictly past (before) `pos`'s cluster, the progress
-/// [`crate::motion::apply_object_motion`] requires.
+/// [`crate::motion::seek_object_motion`] requires.
 pub fn adjacent_tag(text: &BufferText, pos: ClusterStart, backward: bool) -> Option<ClusterRange> {
     let open = if backward {
         tags_before(text, pos.offset()).find(|tag| !tag.closing)?

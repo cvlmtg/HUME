@@ -1,5 +1,5 @@
 use super::super::*;
-use test_fixtures::assert_state;
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 // ── Inner paragraph ──────────────────────────────────────────────────────────
 
@@ -32,17 +32,13 @@ fn inner_paragraph_multiline_excludes_gap() {
 }
 
 #[test]
-fn inner_paragraph_blank_line_is_noop() {
+fn inner_paragraph_blank_line_finds_nothing() {
     // Cursor sits in the gap, not inside any paragraph.
-    assert_state!(
-        "hello\n-[\n]>world\n",
-        |(text, sels)| cmd_inner_paragraph(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        "hello\n-[\n]>world\n"
-    );
+    assert_finds_nothing!("hello\n-[\n]>world\n", |(text, sels)| cmd_inner_paragraph(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -101,16 +97,12 @@ fn around_paragraph_last_paragraph_equals_inner() {
 }
 
 #[test]
-fn around_paragraph_blank_line_is_noop() {
-    assert_state!(
-        "hello\n-[\n]>world\n",
-        |(text, sels)| cmd_around_paragraph(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        "hello\n-[\n]>world\n"
-    );
+fn around_paragraph_blank_line_finds_nothing() {
+    assert_finds_nothing!("hello\n-[\n]>world\n", |(text, sels)| cmd_around_paragraph(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 #[test]

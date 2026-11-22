@@ -1,10 +1,10 @@
 use super::super::*;
 use hume_editing::text::BufferText;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
-use test_fixtures::assert_state;
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 // Stand-ins for `hume_treesitter::textobjects::ObjectSpans`. This crate
-// cannot depend on that crate, so these tests exercise `apply_object_motion`
+// cannot depend on that crate, so these tests exercise `seek_object_motion`
 // against a fixed list of spans rather than a real query result. Buffer
 // text throughout is "abcdefghijklmnopqrstuvwxyz\n" (positions 0..=25 are
 // 'a'..='z'). OBJ_INNER is nested inside OBJ_OUTER, proving the "search
@@ -46,13 +46,13 @@ fn find_backward(text: &BufferText, pos: ClusterStart) -> Option<ClusterRange> {
         .map(|s| span(text, s))
 }
 
-fn cmd_goto(state: EditState, count: usize, mode: MotionMode, backward: bool) -> EditState {
+fn cmd_goto(state: EditState, count: usize, mode: MotionMode, backward: bool) -> Option<EditState> {
     let finder = if backward {
         find_backward
     } else {
         find_forward
     };
-    apply_object_motion(state, mode, count, backward, finder)
+    seek_object_motion(state, mode, count, backward, finder)
 }
 
 #[test]
@@ -117,17 +117,13 @@ fn move_forward_count_two() {
 }
 
 #[test]
-fn move_forward_no_next_object_is_unchanged() {
-    assert_state!(
-        "abcdefghijklmnopqrstuvwxy-[z]>\n",
-        |(text, sels)| cmd_goto(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move,
-            false
-        ),
-        "abcdefghijklmnopqrstuvwxy-[z]>\n"
-    );
+fn move_forward_with_no_next_object_finds_nothing() {
+    assert_finds_nothing!("abcdefghijklmnopqrstuvwxy-[z]>\n", |(text, sels)| cmd_goto(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move,
+        false
+    ));
 }
 
 #[test]
@@ -205,7 +201,7 @@ fn extend_searches_from_the_head_not_the_far_edge() {
         "ab<[cd]-efghijklmnopqrstuvwxyz\n",
         |(text, sels)| {
             let state = test_fixtures::testing::state(text, sels);
-            apply_object_motion(state, MotionMode::Extend, 1, false, |text, pos| {
+            seek_object_motion(state, MotionMode::Extend, 1, false, |text, pos| {
                 (pos.offset().index() < 3).then(|| span(text, (3, 4)))
             })
         },

@@ -16,6 +16,24 @@ pub struct EditState {
     selections: SelectionSet,
 }
 
+/// What one selection became when a command searched from it.
+#[derive(Debug, Clone, Copy)]
+pub enum Sought {
+    /// The search found its target.
+    Found(Selection),
+    /// The search found nothing.
+    Missed(Selection),
+}
+
+impl Sought {
+    /// What the selection became, found or not.
+    pub fn selection(self) -> Selection {
+        match self {
+            Self::Found(sel) | Self::Missed(sel) => sel,
+        }
+    }
+}
+
 impl EditState {
     /// `selections` paired with `text`.
     ///
@@ -89,6 +107,27 @@ impl EditState {
         let primary = self.selections.primary_pos();
         let selections = self.view().iter().map(&mut f).collect();
         self.with_selections(selections, primary)
+    }
+
+    /// Each selection replaced by `f`'s result for it, for a command that
+    /// searches from each selection. `None` when no selection found its
+    /// target, so a command that found nothing changes nothing.
+    #[must_use]
+    pub fn map_sought(self, mut f: impl FnMut(SelectionView<'_>) -> Sought) -> Option<Self> {
+        let primary = self.selections.primary_pos();
+        let mut found = false;
+        let selections = self
+            .view()
+            .iter()
+            .map(|view| match f(view) {
+                Sought::Found(sel) => {
+                    found = true;
+                    sel
+                }
+                Sought::Missed(sel) => sel,
+            })
+            .collect();
+        found.then(|| self.with_selections(selections, primary))
     }
 
     /// Each selection replaced by the selections `f` returns for it. A

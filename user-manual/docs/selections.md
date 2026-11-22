@@ -80,10 +80,12 @@ Text objects select structured regions in one step. They use the `m` prefix: `m 
 
 Closing brackets work as well as opening ones: `m i )` is the same as `m i (`, and likewise for `]`, `}`, and `>`.
 
+A text object with nothing to select, such as `m i (` outside any parentheses or `m i p` on an empty line, shows "no match" and leaves the selections as they were. The word and line objects stay silent when they have nothing to select.
+
 `m i a` / `m a a` and the last six rows above (`f`, `t`, `c`, `u`, `v`, `x`) are structure-aware. When the language's grammar supports it (see [Syntax Highlighting](syntax-highlighting.md)), they select the actual function, class, comment, unit test, value, or tag pair.
 
 - Wherever the grammar doesn't cover the cursor (a syntax error, a buffer with no grammar at all), `a` and `x` fall back to a lexical scan.
-- Without a grammar, `f`/`t`/`c`/`u`/`v` do nothing, with no message.
+- Without a grammar, `f`/`t`/`c`/`u`/`v` find nothing.
 - Where the grammar covers it, a nested list, tuple, or struct literal passed as a call argument is itself the argument; use `m i v` / `m a v` for its members.
 
 `m i x` selects the content without its surrounding whitespace. With the cursor on a tag itself, it selects the content of the enclosing pair.

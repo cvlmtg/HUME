@@ -1,19 +1,19 @@
 use super::super::*;
 use hume_editing::selection::{Facing, Selection};
 use hume_editing::state::EditState;
-use test_fixtures::assert_state;
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 // `inner_argument`/`around_argument` register from `register_structural`
 // (hume-editor's `commands/structural.rs`) as closures, not through a
 // `cmd_*` wrapper. These two exist only so the tests below can drive the
-// bare functions through the same `apply_text_object_by_mode` dispatch the
+// bare functions through the same `seek_text_object_by_mode` dispatch the
 // shipped closures use.
-fn cmd_inner_argument(state: EditState, _count: usize, mode: MotionMode) -> EditState {
-    apply_text_object_by_mode(state, mode, inner_argument)
+fn cmd_inner_argument(state: EditState, _count: usize, mode: MotionMode) -> Option<EditState> {
+    seek_text_object_by_mode(state, mode, inner_argument)
 }
 
-fn cmd_around_argument(state: EditState, _count: usize, mode: MotionMode) -> EditState {
-    apply_text_object_by_mode(state, mode, around_argument)
+fn cmd_around_argument(state: EditState, _count: usize, mode: MotionMode) -> Option<EditState> {
+    seek_text_object_by_mode(state, mode, around_argument)
 }
 
 // ── Arguments ─────────────────────────────────────────────────────────────
@@ -184,29 +184,21 @@ fn inner_argument_cursor_on_close_bracket() {
 }
 
 #[test]
-fn inner_argument_empty_brackets_is_noop() {
-    assert_state!(
-        "foo-[(]>)\n",
-        |(text, sels)| cmd_inner_argument(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        "foo-[(]>)\n"
-    );
+fn inner_argument_empty_brackets_finds_nothing() {
+    assert_finds_nothing!("foo-[(]>)\n", |(text, sels)| cmd_inner_argument(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 #[test]
-fn inner_argument_no_enclosing_bracket_is_noop() {
-    assert_state!(
-        "foo-[,]>bar\n",
-        |(text, sels)| cmd_inner_argument(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        "foo-[,]>bar\n"
-    );
+fn inner_argument_no_enclosing_bracket_finds_nothing() {
+    assert_finds_nothing!("foo-[,]>bar\n", |(text, sels)| cmd_inner_argument(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -458,19 +450,15 @@ fn around_argument_single_on_outer_bracket_descends_into_nested() {
 }
 
 #[test]
-fn around_argument_empty_slot_is_noop() {
+fn around_argument_empty_slot_finds_nothing() {
     // All-whitespace segment (empty argument slot): `trim_segment` yields
     // `None` here exactly as it does for `inner_argument`, so the command
-    // is a no-op and never selects " , ".
-    assert_state!(
-        "foo(-[ ]>, bbb)\n",
-        |(text, sels)| cmd_around_argument(
-            test_fixtures::testing::state(text, sels),
-            0,
-            MotionMode::Move
-        ),
-        "foo(-[ ]>, bbb)\n"
-    );
+    // finds nothing and never selects " , ".
+    assert_finds_nothing!("foo(-[ ]>, bbb)\n", |(text, sels)| cmd_around_argument(
+        test_fixtures::testing::state(text, sels),
+        0,
+        MotionMode::Move
+    ));
 }
 
 // ── around_from_inner ────────────────────────────────────────────────────

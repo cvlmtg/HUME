@@ -7,7 +7,7 @@ use hume_rope::line::{ContentLine, RopeyLine};
 use hume_rope::lines::is_empty_line_token;
 use ropey::RopeSlice;
 
-use super::{MotionMode, apply_object_motion};
+use super::{MotionMode, seek_object_motion};
 
 // ── Line-run scanning ────────────────────────────────────────────────────────
 //
@@ -117,19 +117,27 @@ pub(crate) fn paragraph_at(
     Some(line_span(text, first, last))
 }
 
-/// Select the next paragraph, plus its trailing blank gap (`}`). No-op if
+/// Select the next paragraph, plus its trailing blank gap (`}`). `None` if
 /// there is no paragraph below.
 ///
 /// Not a `motion_cmd!`: the finder yields a span, not a head. It goes through the same
-/// `apply_object_motion` the structural `goto-next-<kind>` family uses.
-pub fn cmd_goto_next_paragraph(state: EditState, count: usize, mode: MotionMode) -> EditState {
-    apply_object_motion(state, mode, count, false, next_paragraph)
+/// `seek_object_motion` the structural `goto-next-<kind>` family uses.
+pub fn cmd_goto_next_paragraph(
+    state: EditState,
+    count: usize,
+    mode: MotionMode,
+) -> Option<EditState> {
+    seek_object_motion(state, mode, count, false, next_paragraph)
 }
 
-/// Select the previous paragraph, plus its trailing blank gap (`{`). No-op
+/// Select the previous paragraph, plus its trailing blank gap (`{`). `None`
 /// if there is no paragraph above.
-pub fn cmd_goto_prev_paragraph(state: EditState, count: usize, mode: MotionMode) -> EditState {
-    apply_object_motion(state, mode, count, true, prev_paragraph)
+pub fn cmd_goto_prev_paragraph(
+    state: EditState,
+    count: usize,
+    mode: MotionMode,
+) -> Option<EditState> {
+    seek_object_motion(state, mode, count, true, prev_paragraph)
 }
 
 /// The paragraph strictly after `pos`'s own paragraph, plus its trailing gap,

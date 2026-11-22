@@ -36,13 +36,15 @@ impl CommandRegistry {
             self,
             "inner-paragraph",
             "Select the paragraph's text, excluding any trailing blank gap.",
-            cmd_inner_paragraph
+            cmd_inner_paragraph,
+            seek
         );
         super::selection!(
             self,
             "around-paragraph",
             "Select the paragraph plus its trailing blank gap.",
-            cmd_around_paragraph
+            cmd_around_paragraph,
+            seek
         );
 
         // ── Text objects — word ───────────────────────────────────────────────
@@ -111,49 +113,57 @@ impl CommandRegistry {
             self,
             "inner-paren",
             "Select content inside the nearest `()`.",
-            cmd_inner_paren
+            cmd_inner_paren,
+            seek
         );
         super::selection!(
             self,
             "around-paren",
             "Select content including the nearest `()`.",
-            cmd_around_paren
+            cmd_around_paren,
+            seek
         );
         super::selection!(
             self,
             "inner-bracket",
             "Select content inside the nearest `[]`.",
-            cmd_inner_bracket
+            cmd_inner_bracket,
+            seek
         );
         super::selection!(
             self,
             "around-bracket",
             "Select content including the nearest `[]`.",
-            cmd_around_bracket
+            cmd_around_bracket,
+            seek
         );
         super::selection!(
             self,
             "inner-brace",
             "Select content inside the nearest `{}`.",
-            cmd_inner_brace
+            cmd_inner_brace,
+            seek
         );
         super::selection!(
             self,
             "around-brace",
             "Select content including the nearest `{}`.",
-            cmd_around_brace
+            cmd_around_brace,
+            seek
         );
         super::selection!(
             self,
             "inner-angle",
             "Select content inside the nearest `<>`.",
-            cmd_inner_angle
+            cmd_inner_angle,
+            seek
         );
         super::selection!(
             self,
             "around-angle",
             "Select content including the nearest `<>`.",
-            cmd_around_angle
+            cmd_around_angle,
+            seek
         );
 
         // ── Text objects — quotes ─────────────────────────────────────────────
@@ -161,37 +171,43 @@ impl CommandRegistry {
             self,
             "inner-double-quote",
             "Select content inside the nearest `\"`.",
-            cmd_inner_double_quote
+            cmd_inner_double_quote,
+            seek
         );
         super::selection!(
             self,
             "around-double-quote",
             "Select content including the nearest `\"`.",
-            cmd_around_double_quote
+            cmd_around_double_quote,
+            seek
         );
         super::selection!(
             self,
             "inner-single-quote",
             "Select content inside the nearest `'`.",
-            cmd_inner_single_quote
+            cmd_inner_single_quote,
+            seek
         );
         super::selection!(
             self,
             "around-single-quote",
             "Select content including the nearest `'`.",
-            cmd_around_single_quote
+            cmd_around_single_quote,
+            seek
         );
         super::selection!(
             self,
             "inner-backtick",
             "Select content inside the nearest backtick pair.",
-            cmd_inner_backtick
+            cmd_inner_backtick,
+            seek
         );
         super::selection!(
             self,
             "around-backtick",
             "Select content including the nearest backtick pair.",
-            cmd_around_backtick
+            cmd_around_backtick,
+            seek
         );
 
         // `inner-argument` / `around-argument` register from

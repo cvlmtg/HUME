@@ -18,43 +18,50 @@ impl CommandRegistry {
             self,
             "surround-paren",
             "Select surrounding `()` delimiters.",
-            cmd_surround_paren
+            cmd_surround_paren,
+            seek
         );
         super::selection!(
             self,
             "surround-bracket",
             "Select surrounding `[]` delimiters.",
-            cmd_surround_bracket
+            cmd_surround_bracket,
+            seek
         );
         super::selection!(
             self,
             "surround-brace",
             "Select surrounding `{}` delimiters.",
-            cmd_surround_brace
+            cmd_surround_brace,
+            seek
         );
         super::selection!(
             self,
             "surround-angle",
             "Select surrounding `<>` delimiters.",
-            cmd_surround_angle
+            cmd_surround_angle,
+            seek
         );
         super::selection!(
             self,
             "surround-double-quote",
             "Select surrounding `\"` delimiters.",
-            cmd_surround_double_quote
+            cmd_surround_double_quote,
+            seek
         );
         super::selection!(
             self,
             "surround-single-quote",
             "Select surrounding `'` delimiters.",
-            cmd_surround_single_quote
+            cmd_surround_single_quote,
+            seek
         );
         super::selection!(
             self,
             "surround-backtick",
             "Select surrounding backtick delimiters.",
-            cmd_surround_backtick
+            cmd_surround_backtick,
+            seek
         );
 
         // ── Surround add ──────────────────────────────────────────────────────

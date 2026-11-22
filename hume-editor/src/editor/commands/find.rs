@@ -10,7 +10,7 @@ use super::super::EditorState;
 use crate::editor::error::CommandError;
 use hume_ops::motion::FindKind;
 
-use super::{CommandPane, apply_pane_motion};
+use super::{CommandPane, seek_pane_motion};
 
 // ── Find/till state ───────────────────────────────────────────────────────────
 
@@ -34,11 +34,11 @@ fn find_char(
     count: usize,
     mode: MotionMode,
     find: FindChar,
-    find_fn: fn(EditState, usize, MotionMode, char, FindKind) -> EditState,
-) {
+    find_fn: fn(EditState, usize, MotionMode, char, FindKind) -> Option<EditState>,
+) -> Result<(), CommandError> {
     let FindChar { ch, kind } = find;
-    apply_pane_motion(state, view, t, |st| find_fn(st, count, mode, ch, kind));
     state.last_find = Some(find);
+    seek_pane_motion(state, view, t, |st| find_fn(st, count, mode, ch, kind))
 }
 
 pub(in crate::editor) fn cmd_find_forward(
@@ -60,8 +60,7 @@ pub(in crate::editor) fn cmd_find_forward(
             kind: FindKind::Inclusive,
         },
         find_char_forward,
-    );
-    Ok(())
+    )
 }
 pub(in crate::editor) fn cmd_find_backward(
     state: &mut EditorState,
@@ -82,8 +81,7 @@ pub(in crate::editor) fn cmd_find_backward(
             kind: FindKind::Inclusive,
         },
         find_char_backward,
-    );
-    Ok(())
+    )
 }
 pub(in crate::editor) fn cmd_till_forward(
     state: &mut EditorState,
@@ -104,8 +102,7 @@ pub(in crate::editor) fn cmd_till_forward(
             kind: FindKind::Exclusive,
         },
         find_char_forward,
-    );
-    Ok(())
+    )
 }
 pub(in crate::editor) fn cmd_till_backward(
     state: &mut EditorState,
@@ -126,8 +123,7 @@ pub(in crate::editor) fn cmd_till_backward(
             kind: FindKind::Exclusive,
         },
         find_char_backward,
-    );
-    Ok(())
+    )
 }
 
 // ── Repeat find ───────────────────────────────────────────────────────────────
@@ -138,11 +134,12 @@ fn repeat_find(
     t: CommandPane,
     count: usize,
     mode: MotionMode,
-    find_fn: fn(EditState, usize, MotionMode, char, FindKind) -> EditState,
-) {
-    if let Some(FindChar { ch, kind }) = state.last_find {
-        apply_pane_motion(state, view, t, |st| find_fn(st, count, mode, ch, kind));
-    }
+    find_fn: fn(EditState, usize, MotionMode, char, FindKind) -> Option<EditState>,
+) -> Result<(), CommandError> {
+    let Some(FindChar { ch, kind }) = state.last_find else {
+        return Err(CommandError::transient("no find to repeat"));
+    };
+    seek_pane_motion(state, view, t, |st| find_fn(st, count, mode, ch, kind))
 }
 
 pub(in crate::editor) fn cmd_repeat_find_forward(
@@ -152,8 +149,7 @@ pub(in crate::editor) fn cmd_repeat_find_forward(
     count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    repeat_find(state, view, t, count.get(), mode, repeat_find_char_forward);
-    Ok(())
+    repeat_find(state, view, t, count.get(), mode, repeat_find_char_forward)
 }
 pub(in crate::editor) fn cmd_repeat_find_backward(
     state: &mut EditorState,
@@ -162,6 +158,5 @@ pub(in crate::editor) fn cmd_repeat_find_backward(
     count: Count,
     mode: MotionMode,
 ) -> Result<(), CommandError> {
-    repeat_find(state, view, t, count.get(), mode, repeat_find_char_backward);
-    Ok(())
+    repeat_find(state, view, t, count.get(), mode, repeat_find_char_backward)
 }

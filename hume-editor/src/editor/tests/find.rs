@@ -48,12 +48,32 @@ fn find_repeat_absolute_direction() {
     assert_eq!(state(&ed), "hello a world -[a]> end\n");
 }
 
-/// `=` with no prior find is a no-op.
+/// `=` with no prior find is refused and says so.
 #[test]
-fn find_repeat_noop_when_no_prior_find() {
+fn find_repeat_with_no_prior_find_is_refused() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key('='));
     assert_eq!(state(&ed), "-[h]>ello\n");
+    assert!(
+        status(&ed).contains("no find to repeat"),
+        "status: {:?}",
+        status(&ed)
+    );
+}
+
+/// `fz` with no `z` on the line keeps the selection as it was and reports
+/// the miss.
+#[test]
+fn find_forward_with_no_match_keeps_the_selection() {
+    let mut ed = editor_from("-[hel]>lo\n");
+    ed.handle_key(key('f'));
+    ed.handle_key(key('z'));
+    assert_eq!(state(&ed), "-[hel]>lo\n");
+    assert!(
+        status(&ed).contains("no match"),
+        "status: {:?}",
+        status(&ed)
+    );
 }
 
 /// Extend mode: `e` then `fa` extends the selection to include 'a'.

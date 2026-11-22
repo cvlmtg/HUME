@@ -1,5 +1,5 @@
-use hume_editing::selection::{Facing, Selection};
-use hume_editing::state::EditState;
+use hume_editing::selection::{Facing, Selection, SelectionView};
+use hume_editing::state::{EditState, Sought};
 use hume_editing::text::BufferText;
 use hume_editing::word::blank_class;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
@@ -35,83 +35,68 @@ pub use word::{
 
 // ── Text object framework ──────────────────────────────────────────────────────
 
-/// Apply a text object to every selection in the set.
+/// Apply a text object to every selection in the set, honoring `mode`.
 ///
 /// Unlike motions, which map a single cursor position to a new position, a
 /// text object maps a cursor position to a *range*: the region to select.
-/// `text_object` returns `Some(range)`, or `None` if no match exists (e.g.,
-/// cursor not inside any bracket pair).
+/// `f` returns `Some(range)`, or `None` if no match exists (e.g., cursor not
+/// inside any bracket pair). A selection with no match is kept as it is in
+/// both modes.
 ///
-/// On `None`, the existing selection is preserved: `mi(` when not inside parens
-/// is a no-op. On `Some`, the selection is replaced with a forward selection
-/// covering the range.
-///
-/// Uses `map` (which always merges) so that multiple cursors landing on the
-/// same range (e.g., both cursors inside the same bracket pair) are merged.
-fn apply_text_object(
-    state: EditState,
-    text_object: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
-) -> EditState {
-    state.map(|sel| match text_object(sel.text(), sel.head()) {
-        Some(range) => Selection::covering(range, Facing::Forward),
-        None => sel.selection(),
-    })
-}
-
-/// Apply a text object in extend mode: union the matched range with the current selection.
-///
-/// On match, the result covers both the selection and the range, keeping the
-/// selection's facing. On no-match, the selection is unchanged.
-///
-/// Two-pass strategy for outward growth:
-/// 1. Try `text_object(text, sel.head)`. If the result is *larger* than the current
+/// `Move` replaces the selection with a forward selection covering the
+/// range. `Extend` unions the range with the selection, keeping its facing,
+/// in two passes for outward growth:
+/// 1. Try `f(text, sel.head)`. If the result is *larger* than the current
 ///    selection, use it. This handles the initial extend-from-cursor case.
 /// 2. If the result is a subset (union doesn't grow), retry from the cluster just
 ///    past the selection. For bracket/quote text objects this escapes the current
 ///    pair and causes the search to find the next enclosing pair instead.
-fn apply_text_object_extend(
-    state: EditState,
-    text_object: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
-) -> EditState {
-    state.map(|sel| {
-        let text = sel.text();
-
-        // First try from head (correct for initial extend from a cursor).
-        if let Some(found) = text_object(text, sel.head()) {
-            let grown = sel.union(found, sel.facing());
-            if sel.with_selection(grown).covered() != sel.covered() {
-                return grown;
-            }
-        }
-
-        // Result was a subset (no growth). Retry from the cluster past the
-        // selection so bracket/quote searches find the enclosing pair rather
-        // than the current one.
-        text.clusters()
-            .next(sel.last())
-            .and_then(|past| text_object(text, past))
-            .map_or(sel.selection(), |found| sel.union(found, sel.facing()))
-    })
-}
-
-/// Apply a text object to every selection in the set, honoring `mode`: `Move`
-/// replaces each selection with the matched range; `Extend` unions the match
-/// with the current selection, retrying past the selection's end when the
-/// first match would not grow it (the outward-walk described above). A
-/// selection with no match is preserved unchanged in both modes. The second,
-/// cross-crate caller of this exact contract is `hume-editor`'s structural
-/// text objects, dispatching through a tree-sitter-backed finder rather than
-/// a lexical one.
-#[inline]
+///
+/// Multiple cursors landing on the same range (e.g., both cursors inside the
+/// same bracket pair) merge.
 pub fn apply_text_object_by_mode(
     state: EditState,
     mode: MotionMode,
     f: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
 ) -> EditState {
-    match mode {
-        MotionMode::Move => apply_text_object(state, f),
-        MotionMode::Extend => apply_text_object_extend(state, f),
-    }
+    state.map(|sel| text_object_sought(sel, mode, &f).selection())
+}
+
+/// One selection's result for [`apply_text_object_by_mode`].
+fn text_object_sought(
+    sel: SelectionView<'_>,
+    mode: MotionMode,
+    text_object: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
+) -> Sought {
+    let text = sel.text();
+    let found = match mode {
+        MotionMode::Move => {
+            text_object(text, sel.head()).map(|range| Selection::covering(range, Facing::Forward))
+        }
+        MotionMode::Extend => text_object(text, sel.head())
+            .map(|found| sel.union(found, sel.facing()))
+            .filter(|&grown| sel.with_selection(grown).covered() != sel.covered())
+            .or_else(|| {
+                text.clusters()
+                    .next(sel.last())
+                    .and_then(|past| text_object(text, past))
+                    .map(|found| sel.union(found, sel.facing()))
+            }),
+    };
+    found.map_or(Sought::Missed(sel.selection()), Sought::Found)
+}
+
+/// [`apply_text_object_by_mode`] for a command that reports a miss: `None`
+/// when no selection has a match, so `mi(` outside any parens changes
+/// nothing. Its cross-crate caller is `hume-editor`'s structural text
+/// objects, dispatching through a tree-sitter-backed finder rather than a
+/// lexical one.
+pub fn seek_text_object_by_mode(
+    state: EditState,
+    mode: MotionMode,
+    f: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
+) -> Option<EditState> {
+    state.map_sought(|sel| text_object_sought(sel, mode, &f))
 }
 
 #[cfg(test)]

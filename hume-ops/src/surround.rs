@@ -116,13 +116,22 @@ pub(crate) fn smart_replace_char(replacement: char, current: char, sel_index: us
 // ── Select surrounding delimiters ────────────────────────────────────────────
 
 /// Shared implementation: map each selection to two cursors on the pair's
-/// delimiter clusters, or preserve unchanged on no-match.
+/// delimiter clusters. A selection with no pair is kept as it is, and the
+/// result is `None` when no selection has one.
 fn select_surround(
     state: EditState,
     find_pair: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
-) -> EditState {
-    state.flat_map(|sel| {
-        let (first, second) = match find_pair(sel.text(), sel.head()) {
+) -> Option<EditState> {
+    let pairs: Vec<Option<ClusterRange>> = state
+        .view()
+        .iter()
+        .map(|sel| find_pair(sel.text(), sel.head()))
+        .collect();
+    if pairs.iter().all(Option::is_none) {
+        return None;
+    }
+    Some(state.flat_map(|sel| {
+        let (first, second) = match pairs[sel.index()] {
             Some(pair) => (
                 Selection::cursor(pair.start()),
                 Some(Selection::cursor(pair.last())),
@@ -130,19 +139,19 @@ fn select_surround(
             None => (sel.selection(), None),
         };
         std::iter::once(first).chain(second)
-    })
+    }))
 }
 
 // ── Generated surround commands ──────────────────────────────────────────────
 
 macro_rules! surround_cmd {
     ($name:ident, bracket, $open:literal, $close:literal) => {
-        pub fn $name(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
+        pub fn $name(state: EditState, _count: usize, _mode: MotionMode) -> Option<EditState> {
             select_surround(state, |t, pos| find_bracket_pair(t, pos, $open, $close))
         }
     };
     ($name:ident, quote, $quote:literal) => {
-        pub fn $name(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
+        pub fn $name(state: EditState, _count: usize, _mode: MotionMode) -> Option<EditState> {
             select_surround(state, |t, pos| find_quote_pair(t, pos, $quote))
         }
     };

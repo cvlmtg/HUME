@@ -4,13 +4,13 @@
 //! `hume-editor` supplies `finder` as a closure over
 //! `hume_treesitter::textobjects::ObjectSpans::adjacent` for the tree-sitter
 //! kinds. The paragraph motions (`super::paragraph`) are a second, in-crate
-//! caller whose `finder` is a lexical blank-line scan instead. `apply_object_motion`
+//! caller whose `finder` is a lexical blank-line scan instead. `seek_object_motion`
 //! only cares that `finder` returns the object's clusters and honors the
 //! strict-progress contract described below, not how the object was found.
 
 use super::MotionMode;
 use hume_editing::selection::{Facing, Selection};
-use hume_editing::state::EditState;
+use hume_editing::state::{EditState, Sought};
 use hume_editing::text::BufferText;
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 
@@ -32,16 +32,18 @@ use hume_rope::cluster::{ClusterRange, ClusterStart};
 /// `finder` must make strict progress (start past the origin forward, before
 /// it backward), so no fixed-point check is needed. `None` stops that
 /// selection's loop and keeps its last result. Converging cursors merge.
-pub fn apply_object_motion(
+/// The result is `None` when no selection found even one object.
+pub fn seek_object_motion(
     state: EditState,
     mode: MotionMode,
     count: usize,
     backward: bool,
     finder: impl Fn(&BufferText, ClusterStart) -> Option<ClusterRange>,
-) -> EditState {
-    state.map(|sel| {
+) -> Option<EditState> {
+    state.map_sought(|sel| {
         let mut current = sel.selection();
         let mut covered = sel.covered();
+        let mut found = false;
         for _ in 0..count {
             let origin = match mode {
                 MotionMode::Move if backward => covered.start(),
@@ -51,6 +53,7 @@ pub fn apply_object_motion(
             let Some(object) = finder(sel.text(), origin) else {
                 break;
             };
+            found = true;
             (current, covered) = match mode {
                 MotionMode::Move => (Selection::covering(object, Facing::Backward), object),
                 MotionMode::Extend => {
@@ -62,6 +65,10 @@ pub fn apply_object_motion(
                 }
             };
         }
-        current
+        if found {
+            Sought::Found(current)
+        } else {
+            Sought::Missed(current)
+        }
     })
 }

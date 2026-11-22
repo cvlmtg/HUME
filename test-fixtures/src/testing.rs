@@ -39,6 +39,17 @@ impl IntoTestResult for EditState {
     }
 }
 
+/// A command that searches from each selection and found its target.
+///
+/// # Panics
+/// Panics when it found nothing; [`crate::assert_finds_nothing`] asserts
+/// that case.
+impl IntoTestResult for Option<EditState> {
+    fn into_test_result(self) -> (BufferText, SelectionSet) {
+        self.expect("the command found nothing").into_parts()
+    }
+}
+
 /// `sels` paired with `text`, the input an edit command takes.
 pub fn state(text: BufferText, sels: SelectionSet) -> EditState {
     EditState::bind(text, sels)
@@ -133,5 +144,16 @@ macro_rules! assert_state {
             serialize_state(&result_text, &result_sels),
             serialize_state(&expected_text, &expected_sels),
         );
+    }};
+}
+
+/// Assert that `$op`, a command that searches from each selection, finds
+/// nothing from the state described by `$initial`.
+#[macro_export]
+macro_rules! assert_finds_nothing {
+    ($initial:expr, $op:expr) => {{
+        let (text, sels) = $crate::testing::parse_state($initial);
+        let result: Option<hume_editing::state::EditState> = $op((text, sels));
+        assert!(result.is_none(), "found something from {:?}", $initial);
     }};
 }

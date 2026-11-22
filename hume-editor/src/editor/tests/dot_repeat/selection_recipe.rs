@@ -402,6 +402,35 @@ fn dot_repeat_whose_sift_finds_nothing_leaves_text_and_selections_unchanged() {
     assert_eq!(state(&ed), before);
 }
 
+/// A recorded step that searches for something not at the new place
+/// refuses `.` before the edit runs: text and selections stay as they were.
+#[test]
+fn dot_repeat_whose_step_finds_nothing_leaves_text_and_selections_unchanged() {
+    let cases: &[(&str, &str, &str, &str)] = &[
+        ("find-forward", "-[a]>-b\nxyz\n", "ef-d", "j"),
+        ("till-forward", "-[a]>b-c\nxyz\n", "et-d", "j"),
+        ("repeat-find-forward", "-[a]>-b-c\nxyz\n", "f-e=d", "j"),
+        ("surround-paren", "(-[a]>)\nxyz\n", "ms(d,", "j"),
+        ("inner-double-quote", "\"-[a]>b\"\nxyz\n", "mi\"d", "j"),
+        ("goto-matching-pair", "-[(]>a)\nxyz\n", "e#d", "j"),
+        ("inner-paragraph", "-[a]>b\n\nxyz\n", "mipd", ""),
+    ];
+    for &(command, initial, record, moves) in cases {
+        let mut ed = editor_from(initial);
+        for ch in record.chars().chain(moves.chars()) {
+            ed.feed_key(key(ch));
+        }
+        let before = state(&ed);
+        ed.feed_key(key('.'));
+        assert_eq!(state(&ed), before, "{command}");
+        assert!(
+            status(&ed).contains("no match"),
+            "{command}: status {:?}",
+            status(&ed)
+        );
+    }
+}
+
 /// In Extend mode, `f-` grows the selection to the next `-`. `.` grows the
 /// cursor's selection to its next `-` with the same character, then deletes.
 #[test]
@@ -476,4 +505,33 @@ fn dot_repeat_extends_to_the_next_search_match_again() {
     ed.feed_key(key('.'));
 
     assert_eq!(text(&ed), " c x\n");
+}
+
+/// Each find and search command, recorded in Extend mode before `d`, is
+/// replayed by `.` from the cursor the first delete left.
+#[test]
+fn dot_repeat_rebuilds_each_find_and_search_step() {
+    let cases: &[(&str, &str, &str, &str, &str)] = &[
+        ("find-forward", "-[a]>-b-c\n", "ef-d", "", "c\n"),
+        ("find-backward", "x-y-z--[w]>v\n", "eF-d", "", "x-y\n"),
+        ("till-forward", "-[a]>b-c-d\n", "et-d", "", "-d\n"),
+        ("till-backward", "a-bc-de-[f]>g\n", "eT-d", "h", "a-g\n"),
+        ("repeat-find-forward", "-[a]>-b-c-d\n", "f-e=d", "", "ad\n"),
+        (
+            "repeat-find-backward",
+            "a-b-c-d--[e]>f\n",
+            "F-e-d",
+            "",
+            "a-bf\n",
+        ),
+        ("search-next", "-[a]> x b x c x\n", "end", "", " c x\n"),
+        ("search-prev", " x a x b -[c]>d\n", "eNd", "", " \n"),
+    ];
+    for &(command, initial, record, moves, expected) in cases {
+        let mut ed = editor_from(initial).with_search_regex("x");
+        for ch in record.chars().chain(moves.chars()).chain(['.']) {
+            ed.feed_key(key(ch));
+        }
+        assert_eq!(text(&ed), expected, "{command}");
+    }
 }

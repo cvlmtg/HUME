@@ -1,5 +1,5 @@
 use super::super::*;
-use test_fixtures::assert_state;
+use test_fixtures::{assert_finds_nothing, assert_state};
 
 // ── Brackets ──────────────────────────────────────────────────────────────
 
@@ -70,30 +70,22 @@ fn goto_matching_pair_nested() {
 }
 
 #[test]
-fn goto_matching_pair_unmatched_is_noop() {
-    assert_state!(
-        "-[(]>hello\n",
-        |(text, sels)| cmd_goto_matching_pair(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "-[(]>hello\n"
-    );
+fn goto_matching_pair_unmatched_finds_nothing() {
+    assert_finds_nothing!("-[(]>hello\n", |(text, sels)| cmd_goto_matching_pair(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 #[test]
-fn goto_matching_pair_not_on_delimiter_is_noop() {
-    // Strict mode: no forward line-scan. Cursor mid-word does nothing.
-    assert_state!(
-        "hel-[l]>o(x)\n",
-        |(text, sels)| cmd_goto_matching_pair(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "hel-[l]>o(x)\n"
-    );
+fn goto_matching_pair_not_on_delimiter_finds_nothing() {
+    // Strict mode: no forward line-scan. Cursor mid-word finds nothing.
+    assert_finds_nothing!("hel-[l]>o(x)\n", |(text, sels)| cmd_goto_matching_pair(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -178,19 +170,14 @@ fn goto_matching_pair_extend_from_non_head_bracket_keeps_anchor() {
 }
 
 #[test]
-fn goto_matching_pair_bracket_outside_selection_is_noop() {
+fn goto_matching_pair_bracket_outside_selection_finds_nothing() {
     // '(f)' sits past the selection's own end, so it must not be picked up:
-    // resolution is bounded by the selection, not the whole line. Move mode
-    // still collapses to the (unchanged) head, same as any other no-op.
-    assert_state!(
-        "a-[bc d]>e(f)\n",
-        |(text, sels)| cmd_goto_matching_pair(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "abc -[d]>e(f)\n"
-    );
+    // resolution is bounded by the selection, not the whole line.
+    assert_finds_nothing!("a-[bc d]>e(f)\n", |(text, sels)| cmd_goto_matching_pair(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -202,15 +189,11 @@ fn goto_matching_pair_multiline_selection_ignores_bracket_elsewhere_in_span() {
     // highlight). `w`/`W`/`maw` selections never cross a line (their
     // whitespace bookend stops at a newline), so this never loses the
     // motivating `") "` case.
-    assert_state!(
-        "-[(x\ny]>)\n",
-        |(text, sels)| cmd_goto_matching_pair(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "(x\n-[y]>)\n"
-    );
+    assert_finds_nothing!("-[(x\ny]>)\n", |(text, sels)| cmd_goto_matching_pair(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -230,18 +213,14 @@ fn goto_matching_pair_multiline_selection_head_on_bracket_still_resolves() {
 }
 
 #[test]
-fn goto_matching_pair_tag_in_selection_but_not_under_head_is_noop() {
+fn goto_matching_pair_tag_in_selection_but_not_under_head_finds_nothing() {
     // Brackets-only span-wide resolution: a tag fully inside the selection
     // doesn't make `#` jump when the head itself isn't on the tag's markup.
-    assert_state!(
-        "-[<div>x]>\n",
-        |(text, sels)| cmd_goto_matching_pair(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "<div>-[x]>\n"
-    );
+    assert_finds_nothing!("-[<div>x]>\n", |(text, sels)| cmd_goto_matching_pair(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 // ── Tags ──────────────────────────────────────────────────────────────────
@@ -316,34 +295,28 @@ fn goto_matching_pair_tag_cursor_in_attribute_value_resolves() {
 }
 
 #[test]
-fn goto_matching_pair_self_closing_tag_cursor_inside_is_noop() {
-    // Still no-op from inside a self-closing tag's own markup: it has no
+fn goto_matching_pair_self_closing_tag_cursor_inside_finds_nothing() {
+    // Nothing is found from inside a self-closing tag's own markup: it has no
     // partner regardless of where the cursor sits within it.
-    assert_state!(
-        "<b-[r]> class=\"x\"/>\n",
-        |(text, sels)| cmd_goto_matching_pair(
+    assert_finds_nothing!("<b-[r]> class=\"x\"/>\n", |(text, sels)| {
+        cmd_goto_matching_pair(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
-        ),
-        "<b-[r]> class=\"x\"/>\n"
-    );
+            MotionMode::Move,
+        )
+    });
 }
 
 #[test]
-fn goto_matching_pair_element_body_content_is_noop() {
+fn goto_matching_pair_element_body_content_finds_nothing() {
     // Cursor in the element's body content (outside either tag's own
     // markup span) must NOT resolve; widening covers the tag itself, not
     // everything between an open and close tag.
-    assert_state!(
-        "<div>-[x]></div>\n",
-        |(text, sels)| cmd_goto_matching_pair(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "<div>-[x]></div>\n"
-    );
+    assert_finds_nothing!("<div>-[x]></div>\n", |(text, sels)| cmd_goto_matching_pair(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 #[test]
@@ -360,29 +333,23 @@ fn goto_matching_pair_tag_nested_same_name() {
 }
 
 #[test]
-fn goto_matching_pair_self_closing_tag_is_noop() {
-    assert_state!(
-        "-[<]>br/>\n",
-        |(text, sels)| cmd_goto_matching_pair(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "-[<]>br/>\n"
-    );
+fn goto_matching_pair_self_closing_tag_finds_nothing() {
+    assert_finds_nothing!("-[<]>br/>\n", |(text, sels)| cmd_goto_matching_pair(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 #[test]
-fn goto_matching_pair_tag_in_comment_is_noop() {
-    assert_state!(
-        "<!-- -[<]>div> -->\n",
-        |(text, sels)| cmd_goto_matching_pair(
+fn goto_matching_pair_tag_in_comment_finds_nothing() {
+    assert_finds_nothing!("<!-- -[<]>div> -->\n", |(text, sels)| {
+        cmd_goto_matching_pair(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
-        ),
-        "<!-- -[<]>div> -->\n"
-    );
+            MotionMode::Move,
+        )
+    });
 }
 
 #[test]
@@ -417,44 +384,36 @@ fn goto_matching_pair_tag_gt_after_quoted_lt_attribute_resolves() {
 }
 
 #[test]
-fn goto_matching_pair_angle_generic_is_noop() {
+fn goto_matching_pair_angle_generic_finds_nothing() {
     // `Vec<String>` parses as a plausible open tag lexically, but there is
     // no matching `</String>` anywhere, so it never resolves.
-    assert_state!(
-        "Vec-[<]>String>\n",
-        |(text, sels)| cmd_goto_matching_pair(
-            test_fixtures::testing::state(text, sels),
-            1,
-            MotionMode::Move
-        ),
-        "Vec-[<]>String>\n"
-    );
+    assert_finds_nothing!("Vec-[<]>String>\n", |(text, sels)| cmd_goto_matching_pair(
+        test_fixtures::testing::state(text, sels),
+        1,
+        MotionMode::Move
+    ));
 }
 
 #[test]
-fn goto_matching_pair_comparison_operators_are_noop() {
-    assert_state!(
-        "a -[<]> b && c > d\n",
-        |(text, sels)| cmd_goto_matching_pair(
+fn goto_matching_pair_comparison_operators_finds_nothing() {
+    assert_finds_nothing!("a -[<]> b && c > d\n", |(text, sels)| {
+        cmd_goto_matching_pair(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
-        ),
-        "a -[<]> b && c > d\n"
-    );
+            MotionMode::Move,
+        )
+    });
 }
 
 #[test]
-fn goto_matching_pair_doctype_is_noop() {
-    assert_state!(
-        "-[<]>!DOCTYPE html>\n",
-        |(text, sels)| cmd_goto_matching_pair(
+fn goto_matching_pair_doctype_finds_nothing() {
+    assert_finds_nothing!("-[<]>!DOCTYPE html>\n", |(text, sels)| {
+        cmd_goto_matching_pair(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
-        ),
-        "-[<]>!DOCTYPE html>\n"
-    );
+            MotionMode::Move,
+        )
+    });
 }
 
 #[test]
@@ -574,30 +533,26 @@ fn goto_matching_pair_tag_quoted_close_tag_before_partner_is_known_limitation() 
     // since the whole attribute is consumed by one `parse_tag` call). Here
     // it throws off the depth count enough that the real open is never
     // reached. Accepted rather than fixed; see `prev_tag`'s doc comment.
-    assert_state!(
-        "<div title=\"</div>\">x-[<]>/div>\n",
-        |(text, sels)| cmd_goto_matching_pair(
+    assert_finds_nothing!("<div title=\"</div>\">x-[<]>/div>\n", |(text, sels)| {
+        cmd_goto_matching_pair(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
-        ),
-        "<div title=\"</div>\">x-[<]>/div>\n"
-    );
+            MotionMode::Move,
+        )
+    });
 }
 
 #[test]
-fn goto_matching_pair_unspaced_comparison_body_text_is_noop() {
+fn goto_matching_pair_unspaced_comparison_body_text_finds_nothing() {
     // The cursor sits in ordinary body text after an unspaced `a<b`. It must
     // not resolve as if it were inside `a<b`'s markup.
-    assert_state!(
-        "a<b -[t]>hen</b>x</b>\n",
-        |(text, sels)| cmd_goto_matching_pair(
+    assert_finds_nothing!("a<b -[t]>hen</b>x</b>\n", |(text, sels)| {
+        cmd_goto_matching_pair(
             test_fixtures::testing::state(text, sels),
             1,
-            MotionMode::Move
-        ),
-        "a<b -[t]>hen</b>x</b>\n"
-    );
+            MotionMode::Move,
+        )
+    });
 }
 
 #[test]
@@ -689,7 +644,8 @@ fn goto_matching_pair_twice_is_involution_across_prepend_cluster() {
                 test_fixtures::testing::state(text, sels),
                 1,
                 MotionMode::Move,
-            );
+            )
+            .expect("the first press finds the partner");
             cmd_goto_matching_pair(once, 1, MotionMode::Move)
         },
         "-[(]>\u{0600})\n"
