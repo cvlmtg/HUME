@@ -72,11 +72,11 @@ fn assert_renumbers(bench: &mut MarkdownBench, sample: ListSample, at: &str, ind
 }
 
 fn bench_markdown_lists(c: &mut Criterion) {
-    test_fixtures::require_grammars(&["markdown", "markdown.inline"]);
     let root = tempfile::tempdir().expect("a temp dir");
-    for name in ["markdown", "markdown.inline"] {
-        test_fixtures::install_fixture_grammar(&root.path().join("data/grammars"), name, "1");
-    }
+    test_fixtures::install_fixture_grammars(
+        &root.path().join("data/grammars"),
+        &["markdown", "markdown.inline"],
+    );
     let enter = Keys::parse("<ret>");
     let leave_undo = Keys::parse("<esc>u");
     let undo = Keys::parse("u");

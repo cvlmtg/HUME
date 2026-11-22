@@ -15,11 +15,11 @@ const SAMPLES: [(&str, PreviewSample); 2] = [
 const SIZES: [(u16, u16); 2] = [(80, 25), (200, 60)];
 
 fn bench_markdown_preview(c: &mut Criterion) {
-    test_fixtures::require_grammars(&["markdown", "markdown.inline"]);
     let root = tempfile::tempdir().expect("a temp dir");
-    for name in ["markdown", "markdown.inline"] {
-        test_fixtures::install_fixture_grammar(&root.path().join("data/grammars"), name, "1");
-    }
+    test_fixtures::install_fixture_grammars(
+        &root.path().join("data/grammars"),
+        &["markdown", "markdown.inline"],
+    );
     let mut group = c.benchmark_group("markdown_preview");
 
     for (sample_name, sample) in SAMPLES {

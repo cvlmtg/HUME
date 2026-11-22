@@ -111,7 +111,8 @@ second one. The handler skips a read-only buffer
 and an event whose hunks are `#f`.
 
 `md-lists/line-markers` reads the ordered markers at the start of a line, past blanks,
-`>` and bullets, each with its column, number and delimiter. `md-lists/edited-hunks` keeps a hunk when, at some
+`>` and bullets, each with its column, number and delimiter, through the same prefix reader
+the table commands use. `md-lists/edited-hunks` keeps a hunk when, at some
 column, the numbers its old lines hold there differ from those its new lines hold. Typing
 in an item's text, deleting a word, or rewriting a line around its marker leaves them equal,
 so that hunk is dropped before the tree is read. Both sides go through the same reader, so a

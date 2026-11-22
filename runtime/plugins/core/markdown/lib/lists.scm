@@ -6,7 +6,8 @@
 (provide md-lists/distinct md-lists/may-start-prefix? md-lists/items md-lists/past-prefix? md-lists/empty?
          md-lists/ended-edit
          md-lists/events md-lists/numbered-lists md-lists/renumber md-lists/prefixes
-         md-lists/edited-hunks md-lists/edited-spans md-lists/edited-events md-lists/task-edits)
+         md-lists/edited-hunks md-lists/edited-spans md-lists/edited-events md-lists/task-edits
+         md-lists/container-of md-lists/container-end)
 
 (define (md-lists/distinct lines)
   (reverse (foldl (lambda (line kept) (if (and (pair? kept) (= (car kept) line)) kept (cons line kept)))
@@ -231,26 +232,34 @@
 ;;; An ordered marker a line's text holds, `delimiter` being `#\.` or `#\)`.
 (struct md-lists/line-marker (col number delimiter))
 
-;;; The ordered markers in `text`'s container prefix.
-(define (md-lists/line-markers text)
+;;; A line's container prefix: `end` is the column past its blanks, `>` quote markers and list markers, and
+;;; `markers` the ordered markers among them.
+(struct md-lists/container (end markers))
+
+;;; `text`'s container prefix. See docs/tables.md's "The text of a row".
+(define (md-lists/container-of text)
   (let ([len (string-length text)])
     (define (ends? col) (or (= col len) (md-preview/blank? (string-ref text col))))
     (let loop ([col 0] [out '()])
       (let ([col (md-preview/skip-while text col (lambda (c) (or (md-preview/blank? c) (char=? c #\>))))])
+        (define (done) (md-lists/container col (reverse out)))
         (if (= col len)
-            (reverse out)
+            (done)
             (let* ([c (string-ref text col)]
                    [end (md-preview/skip-while text col char-digit?)])
               (cond
                 [(or (char=? c #\-) (char=? c #\*) (char=? c #\+))
-                 (if (ends? (+ col 1)) (loop (+ col 1) out) (reverse out))]
+                 (if (ends? (+ col 1)) (loop (+ col 1) out) (done))]
                 [(and (< col end) (<= (- end col) 9) (< end len)
                       (or (char=? (string-ref text end) #\.) (char=? (string-ref text end) #\)))
                       (ends? (+ end 1)))
                  (loop (+ end 1)
                        (cons (md-lists/line-marker col (string->number (substring text col end)) (string-ref text end))
                              out))]
-                [else (reverse out)])))))))
+                [else (done)])))))))
+
+(define (md-lists/line-markers text)
+  (md-lists/container-markers (md-lists/container-of text)))
 
 (define (md-lists/numbers-at markers col)
   (map md-lists/line-marker-number (filter (lambda (m) (= (md-lists/line-marker-col m) col)) markers)))

@@ -1038,9 +1038,7 @@ const SLOW_OPEN: Duration = Duration::from_secs(3);
 /// [`GRAMMAR_LOAD_BUDGET_MS`] and each library open waits [`SLOW_OPEN`]
 /// inside the scripting host's own budget pause.
 fn editor_with_installed_grammars(data_tmp: &Path, installed: &[&str], text: &str) -> Editor {
-    for name in installed {
-        test_fixtures::install_fixture_grammar(&data_tmp.join("hume/grammars"), name, "1");
-    }
+    test_fixtures::install_fixture_grammars(&data_tmp.join("hume/grammars"), installed);
     let mut ed = editor_from(text);
     load_plum(&mut ed, data_tmp);
     ed.state.settings.steel_command_budget_ms = GRAMMAR_LOAD_BUDGET_MS;

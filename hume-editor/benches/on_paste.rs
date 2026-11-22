@@ -17,9 +17,10 @@ const URL: &str = "https://example.com";
 
 fn fixture(handlers: PasteHandlers, selections: usize) -> (OnPasteBench, tempfile::TempDir) {
     let root = tempfile::tempdir().expect("a temp dir");
-    for name in ["markdown", "markdown.inline"] {
-        test_fixtures::install_fixture_grammar(&root.path().join("data/grammars"), name, "1");
-    }
+    test_fixtures::install_fixture_grammars(
+        &root.path().join("data/grammars"),
+        &["markdown", "markdown.inline"],
+    );
     let mut bench = OnPasteBench::new(root.path(), handlers, selections);
     assert_eq!(bench.selection_count(), selections);
     let expected = match handlers {
@@ -31,7 +32,6 @@ fn fixture(handlers: PasteHandlers, selections: usize) -> (OnPasteBench, tempfil
 }
 
 fn bench_on_paste(c: &mut Criterion) {
-    test_fixtures::require_grammars(&["markdown", "markdown.inline"]);
     let long = "x".repeat(10 * 1024);
     let cases = [
         ("none/short", PasteHandlers::None, SHORT),

@@ -21,21 +21,23 @@ three cells while the preview, drawn from the tree, shows two.
 ## The text of a row
 
 A line's prefix is its leading run of blanks, `>` quote markers, and list markers (`-`, `+`,
-`*`, or one to nine digits and `.` or `)`) each followed by a blank. A table row can start
-with a list marker only when the table is inside that list item, so the prefix is never cell
-text. From the end of the prefix, a backslash and the character after it are text, and every
-other `|` is a pipe. A line with no pipe is not a row.
+`*`, or one to nine digits and `.` or `)`) each followed by a blank or the line end. A table
+row can start with a list marker only when the table is inside that list item, so the prefix
+is never cell text. From the end of the prefix, a backslash and the character after it are
+text, and every other `|` is a pipe. A line with no pipe is not a row.
 
 A pipe right after the prefix is the leading pipe, and the last pipe is a closing pipe when
 only blanks follow it. Every other pipe, and the leading one, opens a cell that runs to the
 next pipe or to the end of the line. In a row without a leading pipe, the first cell starts
 at the end of the prefix. Two adjacent pipes hold an empty cell.
 
-`md-cells/prefix-end` and `md-cells/pipes` read a line this way, and the two sift patterns
-next to them match the same pieces: `m i |`'s matches the prefix and each stretch of text
-between pipes, `m a |`'s the prefix, each pipe with the text after it, and a first cell with
-no leading pipe. The prefix alternative never matches the empty string: an empty match at the
-start of a line would make the next match start one character later.
+`md-lists/container-of`, the reader list renumbering takes markers from, and `md-cells/pipes`
+read a line this way. The two sift patterns next to them match the same pieces of a row:
+`m i |`'s matches the prefix and each stretch of text between pipes, `m a |`'s the prefix,
+each pipe with the text after it, and a first cell with no leading pipe. A pattern takes a
+list marker only with a blank after it, which on a row always holds: a marker that ends the
+line leaves no pipe after the prefix. The prefix alternative never matches the empty string:
+an empty match at the start of a line would make the next match start one character later.
 
 ## Tables
 

@@ -1,7 +1,8 @@
 //! What `core:markdown`'s table selection costs: `m |` on a column of 200
-//! body rows, and of 1000 as a reported row only, and `m i |` with one cursor
-//! in each of two tables 3000 lines apart. Each sample first checks that the
-//! keys select what they should.
+//! body rows, and of 1000 as a reported row only, `m a |` on the column `m |`
+//! selected, at the same sizes, and `m i |` with one cursor in each of two
+//! tables 3000 lines apart. Each sample first checks that the keys select what
+//! they should.
 
 use std::time::{Duration, Instant};
 
@@ -35,15 +36,17 @@ fn timed_after(bench: &mut MarkdownBench, iters: u64, before: &Keys, timed: &Key
 }
 
 fn bench_markdown_tables(c: &mut Criterion) {
-    test_fixtures::require_grammars(&["markdown", "markdown.inline"]);
     let root = tempfile::tempdir().expect("a temp dir");
-    for name in ["markdown", "markdown.inline"] {
-        test_fixtures::install_fixture_grammar(&root.path().join("data/grammars"), name, "1");
-    }
+    test_fixtures::install_fixture_grammars(
+        &root.path().join("data/grammars"),
+        &["markdown", "markdown.inline"],
+    );
     let mut group = c.benchmark_group("markdown_tables");
 
     let on_first_body_row = Keys::parse(";ggjj");
     let column = Keys::parse("m|");
+    let on_column = Keys::parse(";ggjjm|");
+    let around = Keys::parse("ma|");
     for rows in ROWS {
         let mut bench = MarkdownBench::new(root.path(), &table(rows, "c"), true);
         bench.press(&on_first_body_row);
@@ -55,6 +58,17 @@ fn bench_markdown_tables(c: &mut Criterion) {
         );
         group.bench_function(format!("column/{rows}"), |b| {
             b.iter_custom(|iters| timed_after(&mut bench, iters, &on_first_body_row, &column));
+        });
+
+        bench.press(&on_column);
+        bench.press(&around);
+        assert_eq!(
+            bench.selection_count(),
+            rows + 2,
+            "m a | did not add the delimiter cell to the column"
+        );
+        group.bench_function(format!("around_column/{rows}"), |b| {
+            b.iter_custom(|iters| timed_after(&mut bench, iters, &on_column, &around));
         });
     }
 

@@ -1,37 +1,20 @@
 ;;; core:markdown — cells.scm. See docs/tables.md.
 
 (require "queries.scm")
+(require "lists.scm")
 
 (provide md-cells/inner-pattern md-cells/around-pattern md-cells/row md-cells/cells
          md-cells/text-start md-cells/text-end md-cells/around-start md-cells/empty? md-cells/index-at
          md-cells/table-at md-cells/table-header md-cells/table-delimiter md-cells/table-last
          md-cells/table-rows)
 
-;;; `md-cells/prefix-end` and `md-cells/pipes` read a line as these patterns split it. See docs/tables.md's
+;;; `md-lists/container-of` and `md-cells/pipes` read a row as these patterns split it. See docs/tables.md's
 ;;; "The text of a row".
 (define md-cells/prefix-pattern "^(?:[ \\t]|>|[-+*][ \\t]|[0-9]{1,9}[.)][ \\t])+")
 (define md-cells/run-pattern "(?:\\\\.|[^|\\n])+")
 (define md-cells/inner-pattern (string-append md-cells/prefix-pattern "|" md-cells/run-pattern))
 (define md-cells/around-pattern
   (string-append md-cells/prefix-pattern "|\\|(?:\\\\.|[^|\\n])*|" md-cells/run-pattern))
-
-(define (md-cells/blank-at? text col)
-  (and (< col (string-length text)) (md-preview/blank? (string-ref text col))))
-
-;;; The column past `text`'s quote and list markers and the blanks around them.
-(define (md-cells/prefix-end text)
-  (let loop ([col 0])
-    (let ([digits (md-preview/skip-while text col char-digit?)])
-      (cond
-        [(>= col (string-length text)) col]
-        [(or (md-cells/blank-at? text col) (char=? (string-ref text col) #\>)) (loop (+ col 1))]
-        [(and (memv (string-ref text col) '(#\- #\+ #\*)) (md-cells/blank-at? text (+ col 1))) (loop (+ col 2))]
-        [(and (<= 1 (- digits col) 9)
-              (< digits (string-length text))
-              (memv (string-ref text digits) '(#\. #\)))
-              (md-cells/blank-at? text (+ digits 1)))
-         (loop (+ digits 2))]
-        [else col]))))
 
 ;;; The columns of the unescaped pipes in `text` from `col` on.
 (define (md-cells/pipes text col)
@@ -62,7 +45,7 @@
 ;;; The row `text` holds as `(cells delimiter?)`, each cell `(pipe-before text-start text-end)` in columns, or `#f`
 ;;; for a line with no unescaped pipe.
 (define (md-cells/row text)
-  (let* ([prefix (md-cells/prefix-end text)]
+  (let* ([prefix (md-lists/container-end (md-lists/container-of text))]
          [pipes (md-cells/pipes text prefix)])
     (and (pair? pipes)
          (let* ([closer? (= (md-preview/skip-blanks text (+ (last pipes) 1)) (string-length text))]

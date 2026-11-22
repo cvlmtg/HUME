@@ -160,6 +160,15 @@ pub fn install_fixture_grammar(grammars_dir: &Path, name: &str, install: &str) -
     dir
 }
 
+/// Require `names`' fixtures and install each under `grammars_dir` as
+/// [`install_fixture_grammar`] does, as install `1`.
+pub fn install_fixture_grammars(grammars_dir: &Path, names: &[&str]) {
+    require_grammars(names);
+    for name in names {
+        install_fixture_grammar(grammars_dir, name, "1");
+    }
+}
+
 /// The file whose presence makes the install folder `install` an install:
 /// PLUM writes it once the grammar there has loaded.
 pub fn checked_marker(install: &Path) -> PathBuf {
