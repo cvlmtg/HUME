@@ -1,8 +1,9 @@
 ;;; core:markdown — queries.scm. See docs/elements.md.
 
 (provide md-preview/block-query md-preview/inline-query md-preview/atx-levels md-preview/setext-levels
-         md-preview/capture-start md-preview/capture-end md-preview/capture-before? md-preview/line-span
-         md-preview/inside? md-preview/line-slice md-preview/blank? md-preview/all? md-preview/skip-while md-preview/skip-blanks
+         md-preview/capture-start md-preview/capture-end md-preview/capture-before? md-preview/lines-of
+         md-preview/line-span md-preview/inside? md-preview/line-slice md-preview/blank? md-preview/all?
+         md-preview/skip-while md-preview/skip-blanks
          md-preview/quote-cols md-preview/bucket md-preview/extent
          md-preview/conceal md-preview/hidden-revealing
          md-preview/conceal-before? md-preview/group md-preview/runs-of md-preview/runs md-preview/children
@@ -21,9 +22,13 @@
 (define (md-preview/capture-before? a b)
   (< (md-preview/capture-start a) (md-preview/capture-start b)))
 
+;;; The lines chars `[start, end)` lie on, as `(first . end)` with `end` exclusive.
+(define (md-preview/lines-of line-of start end)
+  (cons (line-of start) (+ (line-of (- end 1)) 1)))
+
 (define (md-preview/line-span line-of capture)
-  (hash 'start-line (line-of (md-preview/capture-start capture))
-        'end-line (+ (line-of (- (md-preview/capture-end capture) 1)) 1)))
+  (let ([lines (md-preview/lines-of line-of (md-preview/capture-start capture) (md-preview/capture-end capture))])
+    (hash 'start-line (car lines) 'end-line (cdr lines))))
 
 (define (md-preview/inside? capture container)
   (and (>= (md-preview/capture-start capture) (md-preview/capture-start container))

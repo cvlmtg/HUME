@@ -186,9 +186,7 @@
          [line-of (car reader)]
          [line-info (cdr reader)]
          [sels (buffer-selections pane)]
-         [span-of (lambda (sel)
-                    (cons (line-of (selection-start-char sel))
-                          (+ (line-of (- (selection-end-char sel) 1)) 1)))]
+         [span-of (lambda (sel) (md-preview/lines-of line-of (selection-start-char sel) (selection-end-char sel)))]
          [spans (map span-of sels)]
          [lines (md-lists/distinct
                   (call! "stdlib/concat" (map (lambda (span) (range (car span) (cdr span))) spans)))]
@@ -400,8 +398,8 @@
              (foldr (lambda (sel out)
                       (let* ([start (selection-start-char sel)]
                              [end (selection-end-char sel)]
-                             [top (char-offset->line pane start)]
-                             [bottom (char-offset->line pane (- end 1))])
+                             [lines (md-preview/lines-of (lambda (char) (char-offset->line pane char)) start end)]
+                             [bottom (- (cdr lines) 1)])
                         (foldr (lambda (line out)
                                  (let ([table (md-tables/table-of reader tables line)]
                                        [at (info line)])
@@ -409,13 +407,13 @@
                                        (foldr (lambda (n out) (cons (cons table n) out))
                                               out
                                               (touched line
-                                                       (if (= line top) (- start (car at)) 0)
+                                                       (if (= line (car lines)) (- start (car at)) 0)
                                                        (if (= line bottom)
                                                            (- end (car at))
                                                            (+ (string-length (cdr at)) 1))))
                                        out)))
                                out
-                               (range top (+ bottom 1)))))
+                               (range (car lines) (cdr lines)))))
                     '()
                     (buffer-selections pane)))))))
 
