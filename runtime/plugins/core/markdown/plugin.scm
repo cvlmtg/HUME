@@ -309,7 +309,8 @@
 ;;; docs/tables.md's "Cells and columns".
 (define (md-tables/with-whole-columns reader found cells)
   (let ([held (list->hashset cells)]
-        [columns (md-tables/distinct-by (lambda (f) (cons (md-cells/table-header (car f)) (cdr (cadr f)))) found)])
+        [columns (filter (md-tables/first-of (lambda (f) (cons (md-cells/table-header (car f)) (cdr (cadr f)))))
+                         found)])
     (foldr (lambda (f targets)
              (let* ([table (car f)]
                     [index (cdr (cadr f))]
@@ -324,14 +325,13 @@
            cells
            columns)))
 
-;;; The items of `items` whose `key` no item before them has.
-(define (md-tables/distinct-by key items)
-  (reverse (cdr (foldl (lambda (item acc)
-                         (if (hash-contains? (car acc) (key item))
-                             acc
-                             (cons (hash-insert (car acc) (key item) #t) (cons item (cdr acc)))))
-                       (cons (hash) '())
-                       items))))
+;;; A predicate true of an item when no item it was asked about before had its `key`.
+(define (md-tables/first-of key)
+  (let ([seen (box (hash))])
+    (lambda (item)
+      (let ([k (key item)])
+        (and (not (hash-contains? (unbox seen) k))
+             (begin (md-preview/box-insert! seen k #t) #t))))))
 
 (define (md-tables/by-position a b)
   (or (< (car a) (car b)) (and (= (car a) (car b)) (< (cdr a) (cdr b)))))
@@ -343,11 +343,15 @@
          [located (map (lambda (sel) (md-tables/locate pane reader tables (selection-head sel))) sels)]
          [selectable (filter (lambda (f) (and f (not (md-tables/empty-cell? reader (cadr f))))) located)]
          [cells (map cadr selectable)]
-         [targets (sort (md-tables/distinct-by (lambda (cell) cell)
-                                               (if around? (md-tables/with-whole-columns reader selectable cells) cells))
+         [targets (sort (filter (md-tables/first-of (lambda (cell) cell))
+                                (if around? (md-tables/with-whole-columns reader selectable cells) cells))
                         md-tables/by-position)]
-         [primary (list-ref located (md-tables/index-where selection-primary? sels))])
+         [from (md-tables/index-where selection-primary? sels)]
+         [primary (list-ref located from)])
     (when (pair? targets)
+      (when around?
+        (let ([first-in-table? (md-tables/first-of (lambda (f) (md-cells/table-header (car f))))])
+          (md-tables/keep! pane (map (lambda (f) (and f (first-in-table? f))) located) from)))
       (md-tables/select! pane reader (if around? "inner-paragraph" "select-line") targets
                          (and primary (cadr primary)) around?))))
 

@@ -242,6 +242,22 @@ fn around_a_blank_cell() {
 }
 
 #[test]
+fn around_cells_of_two_tables_drops_a_selection_between_them() {
+    assert_eq!(
+        around(concat!(
+            "| aa | b-[b]> |\n|----|----|\n| x | y |\n",
+            "\nte-[x]>t\n\n",
+            "| cc | dd |\n|----|----|\n| -{z}> | w |\n",
+        )),
+        concat!(
+            "| aa -[| bb ]>|\n|----|----|\n| x | y |\n",
+            "\ntext\n\n",
+            "| cc | dd |\n|----|----|\n-{| z }>| w |\n",
+        )
+    );
+}
+
+#[test]
 fn around_the_header_cell_of_a_table_without_body_rows_takes_its_delimiter_cell() {
     assert_eq!(
         around("| aa | b-[b]> |\n|----|----|\n"),

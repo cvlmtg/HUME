@@ -67,8 +67,9 @@ A plugin moves selections only through editor commands. Each command works out e
 from the text first, so one with no target changes nothing. Then `md-tables/select!` runs:
 
 1. `collapse-selection`, then `select-line` for `m i |`, or `inner-paragraph` for `m |` and
-   `m a |`, which need every row of the table. `m |` keeps only the primary selection first.
-   A table has no blank line, so its paragraph holds all of it.
+   `m a |`, which need every row of the table. `m |` keeps only the primary selection first,
+   and `m a |` one selection per table, since `inner-paragraph` reads the whole table again
+   from each selection. A table has no blank line, so its paragraph holds all of it.
 2. `split-selection-on-newlines`, one selection per line. `copy-selection-on-next-line`
    would step display lines, and a wide row wraps.
 3. `sift-within` with the inner or around pattern. Every target must be one of the
