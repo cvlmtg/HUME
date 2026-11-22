@@ -85,14 +85,26 @@ fn replace_primary_merges_with_its_neighbours() {
 }
 
 #[test]
-fn remove_moves_the_primary_along() {
+fn remove_primary_takes_a_run_and_moves_the_primary_past_it() {
     let three = || parse("-{a}>b-[c]>d-[e]>\n");
-    let primary = |s: EditState| s.view().primary().index();
-    assert_eq!(primary(three().cycle_primary(1).remove(0)), 0);
-    assert_eq!(primary(three().cycle_primary(1).remove(1)), 1);
-    assert_eq!(primary(three().cycle_primary(2).remove(2)), 0);
-    assert_eq!(primary(three().remove(2)), 0);
-    assert_eq!(shown(&parse("-[a]>\n").remove(0)), "-[a]>\n");
+    assert_eq!(
+        shown(&three().cycle_primary(1).remove_primary(1)),
+        "-[a]>bcd-{e}>\n"
+    );
+    assert_eq!(
+        shown(&three().cycle_primary(2).remove_primary(1)),
+        "-{a}>b-[c]>de\n"
+    );
+    assert_eq!(shown(&three().remove_primary(2)), "abcd-[e]>\n");
+    assert_eq!(
+        shown(&three().cycle_primary(2).remove_primary(2)),
+        "ab-[c]>de\n"
+    );
+    assert_eq!(
+        shown(&three().cycle_primary(1).remove_primary(9)),
+        "-[a]>bcde\n"
+    );
+    assert_eq!(shown(&parse("-[a]>\n").remove_primary(1)), "-[a]>\n");
 }
 
 #[test]

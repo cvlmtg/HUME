@@ -225,6 +225,37 @@ fn remove_primary_two_selections() {
     );
 }
 
+#[test]
+fn remove_primary_with_a_count_removes_that_many_wrapping() {
+    assert_state!(
+        "-[a]>b-[c]>d-{e}>f-[g]>\n",
+        |(text, sels)| cmd_remove_primary_selection(
+            test_fixtures::testing::state(text, sels),
+            3,
+            MotionMode::Move
+        ),
+        "ab-[c]>defg\n"
+    );
+    assert_state!(
+        "-[a]>b-[c]>d-[e]>f-{g}>h-[i]>\n",
+        |(text, sels)| cmd_remove_primary_selection(
+            test_fixtures::testing::state(text, sels),
+            3,
+            MotionMode::Move
+        ),
+        "ab-{c}>d-[e]>fghi\n"
+    );
+    assert_state!(
+        "-[a]>b-{c}>\n",
+        |(text, sels)| cmd_remove_primary_selection(
+            test_fixtures::testing::state(text, sels),
+            5,
+            MotionMode::Move
+        ),
+        "-[a]>bc\n"
+    );
+}
+
 // ── cmd_cycle_primary_forward ──────────────────────────────────────────
 
 #[test]
@@ -240,12 +271,12 @@ fn cycle_forward_advances_primary() {
     );
     let sels = cmd_cycle_primary_forward(
         test_fixtures::testing::state(text, sels),
-        0,
+        1,
         MotionMode::Move,
     );
     assert_eq!(sels.view().primary().head().offset(), CharOffset::new(3));
     // Cycle again: wraps back to first.
-    let sels = cmd_cycle_primary_forward(sels, 0, MotionMode::Move);
+    let sels = cmd_cycle_primary_forward(sels, 1, MotionMode::Move);
     assert_eq!(sels.view().primary().head().offset(), CharOffset::new(0));
 }
 
@@ -256,10 +287,45 @@ fn cycle_backward_wraps_to_last() {
     let (text, sels) = parse_state("-{h}>el-[l]>o\n"); // primary at 0
     let sels = cmd_cycle_primary_backward(
         test_fixtures::testing::state(text, sels),
-        0,
+        1,
         MotionMode::Move,
     );
     assert_eq!(sels.view().primary().head().offset(), CharOffset::new(3)); // wraps to last
+}
+
+#[test]
+fn cycle_forward_takes_count_steps_wrapping() {
+    assert_state!(
+        "-{a}>b-[c]>d-[e]>\n",
+        |(text, sels)| cmd_cycle_primary_forward(
+            test_fixtures::testing::state(text, sels),
+            2,
+            MotionMode::Move
+        ),
+        "-[a]>b-[c]>d-{e}>\n"
+    );
+    assert_state!(
+        "-{a}>b-[c]>d-[e]>\n",
+        |(text, sels)| cmd_cycle_primary_forward(
+            test_fixtures::testing::state(text, sels),
+            4,
+            MotionMode::Move
+        ),
+        "-[a]>b-{c}>d-[e]>\n"
+    );
+}
+
+#[test]
+fn cycle_backward_takes_count_steps_wrapping() {
+    assert_state!(
+        "-{a}>b-[c]>d-[e]>\n",
+        |(text, sels)| cmd_cycle_primary_backward(
+            test_fixtures::testing::state(text, sels),
+            2,
+            MotionMode::Move
+        ),
+        "-[a]>b-{c}>d-[e]>\n"
+    );
 }
 
 // ── cmd_collapse_selection_to_anchor ──────────────────────────────────
@@ -389,7 +455,7 @@ fn keep_primary_when_primary_is_not_first() {
     let (text, sels) = parse_state("-{h}>el-[l]>o\n"); // primary at index 0 (head=0)
     let sels = cmd_cycle_primary_forward(
         test_fixtures::testing::state(text, sels),
-        0,
+        1,
         MotionMode::Move,
     ); // primary now at index 1 (head=3)
     let sels_out = cmd_keep_primary_selection(sels, 0, MotionMode::Move);
@@ -409,7 +475,7 @@ fn remove_primary_at_end_wraps_to_first() {
     let (text, sels) = parse_state("-{h}>el-[l]>o-[\n]>"); // 3 cursors, primary at 0
     let sels = cmd_cycle_primary_backward(
         test_fixtures::testing::state(text, sels),
-        0,
+        1,
         MotionMode::Move,
     ); // primary at last (head=6)
     let sels_out = cmd_remove_primary_selection(sels, 1, MotionMode::Move);

@@ -69,36 +69,34 @@ pub fn cmd_keep_primary_selection(state: EditState, _count: usize, _mode: Motion
     state.keep_primary()
 }
 
-/// Remove the primary selection and advance the primary to the next one.
-///
-/// If there is only one selection, this is a no-op (the set can never be
-/// empty). After removal the primary wraps to the start if it was the last
-/// selection in document order.
+/// Remove the primary selection and the `count - 1` selections after it,
+/// wrapping to the start; the selection after them becomes primary. The last
+/// selection left is never removed.
 pub fn cmd_remove_primary_selection(
     state: EditState,
     count: usize,
     _mode: MotionMode,
 ) -> EditState {
-    let mut state = state;
-    for _ in 0..count {
-        let view = state.view();
-        if view.len() <= 1 {
-            break;
-        }
-        let idx = view.primary().index();
-        state = state.remove(idx);
-    }
-    state
+    state.remove_primary(count)
 }
 
-/// Move the primary selection to the next one in document order, wrapping.
-pub fn cmd_cycle_primary_forward(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
-    state.cycle_primary(1)
+/// Move the primary selection `count` selections forward in document order,
+/// wrapping.
+pub fn cmd_cycle_primary_forward(state: EditState, count: usize, _mode: MotionMode) -> EditState {
+    let steps = cycle_steps(&state, count);
+    state.cycle_primary(steps)
 }
 
-/// Move the primary selection to the previous one in document order, wrapping.
-pub fn cmd_cycle_primary_backward(state: EditState, _count: usize, _mode: MotionMode) -> EditState {
-    state.cycle_primary(-1)
+/// Move the primary selection `count` selections back in document order,
+/// wrapping.
+pub fn cmd_cycle_primary_backward(state: EditState, count: usize, _mode: MotionMode) -> EditState {
+    let steps = cycle_steps(&state, count);
+    state.cycle_primary(-steps)
+}
+
+/// `count` reduced to less than one lap, so it fits a signed step.
+fn cycle_steps(state: &EditState, count: usize) -> isize {
+    isize::try_from(count % state.view().len()).expect("less than one lap fits an isize")
 }
 
 #[cfg(test)]

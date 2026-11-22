@@ -138,25 +138,27 @@ impl EditState {
         self.with_selections(vec![primary], 0)
     }
 
-    /// The selection at `idx` removed, unless it is the only one. Removing the
-    /// primary makes the next selection primary, wrapping to the first.
-    ///
-    /// # Panics
-    /// Panics if `idx` is out of range.
+    /// `count` selections removed, starting at the primary and going on in
+    /// document order, wrapping, but never the last one left. The selection
+    /// after the removed run becomes primary.
     #[must_use]
-    pub fn remove(self, idx: usize) -> Self {
+    pub fn remove_primary(self, count: usize) -> Self {
         let len = self.selections.selections().len();
-        assert!(idx < len, "remove index out of bounds");
-        if len == 1 {
+        let removed = count.min(len - 1);
+        if removed == 0 {
             return self;
         }
         self.edit_parts(|selections, primary| {
-            selections.remove(idx);
-            if idx < *primary {
-                *primary -= 1;
-            } else if idx == *primary {
-                *primary = idx % selections.len();
-            }
+            let from = *primary;
+            let next = (from + removed) % len;
+            let gone = |i: usize| (i + len - from) % len < removed;
+            *primary = next - (0..next).filter(|&i| gone(i)).count();
+            let mut index = 0;
+            selections.retain(|_| {
+                let keep = !gone(index);
+                index += 1;
+                keep
+            });
         })
     }
 

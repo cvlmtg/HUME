@@ -14,6 +14,7 @@
 
 ### Fixes
 - The Markdown preview draws a task box with nothing after it, as in `- [ ]`, as a checkbox.
+- `(` and `)` take a count: `3)` makes the selection three places on primary.
 
 ## [0.22.2] - 2026-11-19
 
