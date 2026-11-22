@@ -1,6 +1,11 @@
 # core:markdown
 
-Draws Markdown without its syntax, in the style of Obsidian's live preview. Every line a selection touches shows its source, and a code block or a table shows its source as a whole while a selection is inside it. It also turns a URL or a file's path pasted over selected text into a link, completes the path in a link's destination, continues a list or quote on Enter, `o` and `O`, checks or unchecks task boxes on `G X`, selects a table cell on `m i |` or `m a |` or a table column on `m |`, and moves table rows and columns on `G T` and a direction.
+Draws Markdown without its syntax, in the style of Obsidian's live preview: the lines a
+selection touches show their source, and a code block or table shows its source whole
+while a selection is inside it. It also edits Markdown: a URL or path pasted over text
+becomes a link, link destinations complete paths, Enter, `o` and `O` continue lists and
+quotes, ordered lists renumber, `G X` toggles task boxes, and table keys select cells and
+columns and move rows and columns.
 
 ## Usage
 
@@ -9,44 +14,47 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 (load-plugin! "core:markdown" #:config (hash 'preview #t 'rule-width 40))
 ```
 
-- **Depends on:** `core:stdlib`, for config validation, list joins, the primary selection `G X` and the table keys read and the cursor offset link-path completion reads.
-- **Activates on:** the first `markdown` buffer, or any of its ten commands
-  (`manifest.scm`), the first Markdown popup's `format-text/markdown` call included. The
-  manifest lists no events: a `#:languages` manifest may list no buffer event.
-- **Grammars:** `markdown` and `markdown.inline`. The first buffer opened without one
-  logs a warning per missing grammar, once a session, naming `:plum-install-grammar`.
-- **User docs:** [core:markdown](https://cvlmtg.github.io/HUME/core-plugins/markdown.html).
+- **Depends on:** `core:stdlib`, for config validation and a few list and selection
+  helpers.
+- **Activates on:** the first `markdown` buffer, or any command in `manifest.scm`, a
+  Markdown popup's `format-text/markdown` call included. A `#:languages` manifest may list
+  no buffer event, so it lists none.
+- **Grammars:** `markdown` and `markdown.inline`. A missing one logs a warning once a
+  session, naming `:plum-install-grammar`.
+- **User docs:**
+  [core:markdown](https://cvlmtg.github.io/HUME/core-plugins/markdown.html).
 
 ## Configuration
 
 | Key | Type | Default | Effect |
 |---|---|---|---|
-| `'preview` | bool | `#t` | Whether the preview starts on for each buffer. Popups are drawn either way |
-| `'rule-width` | integer ≥ 1 | `40` | How many `─` a horizontal rule draws. Plugins cannot read the pane width |
-| `'continue-lists` | bool | `#t` | Whether Enter, `o` and `O` continue a list or quote in each Markdown buffer, and an edited or deleted item renumbers the items after it |
+| `'preview` | bool | `#t` | Whether the preview starts on in each buffer. Popups are drawn either way |
+| `'rule-width` | integer ≥ 1 | `40` | How many `─` a rule draws, since a plugin cannot read the pane width |
+| `'continue-lists` | bool | `#t` | Whether Enter, `o` and `O` continue lists and quotes, and an edit renumbers the ordered items after it |
 
 ## Commands
 
-| Command | Effect |
-|---|---|
-| `:toggle-markdown-preview` | Turn the preview off for the current buffer, clearing everything it drew, or back on, rendering at once |
-| `markdown/toggle-preview` | The same function, bindable |
-| `format-text/markdown` | `(format-text/markdown text parsed)`, as the hash a text formatter returns; `call!` reaches it |
-| `markdown/enter` | Enter in a Markdown buffer |
-| `markdown/open-below`, `markdown/open-above` | `o` and `O` in a Markdown buffer |
-| `markdown/toggle-task` | `G X` in a Markdown buffer |
-| `markdown/select-cell` | `m i \|` in a Markdown buffer |
-| `markdown/select-around-cell` | `m a \|` in a Markdown buffer |
-| `markdown/select-column` | `m \|` in a Markdown buffer |
-| `markdown/move-row-up`, `markdown/move-row-down` | `G T k` and `G T j`, or `G T` and an up or down arrow, in a Markdown buffer |
-| `markdown/move-column-left`, `markdown/move-column-right` | `G T h` and `G T l`, or `G T` and a left or right arrow, in a Markdown buffer |
+The keys are bound in the `"markdown"` buffer keymap, which `on-buffer-open` attaches.
+Enter, `o` and `O` are bound only with `'continue-lists` on.
+
+| Mode | Key | Command | Effect |
+|---|---|---|---|
+| | | `:toggle-markdown-preview`, `markdown/toggle-preview` | Turn the current buffer's preview off, clearing what it drew, or back on |
+| | | `format-text/markdown` | `(format-text/markdown text parsed)`: a popup's conceals, line backgrounds and highlights |
+| Insert | Enter | `markdown/enter` | Continue the list or quote, or end it on an empty item |
+| Normal | `o`, `O` | `markdown/open-below`, `markdown/open-above` | Open a line continuing the list or quote |
+| Normal | `G X` | `markdown/toggle-task` | Check or uncheck task boxes |
+| Normal | `m i \|`, `m a \|` | `markdown/select-cell`, `markdown/select-around-cell` | Select the cell's text, or the cell with its pipe |
+| Normal | `m \|` | `markdown/select-column` | Select the primary selection's column |
+| Normal | `G T k`, `G T j` (or ↑, ↓) | `markdown/move-row-up`, `markdown/move-row-down` | Move table rows |
+| Normal | `G T h`, `G T l` (or ←, →) | `markdown/move-column-left`, `markdown/move-column-right` | Move table columns |
 
 ## Documentation
 
 | Doc | Covers |
 |---|---|
-| [`docs/architecture.md`](docs/architecture.md) | Decisions, limitations, file layout, rendering, popups, widening by query roots, overlapping conceals, matches, fenced blocks |
-| [`docs/elements.md`](docs/elements.md) | Block elements, inline elements, tables, node shapes |
+| [`docs/architecture.md`](docs/architecture.md) | Decisions, limitations, file layout, rendering, popups, how the queries fetch and filter matches |
+| [`docs/elements.md`](docs/elements.md) | What each element is drawn as, and the grammar's node shapes |
 | [`docs/links.md`](docs/links.md) | Link paste and link-path completion |
-| [`docs/lists.md`](docs/lists.md) | List and quote continuation, ending a list, renumbering, task boxes |
-| [`docs/tables.md`](docs/tables.md) | Selecting table cells and columns, and moving rows and columns |
+| [`docs/lists.md`](docs/lists.md) | List and quote continuation, renumbering, task boxes |
+| [`docs/tables.md`](docs/tables.md) | Reading table rows, selecting cells and columns, moving rows and columns |

@@ -264,7 +264,7 @@
       [else (loop (cdr items) (+ i 1))])))
 
 ;;; Drops the selections whose `flags` entry is `#f`, `primary` being the primary's index. See docs/tables.md's
-;;; "Dropping selections".
+;;; "Selecting".
 (define (md-tables/keep! pane flags primary)
   (let loop ([flags (append (list-tail flags primary) (take flags primary))])
     (when (pair? flags)
@@ -306,7 +306,7 @@
 
 ;;; For `m a |`, `cells`, `(line . index)` cells, with the delimiter cell and the empty cells of each column of
 ;;; `found`, `(table cell)` pairs, whose header and body cells with text `cells` all hold. See
-;;; docs/tables.md's "Cells and columns".
+;;; docs/tables.md's "Whole columns".
 (define (md-tables/with-whole-columns reader found cells)
   (let ([held (list->hashset cells)]
         [columns (filter (md-tables/first-of (lambda (f) (cons (md-cells/table-header (car f)) (cdr (cadr f)))))
