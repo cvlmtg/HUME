@@ -228,11 +228,10 @@
 ;;; The table that holds `line`, or `#f`. `tables` is a box of the tables found so far, so that lines of one table
 ;;; look it up once.
 (define (md-tables/table-of reader tables line)
-  (and ((cdr reader) line)
-       (or (findf (lambda (t) (<= (md-cells/table-header t) line (md-cells/table-last t))) (unbox tables))
-           (let ([found (md-cells/table-at (cdr reader) line)])
-             (when found (set-box! tables (cons found (unbox tables))))
-             found))))
+  (or (findf (lambda (t) (<= (md-cells/table-header t) line (md-cells/table-last t))) (unbox tables))
+      (let ([found (md-cells/table-at (cdr reader) line)])
+        (when found (set-box! tables (cons found (unbox tables))))
+        found)))
 
 ;;; The cell of a table under offset `head` as `(table (line . index))`, or `#f`.
 (define (md-tables/locate pane reader tables head)
@@ -307,8 +306,6 @@
   (map (lambda (line) (cons line index))
        (filter (lambda (line) (md-tables/has-cell? reader line index)) (md-cells/table-rows table))))
 
-(define (md-tables/all? pred? items) (not (findf (lambda (item) (not (pred? item))) items)))
-
 ;;; For `m a |`, `cells`, `(line . index)` cells, with the delimiter cell and the empty cells of each column of
 ;;; `found`, `(table cell)` pairs, whose header and body cells with text `cells` all hold. See
 ;;; docs/tables.md's "Cells and columns".
@@ -323,7 +320,7 @@
                     [empty-cell? (lambda (cell) (md-tables/empty-cell? reader cell))]
                     [delimiter (cons (md-cells/table-delimiter table) index)])
                (if (and (md-tables/has-cell? reader (car delimiter) index)
-                        (md-tables/all? (lambda (cell) (or (empty-cell? cell) (hashset-contains? held cell))) column))
+                        (md-preview/all? (lambda (cell) (or (empty-cell? cell) (hashset-contains? held cell))) column))
                    (cons delimiter (foldr cons targets (filter empty-cell? column)))
                    targets)))
            cells
@@ -392,89 +389,80 @@
 (bind-key! 'normal "m a |" "markdown/select-around-cell" #:keymap md-preview/keymap)
 (bind-key! 'normal "m |" "markdown/select-column" #:keymap md-preview/keymap)
 
-;;; Each table line a selection covers, as `(table line from to)`, `[from, to)` being the columns of the line it
-;;; covers.
-(define (md-tables/covered pane reader tables)
-  (let ([info (car reader)])
-    (foldr (lambda (sel out)
-             (let* ([start (selection-start-char sel)]
-                    [end (selection-end-char sel)]
-                    [top (char-offset->line pane start)]
-                    [bottom (char-offset->line pane (- end 1))])
-               (foldr (lambda (line out)
-                        (let ([table (md-tables/table-of reader tables line)])
-                          (if table
-                              (let ([at (info line)])
-                                (cons (list table line
-                                            (if (= line top) (- start (car at)) 0)
-                                            (if (= line bottom) (- end (car at)) (+ (string-length (cdr at)) 1)))
-                                      out))
-                              out)))
-                      out
-                      (range top (+ bottom 1)))))
-           '()
-           (buffer-selections pane))))
-
-;;; The blocks of `covered`'s entries in each table, as `(table . blocks)`: `(numbers-of entry)` lists the rows or
-;;; columns an entry touches.
-(define (md-tables/moves covered numbers-of)
-  (filter (lambda (move) (pair? (cdr move)))
-          (map (lambda (table)
-                 (cons table
-                       (md-moves/blocks
-                         (md-lists/distinct
-                           (sort (call! "stdlib/concat"
-                                   (map numbers-of (filter (lambda (entry) (equal? (car entry) table)) covered)))
-                                 <)))))
-               (filter (md-tables/first-of (lambda (table) table)) (map car covered)))))
+;;; The blocks of rows or columns the selections touch in each table, as `(table . blocks)`. `(touched line from to)`
+;;; lists the rows or columns a selection touches on table line `line` when it covers columns `[from, to)` of it.
+(define (md-tables/moves pane reader touched)
+  (let ([info (car reader)] [tables (box '())])
+    (map (lambda (touches) (cons (car (car touches)) (md-moves/blocks (sort (map cdr touches) <))))
+         (hash-values->list
+           (md-preview/group-by
+             car
+             (foldr (lambda (sel out)
+                      (let* ([start (selection-start-char sel)]
+                             [end (selection-end-char sel)]
+                             [top (char-offset->line pane start)]
+                             [bottom (char-offset->line pane (- end 1))])
+                        (foldr (lambda (line out)
+                                 (let ([table (md-tables/table-of reader tables line)]
+                                       [at (info line)])
+                                   (if table
+                                       (foldr (lambda (n out) (cons (cons table n) out))
+                                              out
+                                              (touched line
+                                                       (if (= line top) (- start (car at)) 0)
+                                                       (if (= line bottom)
+                                                           (- end (car at))
+                                                           (+ (string-length (cdr at)) 1))))
+                                       out)))
+                               out
+                               (range top (+ bottom 1)))))
+                    '()
+                    (buffer-selections pane)))))))
 
 (define (md-tables/move-rows! pane down?)
   (let* ([reader (md-tables/reader pane)]
-         [moves (md-tables/moves (md-tables/covered pane reader (box '())) (lambda (entry) (list (cadr entry))))]
+         [moves (md-tables/moves pane reader (lambda (line from to) (list line)))]
          [movable? (lambda (move)
-                     (let ([table (car move)] [top (car (car (cdr move)))] [bottom (cdr (last (cdr move)))])
-                       (and (> top (md-cells/table-delimiter table))
-                            (if down?
-                                (< bottom (md-cells/table-last table))
-                                (> top (+ (md-cells/table-delimiter table) 1))))))])
-    (when (and (pair? moves) (md-tables/all? movable? moves))
+                     (let ([delimiter (md-cells/table-delimiter (car move))])
+                       (and (> (car (car (cdr move))) delimiter)
+                            (md-preview/all? (lambda (block)
+                                               (< delimiter
+                                                  (md-moves/neighbor block down?)
+                                                  (+ (md-cells/table-last (car move)) 1)))
+                                             (cdr move)))))])
+    (when (and (pair? moves) (md-preview/all? movable? moves))
       (edit-text! pane (call! "stdlib/concat"
                          (map (lambda (move) (md-moves/row-edits (cdr move) down? (car reader))) moves))))))
 
-(define (md-tables/row-cells reader line) (md-cells/cells ((cdr reader) line)))
-
-;;; The cells a `(table line from to)` entry touches: those whose text overlaps `[from, to)`, or else the cell under
-;;; `from`. See docs/tables.md's "Moving rows and columns".
-(define (md-tables/covered-cells reader entry)
-  (let* ([row ((cdr reader) (cadr entry))]
-         [from (list-ref entry 2)]
-         [to (list-ref entry 3)]
+;;; The cells of table line `line` whose text overlaps columns `[from, to)`, or else the cell under `from`. See
+;;; docs/tables.md's "Moving rows and columns".
+(define (md-tables/covered-cells reader line from to)
+  (let* ([row ((cdr reader) line)]
          [cells (md-cells/cells row)]
-         [touched (filter (lambda (index)
-                            (let ([cell (list-ref cells index)])
-                              (and (< (md-cells/text-start cell) to) (< from (md-cells/text-end cell)))))
-                          (range 0 (length cells)))]
-         [under (md-cells/index-at row from)])
-    (cond
-      [(pair? touched) touched]
-      [under (list under)]
-      [else '()])))
+         [touched (map car (filter (lambda (indexed)
+                                     (and (< (md-cells/text-start (cdr indexed)) to)
+                                          (< from (md-cells/text-end (cdr indexed)))))
+                                   (map cons (range 0 (length cells)) cells)))])
+    (if (pair? touched)
+        touched
+        (let ([under (md-cells/index-at row from)]) (if under (list under) '())))))
 
 (define (md-tables/move-columns! pane right?)
   (let* ([reader (md-tables/reader pane)]
-         [moves (md-tables/moves (md-tables/covered pane reader (box '()))
-                                 (lambda (entry) (md-tables/covered-cells reader entry)))]
-         [lines (lambda (table) (range (md-cells/table-header table) (+ (md-cells/table-last table) 1)))]
+         [moves (md-tables/moves pane reader (lambda (line from to) (md-tables/covered-cells reader line from to)))]
          [movable? (lambda (move)
-                     (if right?
-                         (< (+ (cdr (last (cdr move))) 1)
-                            (length (md-tables/row-cells reader (md-cells/table-delimiter (car move)))))
-                         (> (car (car (cdr move))) 0)))]
+                     (md-preview/all? (lambda (block)
+                                        (let ([other (md-moves/neighbor block right?)])
+                                          (if right?
+                                              (md-tables/has-cell? reader (md-cells/table-delimiter (car move)) other)
+                                              (>= other 0))))
+                                      (cdr move)))]
          [short-rows (lambda (move)
-                       (let ([needed (+ (cdr (last (cdr move))) (if right? 2 1))])
-                         (length (filter (lambda (line) (< (length (md-tables/row-cells reader line)) needed))
-                                         (lines (car move))))))])
-    (when (and (pair? moves) (md-tables/all? movable? moves))
+                       (let* ([edge (last (cdr move))]
+                              [far (max (cdr edge) (md-moves/neighbor edge right?))])
+                         (length (filter (lambda (line) (not (md-tables/has-cell? reader line far)))
+                                         (md-cells/table-lines (car move))))))])
+    (when (and (pair? moves) (md-preview/all? movable? moves))
       (let ([short (apply + (map short-rows moves))])
         (if (> short 0)
             (log! 'warning (string-append "markdown: moved no column, since " (number->string short)
@@ -484,10 +472,9 @@
                           (map (lambda (move)
                                  (call! "stdlib/concat"
                                    (map (lambda (line)
-                                          (let ([at ((car reader) line)])
-                                            (md-moves/cell-edits (cdr at) (car at) (md-tables/row-cells reader line)
-                                                                 (cdr move) right?)))
-                                        (lines (car move)))))
+                                          (md-moves/cell-edits ((car reader) line) (md-cells/cells ((cdr reader) line))
+                                                               (cdr move) right?))
+                                        (md-cells/table-lines (car move)))))
                                moves))))))))
 
 (define-command! "markdown/move-row-up"

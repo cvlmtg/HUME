@@ -115,6 +115,18 @@ fn editing(marked: &str) -> Preview {
     p
 }
 
+/// The state after `keys`, given as key events, in Normal mode.
+fn after_keys(marked: &str, keys: impl IntoIterator<Item = KeyEvent>) -> String {
+    let mut p = editing(marked);
+    p.ed.feed_keys(keys);
+    state(&p.ed)
+}
+
+/// The state after `keys`, each a character key, in Normal mode.
+fn after(marked: &str, keys: &str) -> String {
+    after_keys(marked, keys.chars().map(key))
+}
+
 /// [`editing`] with `'continue-lists` off.
 fn editing_without_lists(marked: &str) -> Preview {
     let mut p = preview_with(Some("(hash 'continue-lists #f)"), true);

@@ -2,7 +2,7 @@
 
 (provide md-preview/block-query md-preview/inline-query md-preview/atx-levels md-preview/setext-levels
          md-preview/capture-start md-preview/capture-end md-preview/capture-before? md-preview/line-span
-         md-preview/inside? md-preview/line-slice md-preview/blank? md-preview/skip-while md-preview/skip-blanks
+         md-preview/inside? md-preview/line-slice md-preview/blank? md-preview/all? md-preview/skip-while md-preview/skip-blanks
          md-preview/quote-cols md-preview/bucket md-preview/extent
          md-preview/conceal md-preview/hidden-revealing
          md-preview/conceal-before? md-preview/group md-preview/runs-of md-preview/runs md-preview/children
@@ -30,6 +30,8 @@
        (<= (md-preview/capture-end capture) (md-preview/capture-end container))))
 
 (define (md-preview/blank? c) (or (char=? c #\space) (char=? c #\tab)))
+
+(define (md-preview/all? pred? items) (not (findf (lambda (item) (not (pred? item))) items)))
 
 (define (md-preview/skip-while text col keep?)
   (if (and (< col (string-length text)) (keep? (string-ref text col)))

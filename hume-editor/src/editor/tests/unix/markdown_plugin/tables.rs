@@ -4,13 +4,6 @@
 use super::*;
 use crate::editor::tests::before_save::warning_texts;
 
-/// The state after `keys` in Normal mode.
-fn after(marked: &str, keys: &str) -> String {
-    let mut p = editing(marked);
-    p.ed.feed_keys(keys.chars().map(key));
-    state(&p.ed)
-}
-
 fn cell(marked: &str) -> String {
     after(marked, "mi|")
 }

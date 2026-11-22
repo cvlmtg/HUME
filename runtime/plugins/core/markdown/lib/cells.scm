@@ -6,7 +6,7 @@
 (provide md-cells/inner-pattern md-cells/around-pattern md-cells/row md-cells/cells
          md-cells/pipe-before md-cells/text-start md-cells/text-end md-cells/around-start md-cells/empty?
          md-cells/index-at md-cells/table-at md-cells/table-header md-cells/table-delimiter md-cells/table-last
-         md-cells/table-rows)
+         md-cells/table-lines md-cells/table-rows)
 
 ;;; `md-lists/container-of` and `md-cells/pipes` read a row as these patterns split it. See docs/tables.md's
 ;;; "The text of a row".
@@ -58,10 +58,10 @@
                            (cons (md-cells/cell #f prefix (car pipes)) opened))])
            (list cells
                  (and (pair? cells)
-                      (not (findf (lambda (cell)
-                                    (not (md-cells/delimiter-text?
-                                           (substring text (md-cells/text-start cell) (md-cells/text-end cell)))))
-                                  cells))))))))
+                      (md-preview/all? (lambda (cell)
+                                         (md-cells/delimiter-text?
+                                           (substring text (md-cells/text-start cell) (md-cells/text-end cell))))
+                                       cells)))))))
 
 (define (md-cells/cells row) (list-ref row 0))
 (define (md-cells/delimiter? row) (list-ref row 1))
@@ -80,10 +80,12 @@
 (define (md-cells/table-delimiter table) (list-ref table 1))
 (define (md-cells/table-last table) (list-ref table 2))
 
+(define (md-cells/table-lines table)
+  (range (md-cells/table-header table) (+ (md-cells/table-last table) 1)))
+
 ;;; The header and body lines of `table`.
 (define (md-cells/table-rows table)
-  (filter (lambda (line) (not (= line (md-cells/table-delimiter table))))
-          (range (md-cells/table-header table) (+ (md-cells/table-last table) 1))))
+  (filter (lambda (line) (not (= line (md-cells/table-delimiter table)))) (md-cells/table-lines table)))
 
 ;;; The table that holds `line`, or `#f`. `(row-at line)` gives a line's row, `#f` for a line with no row or
 ;;; past the text. See docs/tables.md's "Tables".
