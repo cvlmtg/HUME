@@ -19,6 +19,7 @@
 use std::path::{Path, PathBuf};
 
 use super::*;
+use crate::editor::tests::before_save::warning_texts;
 
 /// A theme file whose content no test asserts on: only its presence,
 /// absence, or filename matters.
@@ -243,7 +244,7 @@ fn update_themes_warns_on_shadowed_theme_name() {
     let mut ed = plum_editor(data_tmp.path());
     type_cmd(&mut ed, ":plum-update-themes");
 
-    let warnings = warning_log(&ed);
+    let warnings = warning_texts(&ed);
     assert!(
         warnings
             .iter()

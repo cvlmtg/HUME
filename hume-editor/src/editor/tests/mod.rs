@@ -643,16 +643,6 @@ fn error_log(ed: &Editor) -> Vec<String> {
         .collect()
 }
 
-/// Warning-severity entries in `ed`'s log.
-fn warning_log(ed: &Editor) -> Vec<&str> {
-    ed.state
-        .message_log
-        .entries()
-        .filter(|e| e.severity == Severity::Warning)
-        .map(|e| e.text.as_str())
-        .collect()
-}
-
 /// Runs `git <args>` in `dir`, asserting success.
 fn git(dir: &std::path::Path, args: &[&str]) {
     let status = std::process::Command::new("git")

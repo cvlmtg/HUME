@@ -2,20 +2,21 @@
 //! the primary selection's cell.
 
 use super::*;
+use crate::editor::tests::before_save::warning_texts;
 
 /// The state after `keys` in Normal mode.
-fn after(marked: &str, keys: &[char]) -> String {
+fn after(marked: &str, keys: &str) -> String {
     let mut p = editing(marked);
-    p.ed.feed_keys(keys.iter().map(|&c| key(c)));
+    p.ed.feed_keys(keys.chars().map(key));
     state(&p.ed)
 }
 
 fn cell(marked: &str) -> String {
-    after(marked, &['m', 'i', '|'])
+    after(marked, "mi|")
 }
 
 fn column(marked: &str) -> String {
-    after(marked, &['m', '|'])
+    after(marked, "m|")
 }
 
 #[test]
@@ -158,7 +159,7 @@ fn a_row_with_no_cell_in_the_column_is_skipped_with_a_warning() {
     p.ed.feed_keys([key('m'), key('|')]);
     assert_eq!(state(&p.ed), "| a | -[bb]> |\n|---|----|\n| c |\n");
     assert_eq!(
-        warning_log(&p.ed),
+        warning_texts(&p.ed),
         ["markdown: skipped 1 row with no selectable cell in this column"]
     );
 }
@@ -172,7 +173,7 @@ fn an_empty_cell_is_skipped_with_a_warning() {
         "| a | -[bb]> | c |\n|---|----|---|\n|*e*||&amp;|\n"
     );
     assert_eq!(
-        warning_log(&p.ed),
+        warning_texts(&p.ed),
         ["markdown: skipped 1 row with no selectable cell in this column"]
     );
 }
@@ -194,14 +195,14 @@ fn a_column_of_a_wide_table_under_soft_wrap() {
 
 #[test]
 fn one_selection_undo_restores_the_selections_before_a_column() {
-    let mut p = editing("| aa | bb |\n|----|----|\n| -[c]>c | dd |\n");
-    p.ed.feed_keys([key('m'), key('i'), key('w')]);
-    p.ed.feed_keys([key('m'), key('|'), key('m'), key('u')]);
-    assert_eq!(state(&p.ed), "| aa | bb |\n|----|----|\n| -[cc]> | dd |\n");
+    assert_eq!(
+        after("| aa | bb |\n|----|----|\n| -[c]>c | dd |\n", "miwm|mu"),
+        "| aa | bb |\n|----|----|\n| -[cc]> | dd |\n"
+    );
 }
 
 fn around(marked: &str) -> String {
-    after(marked, &['m', 'a', '|'])
+    after(marked, "ma|")
 }
 
 #[test]
@@ -250,16 +251,18 @@ fn around_the_header_cell_of_a_table_without_body_rows_takes_its_delimiter_cell(
 
 #[test]
 fn around_a_whole_column_takes_its_delimiter_cell_so_d_deletes_the_column() {
-    let mut p = editing("| aa | b-[b]> |\n|----|----|\n| cc | dd |\n");
-    p.ed.feed_keys("m|ma|d".chars().map(key));
-    assert_eq!(state(&p.ed), "| aa -{|}>\n|-----[|]>\n| cc -[|]>\n");
+    assert_eq!(
+        after("| aa | b-[b]> |\n|----|----|\n| cc | dd |\n", "m|ma|d"),
+        "| aa -{|}>\n|-----[|]>\n| cc -[|]>\n"
+    );
 }
 
 #[test]
 fn deleting_the_first_column_of_a_table_without_outer_pipes() {
-    let mut p = editing("a-[a]> | bb\n-- | --\ncc | dd\n");
-    p.ed.feed_keys("m|ma|d".chars().map(key));
-    assert_eq!(state(&p.ed), "-{|}> bb\n-[|]> --\n-[|]> dd\n");
+    assert_eq!(
+        after("a-[a]> | bb\n-- | --\ncc | dd\n", "m|ma|d"),
+        "-{|}> bb\n-[|]> --\n-[|]> dd\n"
+    );
 }
 
 #[test]
@@ -280,9 +283,10 @@ fn the_first_cell_of_a_list_items_row_leaves_the_marker_out() {
 
 #[test]
 fn deleting_the_first_column_of_a_quoted_table_keeps_the_quote() {
-    let mut p = editing("> a-[a]> | bb\n> -- | --\n> cc | dd\n");
-    p.ed.feed_keys("m|ma|d".chars().map(key));
-    assert_eq!(state(&p.ed), "> -{|}> bb\n> -[|]> --\n> -[|]> dd\n");
+    assert_eq!(
+        after("> a-[a]> | bb\n> -- | --\n> cc | dd\n", "m|ma|d"),
+        "> -{|}> bb\n> -[|]> --\n> -[|]> dd\n"
+    );
 }
 
 #[test]
@@ -301,10 +305,11 @@ fn two_adjacent_pipes_hold_an_empty_cell_in_every_row() {
 
 #[test]
 fn deleting_a_column_takes_the_pipe_of_its_empty_cells() {
-    let mut p = editing("| a | -[b]>b | c |\n|---|----|---|\n|*e*||&amp;|\n");
-    p.ed.feed_keys("m|ma|d".chars().map(key));
     assert_eq!(
-        state(&p.ed),
+        after(
+            "| a | -[b]>b | c |\n|---|----|---|\n|*e*||&amp;|\n",
+            "m|ma|d"
+        ),
         "| a -{|}> c |\n|----[|]>---|\n|*e*-[|]>&amp;|\n"
     );
 }

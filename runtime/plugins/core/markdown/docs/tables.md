@@ -62,19 +62,18 @@ to drop the empty cell from its row.
 ## Selecting
 
 A plugin moves selections only through editor commands. Each command works out every target
-from the text first, so one with no target changes nothing. Then it, and `md-tables/select!`
-after it, run:
+from the text first, so one with no target changes nothing. Then `md-tables/select!` runs:
 
 1. `collapse-selection`, then `select-line` for `m i |`, or `inner-paragraph` for `m |` and
    `m a |`, which need every row of the table. `m |` keeps only the primary selection first.
    A table has no blank line, so its paragraph holds all of it.
 2. `split-selection-on-newlines`, one selection per line. `copy-selection-on-next-line`
    would step display lines, and a wide row wraps.
-3. `sift-within` with the inner or around pattern. The selections it leaves must be the
-   matches the text model predicts for those lines; the command raises otherwise.
+3. `sift-within` with the inner or around pattern. Every target must be one of the
+   selections it leaves; the command raises otherwise.
 4. Drop the selections that are not targets, make the primary target primary with one
-   counted `cycle-primary-forward` or `cycle-primary-backward` the shorter way round, and,
-   for `m i |` and `m |`, `trim-selection-whitespace`.
+   counted `cycle-primary-forward`, and, for `m i |` and `m |`,
+   `trim-selection-whitespace`.
 
 None of these records a jump or recenters the view, which `goto-location!` would. Selection undo steps over the whole
 command: the native commands one Steel command runs record one entry.

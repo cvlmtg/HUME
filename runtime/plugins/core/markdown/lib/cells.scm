@@ -4,7 +4,7 @@
 
 (provide md-cells/inner-pattern md-cells/around-pattern md-cells/row md-cells/cells
          md-cells/text-start md-cells/text-end md-cells/around-start md-cells/empty? md-cells/index-at
-         md-cells/tokens md-cells/table-at md-cells/table-header md-cells/table-delimiter md-cells/table-last
+         md-cells/table-at md-cells/table-header md-cells/table-delimiter md-cells/table-last
          md-cells/table-rows)
 
 ;;; `md-cells/prefix-end` and `md-cells/pipes` read a line as these patterns split it. See docs/tables.md's
@@ -65,10 +65,11 @@
   (let* ([prefix (md-cells/prefix-end text)]
          [pipes (md-cells/pipes text prefix)])
     (and (pair? pipes)
-         (let* ([closer (and (= (md-preview/skip-blanks text (+ (last pipes) 1)) (string-length text)) (last pipes))]
-                [openers (if closer (take pipes (- (length pipes) 1)) pipes)]
-                [ends (take (cdr (foldr cons (list (string-length text)) pipes)) (length openers))]
-                [opened (map (lambda (pipe end) (md-cells/cell pipe (+ pipe 1) end)) openers ends)]
+         (let* ([closer? (= (md-preview/skip-blanks text (+ (last pipes) 1)) (string-length text))]
+                [bounds (if closer? pipes (append pipes (list (string-length text))))]
+                [opened (map (lambda (pipe end) (md-cells/cell pipe (+ pipe 1) end))
+                             (take bounds (- (length bounds) 1))
+                             (cdr bounds))]
                 [cells (if (= (car pipes) prefix)
                            opened
                            (cons (md-cells/cell #f prefix (car pipes)) opened))])
@@ -90,17 +91,6 @@
       [(null? cells) #f]
       [(or (null? (cdr cells)) (<= col (md-cells/text-end (car cells)))) i]
       [else (loop (cdr cells) (+ i 1))])))
-
-;;; The `(start . end)` columns of the matches `md-cells/around-pattern`, or `md-cells/inner-pattern` when not
-;;; `around?`, finds in `text`, in order.
-(define (md-cells/tokens text around?)
-  (let* ([prefix (md-cells/prefix-end text)]
-         [bounds (foldr cons (list (string-length text)) (md-cells/pipes text prefix))]
-         [stretches (map cons (cons prefix (map (lambda (pipe) (if around? pipe (+ pipe 1)))
-                                                 (take bounds (- (length bounds) 1))))
-                         bounds)])
-    (let ([stretches (filter (lambda (s) (< (car s) (cdr s))) stretches)])
-      (if (> prefix 0) (cons (cons 0 prefix) stretches) stretches))))
 
 (define (md-cells/table header delimiter last) (list header delimiter last))
 (define (md-cells/table-header table) (list-ref table 0))

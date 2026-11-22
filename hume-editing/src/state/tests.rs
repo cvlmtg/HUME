@@ -61,7 +61,7 @@ fn flat_map_can_split_and_drop_selections() {
 
 #[test]
 fn flat_map_moves_the_primary_to_the_first_selection_it_produced() {
-    let state = parse("-{a}>b-[cd]>\n").cycle_primary(1);
+    let state = parse("-{a}>b-[cd]>\n").cycle_primary_forward(1);
     let split = state.flat_map(|v| {
         v.clusters()
             .map(|c| Selection::cursor(c.start()))
@@ -72,7 +72,9 @@ fn flat_map_moves_the_primary_to_the_first_selection_it_produced() {
 
 #[test]
 fn keep_primary_drops_the_others() {
-    let state = parse("-{a}>b-[c]>d\n").cycle_primary(1).keep_primary();
+    let state = parse("-{a}>b-[c]>d\n")
+        .cycle_primary_forward(1)
+        .keep_primary();
     assert_eq!(shown(&state), "ab-[c]>d\n");
 }
 
@@ -88,20 +90,20 @@ fn replace_primary_merges_with_its_neighbours() {
 fn remove_primary_takes_a_run_and_moves_the_primary_past_it() {
     let three = || parse("-{a}>b-[c]>d-[e]>\n");
     assert_eq!(
-        shown(&three().cycle_primary(1).remove_primary(1)),
+        shown(&three().cycle_primary_forward(1).remove_primary(1)),
         "-[a]>bcd-{e}>\n"
     );
     assert_eq!(
-        shown(&three().cycle_primary(2).remove_primary(1)),
+        shown(&three().cycle_primary_forward(2).remove_primary(1)),
         "-{a}>b-[c]>de\n"
     );
     assert_eq!(shown(&three().remove_primary(2)), "abcd-[e]>\n");
     assert_eq!(
-        shown(&three().cycle_primary(2).remove_primary(2)),
+        shown(&three().cycle_primary_forward(2).remove_primary(2)),
         "ab-[c]>de\n"
     );
     assert_eq!(
-        shown(&three().cycle_primary(1).remove_primary(9)),
+        shown(&three().cycle_primary_forward(1).remove_primary(9)),
         "-[a]>bcde\n"
     );
     assert_eq!(shown(&parse("-[a]>\n").remove_primary(1)), "-[a]>\n");
@@ -109,17 +111,12 @@ fn remove_primary_takes_a_run_and_moves_the_primary_past_it() {
 
 #[test]
 fn cycle_primary_wraps_both_ways() {
-    let primary = |delta| {
-        parse("-{a}>b-[c]>d-[e]>\n")
-            .cycle_primary(delta)
-            .view()
-            .primary()
-            .index()
-    };
-    assert_eq!(primary(1), 1);
-    assert_eq!(primary(3), 0);
-    assert_eq!(primary(-1), 2);
-    assert_eq!(primary(-4), 2);
+    let three = || parse("-{a}>b-[c]>d-[e]>\n");
+    let primary = |s: EditState| s.view().primary().index();
+    assert_eq!(primary(three().cycle_primary_forward(1)), 1);
+    assert_eq!(primary(three().cycle_primary_forward(3)), 0);
+    assert_eq!(primary(three().cycle_primary_backward(1)), 2);
+    assert_eq!(primary(three().cycle_primary_backward(4)), 2);
 }
 
 #[test]

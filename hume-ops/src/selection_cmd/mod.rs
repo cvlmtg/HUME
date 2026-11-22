@@ -83,20 +83,13 @@ pub fn cmd_remove_primary_selection(
 /// Move the primary selection `count` selections forward in document order,
 /// wrapping.
 pub fn cmd_cycle_primary_forward(state: EditState, count: usize, _mode: MotionMode) -> EditState {
-    let steps = cycle_steps(&state, count);
-    state.cycle_primary(steps)
+    state.cycle_primary_forward(count)
 }
 
 /// Move the primary selection `count` selections back in document order,
 /// wrapping.
 pub fn cmd_cycle_primary_backward(state: EditState, count: usize, _mode: MotionMode) -> EditState {
-    let steps = cycle_steps(&state, count);
-    state.cycle_primary(-steps)
-}
-
-/// `count` reduced to less than one lap, so it fits a signed step.
-fn cycle_steps(state: &EditState, count: usize) -> isize {
-    isize::try_from(count % state.view().len()).expect("less than one lap fits an isize")
+    state.cycle_primary_backward(count)
 }
 
 #[cfg(test)]

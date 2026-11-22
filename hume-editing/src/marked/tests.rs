@@ -39,7 +39,7 @@ fn the_braced_selection_is_primary() {
 
 #[test]
 fn a_primary_after_the_first_renders_braced() {
-    let state = parse("-{a}>b-[c]>\n").cycle_primary(1);
+    let state = parse("-{a}>b-[c]>\n").cycle_primary_forward(1);
     assert_eq!(render(state.view()), "-[a]>b-{c}>\n");
 }
 

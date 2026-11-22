@@ -272,76 +272,52 @@
         (call! (if (car flags) "cycle-primary-forward" "remove-primary-selection") pane n)
         (loop (list-tail flags n))))))
 
-;;; Moves the primary `delta` places along the `n` selections, the shorter way round.
-(define (md-tables/cycle! pane delta n)
-  (cond
-    [(= delta 0) #f]
-    [(<= delta (- n delta)) (call! "cycle-primary-forward" pane delta)]
-    [else (call! "cycle-primary-backward" pane (- n delta))]))
-
-;;; The `(start . end)` chars of every match the sift with `pattern` finds in the selections `sels`, each on one
-;;; line.
-(define (md-tables/predicted pane reader sels around?)
-  (foldr (lambda (sel predicted)
-           (let* ([info ((car reader) (char-offset->line pane (selection-start-char sel)))]
-                  [start (car info)])
-             (foldr cons
-                    predicted
-                    (filter (lambda (token)
-                              (and (<= (selection-start-char sel) (car token))
-                                   (<= (cdr token) (selection-end-char sel))))
-                            (map (lambda (token) (cons (+ start (car token)) (+ start (cdr token))))
-                                 (md-cells/tokens (cdr info) around?))))))
-         '()
-         sels))
-
-;;; A map from the start of each `(start . end)` range in `ranges` to its end.
-(define (md-tables/by-start ranges)
-  (foldl (lambda (range m) (hash-insert m (car range) (cdr range))) (hash) ranges))
-
-(define (md-tables/in? by-start range)
-  (equal? (hash-try-get by-start (car range)) (cdr range)))
-
-;;; Turns the selections, one per line, into one per cell of `targets`, `(line . index)` cells, with the one of
-;;; `primary` primary. See docs/tables.md's "Selecting".
-(define (md-tables/select! pane reader targets primary around?)
-  (let* ([wanted (md-tables/by-start (map (lambda (target) (md-tables/range reader target around?)) targets))]
-         [predicted (md-tables/predicted pane reader (buffer-selections pane) around?)])
-    (unless (= (length targets) (length (filter (lambda (range) (md-tables/in? wanted range)) predicted)))
-      (error "markdown: a table cell lies outside the selected lines"))
+;;; Turns the selections into one per cell of `targets`, `(line . index)` cells sorted by position, with
+;;; `primary`'s cell primary, or the first target when `primary` is not one. `line-command` selects the lines to
+;;; sift. See docs/tables.md's "Selecting".
+(define (md-tables/select! pane reader line-command targets primary around?)
+  (let ([wanted (list->hashset (map (lambda (target) (md-tables/range reader target around?)) targets))]
+        [primary (if (member primary targets) primary (car targets))]
+        [n (length targets)])
+    (call! "collapse-selection" pane)
+    (call! line-command pane)
+    (call! "split-selection-on-newlines" pane)
     (call! "sift-within" pane (if around? md-cells/around-pattern md-cells/inner-pattern))
     (let* ([sels (buffer-selections pane)]
-           [found (map (lambda (sel) (cons (selection-start-char sel) (selection-end-char sel))) sels)])
-      (unless (equal? found predicted)
-        (error "markdown: the cells sift-within found differ from the line text"))
-      (let* ([flags (map (lambda (range) (md-tables/in? wanted range)) found)]
-             [from (md-tables/index-where selection-primary? sels)]
-             [kept (filter (lambda (range) (md-tables/in? wanted range)) found)]
-             [first-kept (findf (lambda (range) (md-tables/in? wanted range))
-                                (append (list-tail found from) (take found from)))]
-             [rank (lambda (range) (md-tables/index-where (lambda (r) (equal? r range)) kept))])
-        (md-tables/keep! pane flags from)
-        (md-tables/cycle! pane
-                          (modulo (- (rank (md-tables/range reader primary around?)) (rank first-kept)) (length kept))
-                          (length kept))
-        (unless around? (call! "trim-selection-whitespace" pane))))))
+           [flags (map (lambda (sel)
+                         (hashset-contains? wanted (cons (selection-start-char sel) (selection-end-char sel))))
+                       sels)]
+           [from (md-tables/index-where selection-primary? sels)]
+           [kept-before (length (filter (lambda (flag) flag) (take flags from)))])
+      (unless (= n (length (filter (lambda (flag) flag) flags)))
+        (error "markdown: sift-within did not find every table cell"))
+      (md-tables/keep! pane flags from)
+      (let ([delta (modulo (- (md-tables/index-where (lambda (t) (equal? t primary)) targets) kept-before) n)])
+        (when (> delta 0) (call! "cycle-primary-forward" pane delta)))
+      (unless around? (call! "trim-selection-whitespace" pane)))))
+
+(define (md-tables/empty-cell? reader cell)
+  (md-cells/empty? (md-tables/cell reader cell)))
+
+;;; The cells at `index` of `table`'s header and body rows that have that many cells.
+(define (md-tables/column reader table index)
+  (map (lambda (line) (cons line index))
+       (filter (lambda (line) (md-tables/has-cell? reader line index)) (md-cells/table-rows table))))
 
 ;;; For `m a |`, `cells`, `(line . index)` cells, with the delimiter cell and the empty cells of each column of
 ;;; `found`, `(table cell)` pairs, whose header and body cells with text `cells` all hold. See
 ;;; docs/tables.md's "Cells and columns".
 (define (md-tables/with-whole-columns reader found cells)
-  (let ([held (foldl (lambda (cell m) (hash-insert m cell #t)) (hash) cells)]
+  (let ([held (list->hashset cells)]
         [columns (md-tables/distinct-by (lambda (f) (cons (md-cells/table-header (car f)) (cdr (cadr f)))) found)])
     (foldr (lambda (f targets)
              (let* ([table (car f)]
                     [index (cdr (cadr f))]
-                    [column (map (lambda (line) (cons line index))
-                                 (filter (lambda (line) (md-tables/has-cell? reader line index))
-                                         (md-cells/table-rows table)))]
-                    [empty-cell? (lambda (cell) (md-cells/empty? (md-tables/cell reader cell)))]
+                    [column (md-tables/column reader table index)]
+                    [empty-cell? (lambda (cell) (md-tables/empty-cell? reader cell))]
                     [delimiter (cons (md-cells/table-delimiter table) index)])
                (if (and (md-tables/has-cell? reader (car delimiter) index)
-                        (not (findf (lambda (cell) (and (not (empty-cell? cell)) (not (hash-contains? held cell))))
+                        (not (findf (lambda (cell) (and (not (empty-cell? cell)) (not (hashset-contains? held cell))))
                                     column)))
                    (cons delimiter (foldr cons targets (filter empty-cell? column)))
                    targets)))
@@ -364,22 +340,16 @@
   (let* ([reader (md-tables/reader pane)]
          [tables (box '())]
          [sels (buffer-selections pane)]
-         [found (filter (lambda (f) f)
-                        (map (lambda (sel) (md-tables/locate pane reader tables (selection-head sel))) sels))]
-         [selectable (filter (lambda (f) (not (md-cells/empty? (md-tables/cell reader (cadr f))))) found)]
+         [located (map (lambda (sel) (md-tables/locate pane reader tables (selection-head sel))) sels)]
+         [selectable (filter (lambda (f) (and f (not (md-tables/empty-cell? reader (cadr f))))) located)]
          [cells (map cadr selectable)]
          [targets (sort (md-tables/distinct-by (lambda (cell) cell)
                                                (if around? (md-tables/with-whole-columns reader selectable cells) cells))
                         md-tables/by-position)]
-         [primary (md-tables/locate pane reader tables (selection-head (call! "stdlib/primary-selection" sels)))]
-         [primary-cell (and primary (cadr primary))])
+         [primary (list-ref located (md-tables/index-where selection-primary? sels))])
     (when (pair? targets)
-      (call! "collapse-selection" pane)
-      (call! (if around? "inner-paragraph" "select-line") pane)
-      (call! "split-selection-on-newlines" pane)
-      (md-tables/select! pane reader targets
-                         (if (member primary-cell targets) primary-cell (car targets))
-                         around?))))
+      (md-tables/select! pane reader (if around? "inner-paragraph" "select-line") targets
+                         (and primary (cadr primary)) around?))))
 
 (define (md-tables/select-column! pane)
   (let* ([reader (md-tables/reader pane)]
@@ -387,20 +357,12 @@
                                   (selection-head (call! "stdlib/primary-selection" (buffer-selections pane))))])
     (when found
       (let* ([own (cadr found)]
-             [index (cdr own)]
-             [rows (md-cells/table-rows (car found))]
-             [targets (map (lambda (line) (cons line index))
-                           (filter (lambda (line)
-                                     (and (md-tables/has-cell? reader line index)
-                                          (not (md-cells/empty? (md-tables/cell reader (cons line index))))))
-                                   rows))]
-             [skipped (- (length rows) (length targets))])
+             [targets (filter (lambda (cell) (not (md-tables/empty-cell? reader cell)))
+                              (md-tables/column reader (car found) (cdr own)))]
+             [skipped (- (length (md-cells/table-rows (car found))) (length targets))])
         (when (pair? targets)
           (call! "keep-primary-selection" pane)
-          (call! "collapse-selection" pane)
-          (call! "inner-paragraph" pane)
-          (call! "split-selection-on-newlines" pane)
-          (md-tables/select! pane reader targets (if (member own targets) own (car targets)) #f))
+          (md-tables/select! pane reader "inner-paragraph" targets own #f))
         (when (> skipped 0)
           (log! 'warning (string-append "markdown: skipped " (number->string skipped)
                                         (if (= skipped 1) " row" " rows")

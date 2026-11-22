@@ -149,25 +149,33 @@ impl EditState {
             return self;
         }
         self.edit_parts(|selections, primary| {
-            let from = *primary;
-            let next = (from + removed) % len;
-            let gone = |i: usize| (i + len - from) % len < removed;
-            *primary = next - (0..next).filter(|&i| gone(i)).count();
-            let mut index = 0;
-            selections.retain(|_| {
-                let keep = !gone(index);
-                index += 1;
-                keep
-            });
+            let end = *primary + removed;
+            selections.drain(*primary..end.min(len));
+            // A run past the last selection goes on from the first.
+            selections.drain(..end.saturating_sub(len));
+            if end >= len {
+                *primary = 0;
+            }
         })
     }
 
-    /// The primary moved `delta` selections along document order, wrapping.
+    /// The primary moved `count` selections forward in document order,
+    /// wrapping.
     #[must_use]
-    pub fn cycle_primary(self, delta: isize) -> Self {
+    pub fn cycle_primary_forward(self, count: usize) -> Self {
         self.edit_parts(|selections, primary| {
-            let len = selections.len() as isize;
-            *primary = (*primary as isize + delta).rem_euclid(len) as usize;
+            let len = selections.len();
+            *primary = (*primary + count % len) % len;
+        })
+    }
+
+    /// The primary moved `count` selections back in document order,
+    /// wrapping.
+    #[must_use]
+    pub fn cycle_primary_backward(self, count: usize) -> Self {
+        self.edit_parts(|selections, primary| {
+            let len = selections.len();
+            *primary = (*primary + len - count % len) % len;
         })
     }
 
