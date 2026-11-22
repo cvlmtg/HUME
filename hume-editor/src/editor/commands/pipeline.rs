@@ -16,7 +16,7 @@ use crate::editor::registry::{
     CmdMeta, EditFn, EditorCmdBody, FocusedCmdFn, NativeCommand, PaneCharCmdFn, PaneCmdFn,
     PaneTextCmdFn, PasteCmdFn, SelectionBody, TextPrompt,
 };
-use crate::editor::replay::{Answer, InputOpener, NewChange, record_change};
+use crate::editor::replay::{Answer, InputOpener, NewChange, SelectionStep, record_change};
 use crate::editor::selection_history::Record;
 use crate::editor::settings::ObjectJumpAlign;
 use hume_core::{CommandArg, PaneHandle, Severity};
@@ -175,11 +175,11 @@ impl Bound {
         }
     }
 
-    /// The operand this body was bound with, as dot-repeat records it.
-    fn operand_answer(&self) -> Option<Answer> {
+    /// The operand this body was bound with.
+    fn operand(&self) -> Option<CommandArg> {
         match self {
-            Self::PaneChar(_, _, ch) => Some(Answer::Char(Some(*ch))),
-            Self::PaneText(_, _, text) => Some(Answer::Prompt(Some(text.clone()))),
+            Self::PaneChar(_, _, ch) => Some(CommandArg::Char(*ch)),
+            Self::PaneText(_, _, text) => Some(CommandArg::Text(text.clone())),
             Self::Selection(..)
             | Self::Edit(..)
             | Self::Pane(..)
@@ -464,10 +464,9 @@ impl BoundCommand {
         self.body.focused()
     }
 
-    /// The operand this command was bound with. See
-    /// [`Bound::operand_answer`].
-    fn operand_answer(&self) -> Option<Answer> {
-        self.body.operand_answer()
+    /// The operand this command was bound with.
+    fn operand(&self) -> Option<CommandArg> {
+        self.body.operand()
     }
 
     /// Whether this command's body plans a paste.
@@ -480,7 +479,7 @@ impl BoundCommand {
 
 /// Run a bound native command's body with no dispatch bookkeeping: [`run`]
 /// wraps it with the bookkeeping every dispatch needs, and dot-repeat replay
-/// ([`crate::editor::Editor::replay_dot`]) runs its selection-recipe steps
+/// ([`crate::editor::Editor::replay_recipe`]) runs its selection-recipe steps
 /// through it directly.
 ///
 /// Its outcome is [`Refused`] when the body refused. The body's `Err` is
@@ -680,8 +679,7 @@ pub(in crate::editor) fn run(
     ctx: CmdCtx,
 ) -> CommandOutcome {
     let meta = bound.meta;
-    // Clone the name once, before the body consumes `bound`; the AFTER steps
-    // reuse this.
+    // Clone the name once, before the body consumes `bound`.
     let name = bound.name.clone();
     // A command cannot be both repeatable (an edit that modifies the buffer)
     // and a selection-builder (a pure cursor movement): the fresh-recording
@@ -705,9 +703,23 @@ pub(in crate::editor) fn run(
     let change = pre_recipe.map(|recipe| NewChange {
         command: name.clone(),
         count: ctx.count,
-        seed: bound.operand_answer(),
+        seed: bound.operand().map(Answer::from),
         recipe,
     });
+    // A recipe step records its operand, and the find a replayed `=` or `-`
+    // repeats, as they were before the body ran.
+    let step = focused
+        .and(meta.selection)
+        .filter(|role| role.recipe_step)
+        .map(|role| {
+            let step = SelectionStep {
+                command: name,
+                ctx,
+                operand: bound.operand(),
+                last_find: state.last_find,
+            };
+            (role.effect, step)
+        });
     // Only snapshot the selection when the command records into the
     // selection history, which is also every case update_recipe could push
     // a step in: a Move-mode Motion (the overwhelming majority of
@@ -717,7 +729,7 @@ pub(in crate::editor) fn run(
         .and_then(|role| Record::of(role.effect, ctx.extend))
         .map(|record| state.begin_selection_record(view, pane, record));
 
-    // BODY: bound moved in; meta + name captured above so no further clone needed.
+    // BODY: bound moved in; meta captured above.
     // A cursor-moving command runs inside the jump list's capture. Selection
     // commands are excluded from that rule: a large text-object selection is
     // a select-then-act staging step, so only those declaring a jump record.
@@ -738,7 +750,7 @@ pub(in crate::editor) fn run(
     // The recipe belongs to the focused pane's dot-repeat state (see this
     // fn's own doc).
     if focused.is_some() {
-        state.update_recipe(&meta, &name, &ctx, selection_changed);
+        state.update_recipe(step, selection_changed);
         step_clear_extend(state, meta.clears_extend);
     }
     outcome

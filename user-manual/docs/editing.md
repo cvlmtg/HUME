@@ -234,6 +234,7 @@ Undo history is a tree rather than a straight line. Redo follows the branch you 
 `.` repeats the last editing command or insert session: delete, change, paste and so on, but not `y`.
 
 - Typed keys re-run at the new cursor.
+- A selection built with a selection command, such as `x`, a text object or `s`, is built again at the new cursor, and `s` sifts with the same pattern. A motion is repeated only when it ran in Extend mode, and `f`, `t`, `=` or `-` then find the same character. `.` leaves the character `=` and `-` repeat as it was. `m /`, and `n` or `N` in Extend mode, use your current search instead, so after `m /` and `d`, searching for something else and pressing `.` deletes every match of the new search.
 - A choice you made (the character after `r`, a picker or menu item, a prompt answer) is reused, not asked again.
 - A paste pastes the same text again, including the kill-ring entry you cycled to with `[`/`]`, even when the kill ring, the register or the clipboard holds something newer by then. `[`/`]` right after `.` change what the next `.` pastes.
 - A register you named for the edit (`"3d`) is used again. One typed right before `.` replaces it, as a count does: `"5.` deletes into register 5, or after a paste pastes register 5.

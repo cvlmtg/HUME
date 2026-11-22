@@ -216,7 +216,7 @@ fn dot_repeat_of_split_selection_on_newlines_composes_onto_the_prior_recipe() {
 }
 
 /// `mii` (`select-last-insertion`) is an `EditorCmd` that does not opt into
-/// the dot-repeat recipe via `.establishes_selection()` (unlike
+/// the dot-repeat recipe via `.selection_step` (unlike
 /// `select-all-matches`; see `editor_cmds.rs`), so unlike `ms(`/`mm` it can never push itself onto
 /// `state.selection_recipe`, and (being non-repeatable) it can never overwrite
 /// the recorded change either. Running it between an insert and `.` must

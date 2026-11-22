@@ -65,7 +65,7 @@ fn a_typed_built_in_alias_listed_twice_panics() {
 #[should_panic(expected = "\"two-roles\" declares a selection role twice")]
 fn a_command_with_two_selection_roles_panics() {
     let _ = ecmd_pane("two-roles", "", cmd_undo_selection_change)
-        .establishes_selection()
+        .selection_step(SelectionEffect::Establishes)
         .selection_effect(SelectionEffect::Composes);
 }
 

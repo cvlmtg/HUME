@@ -295,8 +295,8 @@ pub(in crate::editor) fn cmd_collapse_to_anchor_and_exit_extend(
 /// command's body (`replay_dot`); otherwise the recorded count is passed as
 /// it was given, untyped included, so a `#:repeatable` Steel command sees on
 /// `.` the same `count` its first run saw. The selection recipe
-/// (`replay_dot`'s `for step in &action.selection_recipe` loop) always
-/// replays with each step's own recorded `step.ctx.count`, never the override.
+/// (`Editor::replay_recipe`) always replays with each step's own recorded
+/// `step.ctx.count`, never the override.
 ///
 /// The handler only enqueues a `PendingRepeat` marker; the actual replay
 /// (edit-group bracketing, re-dispatch, insert-key replay) runs in

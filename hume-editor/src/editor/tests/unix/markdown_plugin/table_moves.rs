@@ -180,6 +180,19 @@ fn a_selected_column_keeps_its_selections() {
     );
 }
 
+/// `.` selects the cells of the column `m |` selected by their place, so it
+/// moves back the column that took the moved one's place.
+#[test]
+fn repeating_a_move_of_a_selected_column_moves_the_column_in_its_place() {
+    assert_eq!(
+        after(
+            "| h1 | h2 | h3 |\n|:---|----|---:|\n| -[a]>1 | a2 | a3 |\n",
+            "m|GTl."
+        ),
+        "| h1 | -[h2]> | h3 |\n|:---|----|---:|\n| a1 | -{a2}> | a3 |\n"
+    );
+}
+
 #[test]
 fn repeating_a_column_move_moves_every_cursor_again() {
     assert_eq!(

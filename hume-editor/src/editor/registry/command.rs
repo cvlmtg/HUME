@@ -140,9 +140,14 @@ pub(in crate::editor) struct SelectionRole {
     pub effect: SelectionEffect,
     /// Whether dot-repeat records this command as a selection-recipe step,
     /// to replay before the edit. `true` for every `Motion` and
-    /// `Selection`; an `EditorCmd` opts in. A command that takes an operand
-    /// or cannot be replayed from a fresh cursor (`find-forward`,
-    /// `sift-within`) is no step, and clears the recipe.
+    /// `Selection`; an `EditorCmd` opts in, its operand recorded with it. A
+    /// command whose replay would not rebuild the same extent
+    /// (`select-last-insertion` reads the last insertion) or would change
+    /// other state replay does not put back (`search-forward` writes the
+    /// search pattern) is no step, and clears the recipe. A step that reads
+    /// the search pattern (`select-all-matches`, `search-next`) replays with
+    /// the one current at `.`, unlike `=`'s recorded find: an edit on every
+    /// match usually leaves none of the first pattern to find.
     pub recipe_step: bool,
 }
 

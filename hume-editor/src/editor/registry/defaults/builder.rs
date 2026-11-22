@@ -63,28 +63,19 @@ impl EditorCmdBuilder {
         self.clears_extend = true;
         self
     }
-    /// Opt this command into the dot-repeat selection recipe as an
-    /// establishing step. Use only for a command that builds a replayable
-    /// selection extent on its own but can't be a pure `Selection` variant
-    /// (needs `EditorState`/`EngineView` access); see
+    /// Opt this command into the dot-repeat selection recipe as a step with
+    /// `effect`, as every `Motion` and `Selection` is. Use for a command that
+    /// replays to the same extent but can't be a pure `Motion` or `Selection`
+    /// variant (needs `EditorState`/`EngineView` access); see
     /// [`crate::editor::registry::CmdMeta::selection`].
-    pub(super) fn establishes_selection(self) -> Self {
+    pub(super) fn selection_step(self, effect: SelectionEffect) -> Self {
         self.selection_role(SelectionRole {
-            effect: SelectionEffect::Establishes,
-            recipe_step: true,
-        })
-    }
-    /// Opt this command into the dot-repeat selection recipe as a composing
-    /// step. See [`SelectionEffect::Composes`].
-    pub(super) fn composes_selection(self) -> Self {
-        self.selection_role(SelectionRole {
-            effect: SelectionEffect::Composes,
+            effect,
             recipe_step: true,
         })
     }
     /// Declare what this command does to the selections without making it a
-    /// dot-repeat recipe step: it takes an operand or cannot be replayed
-    /// from a fresh cursor. See [`SelectionRole::recipe_step`].
+    /// dot-repeat recipe step; see [`SelectionRole::recipe_step`].
     pub(super) fn selection_effect(self, effect: SelectionEffect) -> Self {
         self.selection_role(SelectionRole {
             effect,

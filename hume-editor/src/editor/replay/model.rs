@@ -4,7 +4,7 @@
 
 use std::rc::Rc;
 
-use hume_core::Count;
+use hume_core::{CommandArg, Count};
 use hume_ops::register::Piece;
 
 use termina::event::KeyEvent;
@@ -38,6 +38,17 @@ pub(crate) enum Answer {
     /// cap dropped, or a menu `close-menu!` closed. Its callback never ran,
     /// so on replay the input opens nothing and runs nothing.
     Unanswered,
+}
+
+impl From<CommandArg> for Answer {
+    /// The answer an operand read records for `arg`: a character read's
+    /// character, or a prompt's confirmed text.
+    fn from(arg: CommandArg) -> Self {
+        match arg {
+            CommandArg::Char(ch) => Self::Char(Some(ch)),
+            CommandArg::Text(text) => Self::Prompt(Some(text)),
+        }
+    }
 }
 
 /// A picker's answer. `closing_key` is the key of the keymap binding that

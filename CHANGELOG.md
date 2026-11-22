@@ -5,6 +5,10 @@
 ### Breaking changes
 - `syntax-captures` and `parsed-text-captures` return one list per match, holding the nodes it captures. For one flat list, write `(call! "stdlib/concat" (syntax-captures ...))`; with a pattern that captures several nodes, that list repeats the enclosing node once per match and is not in text order.
 
+### Editing
+- `.` builds the selection again with the pattern you gave `s`, and with the character you gave `f` or `t` or that `=` or `-` repeated in Extend mode, before it repeats the edit.
+- `.` builds a selection made with `n` or `N` in Extend mode again with your current search.
+
 ### Plugins & scripting
 - `core:markdown` turns a URL or a file's path pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
 - `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and renumbers a numbered list.

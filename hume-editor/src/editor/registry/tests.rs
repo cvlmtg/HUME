@@ -731,35 +731,44 @@ fn selection_effect_and_recipe_step_match_expected_commands() {
         ("trim-selection-whitespace", Composes, true),
         ("copy-selection-on-next-line", Composes, true),
         ("copy-selection-on-prev-line", Composes, true),
+        ("sift-within", Composes, true),
         // `Establishes`, replayable on its own from a fresh cursor.
         // `select-all` is whole-buffer and position-independent, unlike its
         // `Composes` siblings despite sharing their `Selection` variant.
         // `select-word-nearest-on-line` and `select-all-matches` are
-        // `EditorCmd`s that opt in via `.establishes_selection()`.
+        // `EditorCmd`s that opt in via `.selection_step`.
         ("select-line", Establishes, true),
         ("select-all", Establishes, true),
         ("select-all-matches", Establishes, true),
         ("surround-paren", Establishes, true),
         ("select-word-nearest-on-line", Establishes, true),
         ("inner-function", Establishes, true),
-        // `Establishes`, but taking an operand or reading editor state a
-        // replay from a fresh cursor would not reproduce.
-        ("sift-within", Establishes, false),
+        // `Establishes`, but reading editor state a replay from a fresh
+        // cursor would not reproduce.
         ("select-last-insertion", Establishes, false),
         ("search-word-under-cursor", Establishes, false),
         // `Extends`: every `Motion`.
         ("move-left", Extends, true),
         ("select-next-word", Extends, true),
         ("goto-next-function", Extends, true),
-        // `Extends`, but an `EditorCmd` dot-repeat does not replay.
-        ("find-forward", Extends, false),
-        ("till-backward", Extends, false),
-        ("repeat-find-forward", Extends, false),
+        // `Extends`, replayed with the character it first ran with.
+        ("find-forward", Extends, true),
+        ("find-backward", Extends, true),
+        ("till-forward", Extends, true),
+        ("till-backward", Extends, true),
+        // `Extends`, replayed with the find it first repeated.
+        ("repeat-find-forward", Extends, true),
+        ("repeat-find-backward", Extends, true),
+        // `Extends`, replayed with the search pattern current at `.`.
+        ("search-next", Extends, true),
+        ("search-prev", Extends, true),
+        // `Extends`, but a replay would not rebuild the same extent.
         ("page-down", Extends, false),
         ("half-page-up", Extends, false),
         ("move-down", Extends, false),
+        // `Extends`, but writing the search pattern, which replay does not
+        // put back.
         ("search-forward", Extends, false),
-        ("search-next", Extends, false),
     ];
     for &(name, effect, recipe_step) in cases {
         assert_eq!(

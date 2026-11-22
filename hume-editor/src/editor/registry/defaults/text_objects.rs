@@ -55,7 +55,7 @@ impl CommandRegistry {
         );
         // `EditorCmd`, not `selection!`: needs a `DisplayLineMap` for wrap-aware
         // nearest-word placement (see `visual_move.rs::cmd_visual_select_word_nearest_on_line`).
-        // `.establishes_selection()`: same in-place establishing semantics
+        // `.selection_step`: same in-place establishing semantics
         // as `select-word` (`mm`, a plain `Selection`), replayable on its
         // own from a fresh cursor.
         ecmd_pane(
@@ -65,7 +65,7 @@ impl CommandRegistry {
             cmd_visual_select_word_nearest_on_line,
         )
         .extendable()
-        .establishes_selection()
+        .selection_step(SelectionEffect::Establishes)
         .reg(self);
         super::selection!(
             self,

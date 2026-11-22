@@ -269,42 +269,42 @@ impl CommandRegistry {
             "Find next occurrence of a character (inclusive, forward). From `call!`, pass the character as an argument.",
             cmd_find_forward,
         )
-        .selection_effect(SelectionEffect::Extends)
+        .selection_step(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane_char(
             "find-backward",
             "Find previous occurrence of a character (inclusive, backward). From `call!`, pass the character as an argument.",
             cmd_find_backward,
         )
-        .selection_effect(SelectionEffect::Extends)
+        .selection_step(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane_char(
             "till-forward",
             "Move to just before next occurrence of a character (exclusive). From `call!`, pass the character as an argument.",
             cmd_till_forward,
         )
-        .selection_effect(SelectionEffect::Extends)
+        .selection_step(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane_char(
             "till-backward",
             "Move to just after previous occurrence of a character (exclusive). From `call!`, pass the character as an argument.",
             cmd_till_backward,
         )
-        .selection_effect(SelectionEffect::Extends)
+        .selection_step(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane(
             "repeat-find-forward",
             "Repeat the last find/till motion forward.",
             cmd_repeat_find_forward,
         )
-        .selection_effect(SelectionEffect::Extends)
+        .selection_step(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane(
             "repeat-find-backward",
             "Repeat the last find/till motion backward.",
             cmd_repeat_find_backward,
         )
-        .selection_effect(SelectionEffect::Extends)
+        .selection_step(SelectionEffect::Extends)
         .reg(self);
 
         // ── Editor commands — replace (takes a character) ────────────────────
@@ -438,7 +438,7 @@ impl CommandRegistry {
             cmd_search_next,
         )
         .jump(JumpRule::Primary)
-        .selection_effect(SelectionEffect::Extends)
+        .selection_step(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane(
             "search-prev",
@@ -446,7 +446,7 @@ impl CommandRegistry {
             cmd_search_prev,
         )
         .jump(JumpRule::Primary)
-        .selection_effect(SelectionEffect::Extends)
+        .selection_step(SelectionEffect::Extends)
         .reg(self);
         ecmd_pane("clear-search", "Clear search highlights.", cmd_clear_search).reg(self);
 
@@ -457,7 +457,7 @@ impl CommandRegistry {
             cmd_sift_within,
             TextPrompt::Sift,
         )
-        .selection_effect(SelectionEffect::Establishes)
+        .selection_step(SelectionEffect::Composes)
         .reg(self);
 
         // ── Editor commands — shell ───────────────────────────────────────────
@@ -482,14 +482,14 @@ impl CommandRegistry {
         // `EditorCmd`, not `selection!`: the body needs `EditorState` to read
         // the buffer's search pattern, a channel `Selection`'s pure
         // `fn(EditState, ...)` signature has no room for.
-        // `.establishes_selection()` opts it into the dot-repeat recipe
+        // `.selection_step` opts it into the dot-repeat recipe
         // anyway: its whole-buffer result is safe to replay from any cursor.
         ecmd_pane(
             "select-all-matches",
             "Turn every search match in the buffer into a selection.",
             cmd_select_all_matches,
         )
-        .establishes_selection()
+        .selection_step(SelectionEffect::Establishes)
         .reg(self);
         ecmd_pane(
             "search-word-under-cursor",

@@ -52,6 +52,8 @@ In a table, `m i |` selects the text of the cell each selection is in, without t
 
 `G T` followed by a direction moves the rows or columns of a table that your selections touch, and your selections move with them. `G T j` and `G T k`, or `G T` and the down or up arrow, move rows down or up. `G T h` and `G T l`, or `G T` and the left or right arrow, move columns left or right, the `---` row included. A cell moves with the blanks around it. `G T j` and `G T k` never move the header row or the `---` row, and do nothing when a selection is on either. Nothing moves when a row or column would pass the edge of the table either. A column moves only when every row has the cells it swaps; if one doesn't, HUME tells you how many rows are short. `.` moves again.
 
+After an edit on cells `m |`, `m i |` or `m a |` selected, `.` selects the cells in the same places again rather than the ones at the cursor. So after `m |` and `G T l`, `.` moves back the column that took the moved column's place.
+
 With a Markdown [language server](../lsp.md#install-a-server) installed (`:lsp-install markdown` installs marksman), the symbol keys jump between sections. `z s` lists the file's headings to pick one, and `z S` searches the headings of every Markdown file in the project as you type. marksman reads the files you haven't opened only when the project's folder is a git repository or holds a `.marksman.toml` file.
 
 The preview draws ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block as written.

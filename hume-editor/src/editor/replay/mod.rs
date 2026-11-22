@@ -1287,6 +1287,39 @@ impl Editor {
         self.state.recording = Some(recording);
     }
 
+    /// Runs `recipe`'s steps at `fp`, each with the find it first ran
+    /// against. Whether every step ran. The find `=` and `-` repeat is the
+    /// user's, not the recipe's, so it is put back either way.
+    ///
+    /// Every recipe step names a native command, bound with the operand it
+    /// first ran with: `SteelBacked`/`Lazy` are never a recipe step, native
+    /// entries can never be unregistered, so the lookup and bind always
+    /// succeed.
+    fn replay_recipe(&mut self, fp: commands::FocusedPane, recipe: &[SelectionStep]) -> bool {
+        let live_find = self.state.last_find;
+        let rebuilt = recipe.iter().all(|step| {
+            let Some(MappableCommand::Native(cmd)) = self
+                .state
+                .config
+                .registry
+                .get_mappable(step.command.as_ref())
+                .cloned()
+            else {
+                unreachable!("a dot-repeat selection-recipe step always names a native command");
+            };
+            let Ok(bound) = commands::BoundCommand::focused(cmd, fp, step.operand.clone()) else {
+                unreachable!(
+                    "a dot-repeat selection-recipe step is bound with the operand it first ran with"
+                )
+            };
+            self.state.last_find = step.last_find;
+            let outcome = commands::run_body(&mut self.state, &mut self.view, bound, &step.ctx);
+            self.finish_command(outcome)
+        });
+        self.state.last_find = live_find;
+        rebuilt
+    }
+
     /// `replay_dot`'s body: replays the selection recipe, re-runs the command
     /// (its interactive inputs answered from its recorded answers), then walks
     /// the transcript, feeding each input into the path it names (see
@@ -1301,35 +1334,15 @@ impl Editor {
             return;
         };
 
-        // Rebuild the selection extent the command acted on. Every
-        // recipe step names a native command taking no operand (a `Composes`/
-        // `Establishes` selection command): `SteelBacked`/`Lazy` are never a
-        // recipe step, native entries can never be unregistered, so the lookup
-        // and bind always succeed. A refused step cancels the replay before
-        // the edit runs, with the selections put back as they were. Recipe
-        // steps change no text, so the snapshot needs no carry.
+        // Rebuild the selection extent the command acted on. A refused step
+        // cancels the replay before the edit runs, with the selections put
+        // back as they were. Recipe steps change no text, so the snapshot
+        // needs no carry.
         let mut pre_recipe = PaneSnapshot::new(pid);
         pre_recipe.capture(&self.state, &self.view);
-        for step in &action.selection_recipe {
-            let Some(MappableCommand::Native(cmd)) = self
-                .state
-                .config
-                .registry
-                .get_mappable(step.command.as_ref())
-                .cloned()
-            else {
-                unreachable!("a dot-repeat selection-recipe step always names a native command");
-            };
-            let Ok(bound) = commands::BoundCommand::focused(cmd, fp, None) else {
-                unreachable!(
-                    "a dot-repeat selection-recipe step always names a native command taking no character"
-                )
-            };
-            let outcome = commands::run_body(&mut self.state, &mut self.view, bound, &step.ctx);
-            if !self.finish_command(outcome) {
-                pre_recipe.take_restore(&mut self.state.panes.entries, &self.state.buffers);
-                return;
-            }
+        if !self.replay_recipe(fp, &action.selection_recipe) {
+            pre_recipe.take_restore(&mut self.state.panes.entries, &self.state.buffers);
+            return;
         }
 
         self.state.register_prefix = self

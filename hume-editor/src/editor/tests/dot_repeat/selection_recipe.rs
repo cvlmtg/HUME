@@ -204,7 +204,7 @@ fn undo_clears_selection_recipe() {
 ///
 /// `copy-selection-on-next-line` duplicates whatever selection is already
 /// there: it establishes nothing on its own. It is registered with
-/// `.composes_selection()` (`SelectionEffect::Composes`) because it
+/// `.selection_step(SelectionEffect::Composes)` because it
 /// transforms the staged extent, so the `x` that built that extent stays in
 /// the recipe (see `registry/defaults/selections.rs`, and
 /// `dot_repeat_of_copy_selection_replays_the_whole_recipe` below for the
@@ -358,4 +358,122 @@ fn dot_repeat_word_motion_acts_on_current_selection() {
         text.contains("baz"),
         "`.` must not advance past 'bar' and delete 'baz'; got: {text:?}"
     );
+}
+
+/// `x`, `s oo`, `d` deletes the line's `oo`s. `.` on the next line selects
+/// that line and sifts it with the same pattern, without opening the prompt.
+#[test]
+fn dot_repeat_sifts_again_with_the_recorded_pattern() {
+    let mut ed = editor_from("-[f]>oo boo\nzoo moo\n");
+
+    ed.feed_key(key('x'));
+    ed.feed_key(key('s'));
+    keys(&mut ed, "oo");
+    ed.feed_key(key_enter());
+    ed.feed_key(key('d'));
+    assert_eq!(text(&ed), "f b\nzoo moo\n");
+
+    ed.feed_key(key(','));
+    ed.feed_key(key('j'));
+    ed.feed_key(key('.'));
+
+    assert_eq!(text(&ed), "f b\nz m\n");
+    assert!(ed.state.minibuf().is_none());
+}
+
+/// A recorded sift whose pattern matches nothing on the new line refuses
+/// `.` before the edit runs.
+#[test]
+fn dot_repeat_whose_sift_finds_nothing_leaves_text_and_selections_unchanged() {
+    let mut ed = editor_from("-[f]>oo\nbar\n");
+
+    ed.feed_key(key('x'));
+    ed.feed_key(key('s'));
+    keys(&mut ed, "oo");
+    ed.feed_key(key_enter());
+    ed.feed_key(key('d'));
+    assert_eq!(text(&ed), "f\nbar\n");
+
+    ed.feed_key(key('j'));
+    let before = state(&ed);
+    ed.feed_key(key('.'));
+
+    assert_eq!(text(&ed), "f\nbar\n");
+    assert_eq!(state(&ed), before);
+}
+
+/// In Extend mode, `f-` grows the selection to the next `-`. `.` grows the
+/// cursor's selection to its next `-` with the same character, then deletes.
+#[test]
+fn dot_repeat_finds_again_with_the_recorded_character() {
+    let mut ed = editor_from("-[a]>-b-c\n");
+
+    ed.feed_key(key('e'));
+    ed.feed_key(key('f'));
+    ed.feed_key(key('-'));
+    ed.feed_key(key('d'));
+    assert_eq!(text(&ed), "b-c\n");
+
+    ed.feed_key(key('.'));
+
+    assert_eq!(text(&ed), "c\n");
+}
+
+/// `.` replays the recorded `f-` step but leaves `=` repeating the `fx` the
+/// user typed after the edit.
+#[test]
+fn dot_repeat_leaves_the_find_that_repeat_find_uses() {
+    let mut ed = editor_from("-[a]>-b x c-d x e-f\n");
+
+    ed.feed_key(key('e'));
+    ed.feed_key(key('f'));
+    ed.feed_key(key('-'));
+    ed.feed_key(key('d'));
+    ed.feed_key(key('f'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key('.'));
+    assert_eq!(text(&ed), "b d x e-f\n");
+
+    ed.feed_key(key('='));
+
+    assert_eq!(state(&ed), "b d -[x]> e-f\n");
+}
+
+/// `f-` in Move mode, then `=` in Extend mode, grow the selection to the
+/// second `-`, and the recipe holds the `=` alone. `.` after an `fx` grows
+/// the selection to its next `-`: the `=` step repeats `-`, the find it
+/// first repeated, not the `x` the user typed since.
+#[test]
+fn dot_repeat_repeats_find_again_with_the_find_it_first_repeated() {
+    let mut ed = editor_from("-[a]>-b-c x d-e-f\n");
+
+    ed.feed_key(key('f'));
+    ed.feed_key(key('-'));
+    ed.feed_key(key('e'));
+    ed.feed_key(key('='));
+    ed.feed_key(key('d'));
+    assert_eq!(text(&ed), "ac x d-e-f\n");
+
+    ed.feed_key(key('f'));
+    ed.feed_key(key('x'));
+    ed.feed_key(key('.'));
+
+    assert_eq!(text(&ed), "ac e-f\n");
+}
+
+/// In Extend mode, `n` grows the selection to the next match of the search.
+/// `.` grows the cursor's selection to its next match the same way, then
+/// deletes.
+#[test]
+fn dot_repeat_extends_to_the_next_search_match_again() {
+    let mut ed = editor_from("-[a]> x b x c x\n").with_search_regex("x");
+
+    ed.feed_key(key('e'));
+    ed.feed_key(key('n'));
+    ed.feed_key(key('d'));
+    assert_eq!(text(&ed), " b x c x\n");
+
+    ed.feed_key(key('.'));
+
+    assert_eq!(text(&ed), " c x\n");
 }
