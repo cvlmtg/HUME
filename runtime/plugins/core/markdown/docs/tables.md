@@ -109,8 +109,9 @@ pipe, and one `u` undoes the move.
 - A block of cells `i..j` moves right: cell `j+1`, with the pipe before it, is deleted and
   inserted before the pipe of cell `i`. A first cell with no pipe before it gets the cell
   inserted before its text, with a pipe after it.
-- It moves left: cell `i-1` and the pipe after it are deleted, the pipe before it staying,
-  and the cell is inserted after cell `j`'s text with a pipe before it.
+- It moves left: cell `i-1` is deleted with the pipe before it, the pipe after it staying as
+  cell `i`'s, and is inserted after cell `j`'s text with a pipe before it. A first cell with no
+  pipe before it is deleted with the pipe after it.
 
 A cell's text is everything between its pipes, so its blanks move with it. In a row without
 outer pipes the first and last cells carry their blanks to the other end of the row.

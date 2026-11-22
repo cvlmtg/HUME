@@ -77,6 +77,21 @@ fn separate_blocks_each_move() {
         after("| h |\n|---|\n| -[a]> |\n| b |\n| -{c}> |\n| d |\n", "GTj"),
         "| h |\n|---|\n| b |\n| -[a]> |\n| d |\n| -{c}> |\n"
     );
+    assert_eq!(
+        after("| h |\n|---|\n| a |\n| -[b]> |\n| c |\n| -{d}> |\n", "GTk"),
+        "| h |\n|---|\n| -[b]> |\n| a |\n| -{d}> |\n| c |\n"
+    );
+}
+
+#[test]
+fn rows_move_in_each_table_a_selection_touches() {
+    assert_eq!(
+        after(
+            "| h |\n|---|\n| -[a]> |\n| b |\n\n| g |\n|---|\n| -{x}> |\n| y |\n",
+            "GTj"
+        ),
+        "| h |\n|---|\n| b |\n| -[a]> |\n\n| g |\n|---|\n| y |\n| -{x}> |\n"
+    );
 }
 
 #[test]
@@ -194,6 +209,13 @@ fn a_cell_selected_with_its_pipe_keeps_the_pipe() {
         after("| h1 | h2 |\n|----|----|\n| a1 | -[a]>2 |\n", "ma|GTh"),
         "| h2 | h1 |\n|----|----|\n-[| a2 ]>| a1 |\n"
     );
+    assert_eq!(
+        after(
+            "| h1 | h2 | h3 |\n|:---|----|---:|\n| -[a]>1 | a2 | a3 |\n",
+            "ma|GTl"
+        ),
+        "| h2 | h1 | h3 |\n|----|:---|---:|\n| a2 -[| a1 ]>| a3 |\n"
+    );
 }
 
 #[test]
@@ -248,7 +270,7 @@ fn a_row_short_of_a_swapped_cell_stops_the_move_with_a_warning() {
 }
 
 #[test]
-fn a_selection_outside_a_table_moves_nothing() {
+fn a_selection_outside_a_table_does_not_stop_the_move() {
     assert_eq!(
         after(
             "te-[x]>t\n\n| h1 | h2 |\n|----|----|\n| -{a}>1 | a2 |\n",

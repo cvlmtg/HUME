@@ -307,6 +307,8 @@
   (map (lambda (line) (cons line index))
        (filter (lambda (line) (md-tables/has-cell? reader line index)) (md-cells/table-rows table))))
 
+(define (md-tables/all? pred? items) (not (findf (lambda (item) (not (pred? item))) items)))
+
 ;;; For `m a |`, `cells`, `(line . index)` cells, with the delimiter cell and the empty cells of each column of
 ;;; `found`, `(table cell)` pairs, whose header and body cells with text `cells` all hold. See
 ;;; docs/tables.md's "Cells and columns".
@@ -321,8 +323,7 @@
                     [empty-cell? (lambda (cell) (md-tables/empty-cell? reader cell))]
                     [delimiter (cons (md-cells/table-delimiter table) index)])
                (if (and (md-tables/has-cell? reader (car delimiter) index)
-                        (not (findf (lambda (cell) (and (not (empty-cell? cell)) (not (hashset-contains? held cell))))
-                                    column)))
+                        (md-tables/all? (lambda (cell) (or (empty-cell? cell) (hashset-contains? held cell))) column))
                    (cons delimiter (foldr cons targets (filter empty-cell? column)))
                    targets)))
            cells
@@ -426,8 +427,6 @@
                                    (map numbers-of (filter (lambda (entry) (equal? (car entry) table)) covered)))
                                  <)))))
                (filter (md-tables/first-of (lambda (table) table)) (map car covered)))))
-
-(define (md-tables/all? pred? items) (not (findf (lambda (item) (not (pred? item))) items)))
 
 (define (md-tables/move-rows! pane down?)
   (let* ([reader (md-tables/reader pane)]
