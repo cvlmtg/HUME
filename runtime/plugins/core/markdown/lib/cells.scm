@@ -4,8 +4,8 @@
 (require "lists.scm")
 
 (provide md-cells/inner-pattern md-cells/around-pattern md-cells/row md-cells/cells
-         md-cells/text-start md-cells/text-end md-cells/around-start md-cells/empty? md-cells/index-at
-         md-cells/table-at md-cells/table-header md-cells/table-delimiter md-cells/table-last
+         md-cells/pipe-before md-cells/text-start md-cells/text-end md-cells/around-start md-cells/empty?
+         md-cells/index-at md-cells/table-at md-cells/table-header md-cells/table-delimiter md-cells/table-last
          md-cells/table-rows)
 
 ;;; `md-lists/container-of` and `md-cells/pipes` read a row as these patterns split it. See docs/tables.md's

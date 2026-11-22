@@ -77,8 +77,9 @@
 | `lib/paths.scm` | `md-paths/complete!`, the completion source's answer: see [`links.md`](links.md#link-paths) |
 | `lib/lists.scm` | A line's prefix, the next line's, ending a list, renumbering, and toggling task boxes: see [`lists.md`](lists.md) |
 | `lib/cells.scm` | A row's prefix, pipes and cells read from its text, the table a line is in, and what the cell patterns match on a line: see [`tables.md`](tables.md) |
+| `lib/moves.scm` | The edits that move table rows and columns: see [`tables.md`](tables.md#moving-rows-and-columns) |
 
-`blocks.scm`, `table.scm`, `inline.scm`, `lists.scm` and `cells.scm` read no buffer: lines
+`blocks.scm`, `table.scm`, `inline.scm`, `lists.scm`, `cells.scm` and `moves.scm` read no buffer: lines
 come in as procedures.
 
 ## Rendering

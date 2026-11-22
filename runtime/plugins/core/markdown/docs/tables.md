@@ -88,3 +88,40 @@ run of selections to keep is passed with one `cycle-primary-forward` counted by 
 and a run to drop is removed with one `remove-primary-selection` counted by its length: each
 removal makes the next selection primary. The walk ends on the first kept selection at or
 after the one it started from.
+
+## Moving rows and columns
+
+`markdown/move-row-up`/`-down` (`G T k`/`G T j`) and `markdown/move-column-left`/`-right`
+(`G T h`/`G T l`) move every row or column a selection touches by one place. A block is a run of
+adjacent touched rows, or touched columns, of one table.
+
+`edit-text!` lands a selection on replaced or deleted text where the new text starts, and a
+plugin can rebuild selections only through editor commands. So a move never edits the text
+the selections are on. It moves the row or column next to each block across the block, in
+one `edit-text!`. Every selection follows the text it was on, an `m a |` selection keeps its
+pipe, and one `u` undoes the move.
+
+- A block of rows `a..b` moves down: row `b+1`'s text and a line break are inserted at the
+  start of `a`, and the text from `b`'s line break to `b+1`'s is deleted. Starting at `b`'s
+  line break, the deletion never takes the buffer's final line break.
+- It moves up: row `a-1` with its line break is deleted, and its text and a line break are
+  inserted after `b`'s line break, past a line selection that ends on it.
+- A block of cells `i..j` moves right: cell `j+1`, with the pipe before it, is deleted and
+  inserted before the pipe of cell `i`. A first cell with no pipe before it gets the cell
+  inserted before its text, with a pipe after it.
+- It moves left: cell `i-1` and the pipe after it are deleted, the pipe before it staying,
+  and the cell is inserted after cell `j`'s text with a pipe before it.
+
+A cell's text is everything between its pipes, so its blanks move with it. In a row without
+outer pipes the first and last cells carry their blanks to the other end of the row.
+
+A selection touches each table line from the line of its start to the line of its last
+character. A row move touches those lines. A column move touches, on each line, the cells
+whose text overlaps the columns the selection covers there; a selection that covers only a
+pipe or the prefix touches the cell under its start, as `m i |` reads it. The table's columns
+are the delimiter row's cells.
+
+Nothing moves when no selection touches a table, a row move touches a header or delimiter
+row, or any block would pass the edge of its table: the first body row or the last row, the
+first column or the last. Then a column move needs, in every row from the header to the last,
+the cells it swaps; when a row has fewer, nothing moves and a warning gives the count.

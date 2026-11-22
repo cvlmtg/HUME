@@ -48,6 +48,8 @@ A list numbered `1.`, `1.`, `1.`, or with any one number on every item, keeps it
 
 In a table, `m i |` selects the text of the cell each selection is in, without the blanks around it, and `m |` selects the cells of the main selection's column, one per row, the header included. A blank cell gets a cursor instead. `m a |` also takes the `|` before the cell and the blanks after it, so `d` removes the cell from its row; on the whole column `m |` selects, it takes the column's `---` too, so `m |`, `m a |`, `d` deletes the column. Cells follow the text: `\|` is a `|` inside a cell, `||` holds an empty cell, and lines count as a table only below a header with a `---` row. `m i |` and `m a |` drop the selections outside a table. `m |` leaves out a row with no cell in that column, or an empty one, and tells you how many it left out.
 
+`G T` followed by a direction moves the rows or columns of a table that your selections touch, and your selections move with them. `G T j` and `G T k`, or `G T` and the down or up arrow, move rows down or up. `G T h` and `G T l`, or `G T` and the left or right arrow, move columns left or right, the `---` row included. A cell moves with the blanks around it. The header row and the `---` row stay where they are, so a selection on either moves nothing. Nothing moves when a row or column would pass the edge of the table either. A column moves only when every row has the cells it swaps; if one doesn't, HUME tells you how many rows are short. `.` moves again.
+
 With a Markdown [language server](../lsp.md#install-a-server) installed (`:lsp-install markdown` installs marksman), the symbol keys jump between sections. `z s` lists the file's headings to pick one, and `z S` searches the headings of every Markdown file in the project as you type. marksman reads the files you haven't opened only when the project's folder is a git repository or holds a `.marksman.toml` file.
 
 The preview draws ordered list markers (`1.`), bracketed text such as `[TODO]` or `[!NOTE]`, entity names other than common ones such as `&amp;` and `&copy;`, references to control characters, and Markdown inside a fenced code block as written.
@@ -66,6 +68,8 @@ Only the lines on screen are drawn. After you scroll, the lines that came into v
 | `markdown/select-cell` | What `m i \|` does in a Markdown buffer |
 | `markdown/select-around-cell` | What `m a \|` does in a Markdown buffer |
 | `markdown/select-column` | What `m \|` does in a Markdown buffer |
+| `markdown/move-row-up`, `markdown/move-row-down` | What `G T k` and `G T j` do in a Markdown buffer |
+| `markdown/move-column-left`, `markdown/move-column-right` | What `G T h` and `G T l` do in a Markdown buffer |
 
 Configure with `#:config`:
 

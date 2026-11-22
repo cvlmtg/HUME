@@ -10,6 +10,7 @@
 - `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and renumbers a numbered list.
 - `core:markdown` checks or unchecks a list's task boxes with `G X`.
 - `core:markdown` selects a table cell with `m i |` or `m a |` and a table column with `m |`; `m |`, `m a |`, `d` deletes a column.
+- `core:markdown` moves table rows with `G T j`/`G T k` and columns with `G T h`/`G T l`, or `G T` and an arrow.
 - `core:markdown` renumbers the items after a list item whose number you change or that you delete, and leaves a list numbered `1.` throughout as it is.
 - The `on-paste` hook lets a plugin change the text a paste puts in a buffer.
 

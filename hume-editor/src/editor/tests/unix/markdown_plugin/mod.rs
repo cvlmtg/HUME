@@ -2218,5 +2218,6 @@ fn the_completion_documentation_box_draws_markdown_without_its_syntax() {
 mod link_paste;
 mod link_paths;
 mod lists;
+mod table_moves;
 mod tables;
 mod tasks;

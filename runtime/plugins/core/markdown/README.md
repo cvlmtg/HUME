@@ -1,6 +1,6 @@
 # core:markdown
 
-Draws Markdown without its syntax, in the style of Obsidian's live preview. Every line a selection touches shows its source, and a code block or a table shows its source as a whole while a selection is inside it. It also turns a URL or a file's path pasted over selected text into a link, completes the path in a link's destination, continues a list or quote on Enter, `o` and `O`, checks or unchecks task boxes on `G X`, and selects a table cell on `m i |` or `m a |` or a table column on `m |`.
+Draws Markdown without its syntax, in the style of Obsidian's live preview. Every line a selection touches shows its source, and a code block or a table shows its source as a whole while a selection is inside it. It also turns a URL or a file's path pasted over selected text into a link, completes the path in a link's destination, continues a list or quote on Enter, `o` and `O`, checks or unchecks task boxes on `G X`, selects a table cell on `m i |` or `m a |` or a table column on `m |`, and moves table rows and columns on `G T` and a direction.
 
 ## Usage
 
@@ -38,6 +38,8 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 | `markdown/select-cell` | `m i \|` in a Markdown buffer |
 | `markdown/select-around-cell` | `m a \|` in a Markdown buffer |
 | `markdown/select-column` | `m \|` in a Markdown buffer |
+| `markdown/move-row-up`, `markdown/move-row-down` | `G T k` and `G T j`, or `G T` and an up or down arrow, in a Markdown buffer |
+| `markdown/move-column-left`, `markdown/move-column-right` | `G T h` and `G T l`, or `G T` and a left or right arrow, in a Markdown buffer |
 
 ## Documentation
 
@@ -47,4 +49,4 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview. Ever
 | [`docs/elements.md`](docs/elements.md) | Block elements, inline elements, tables, node shapes |
 | [`docs/links.md`](docs/links.md) | Link paste and link-path completion |
 | [`docs/lists.md`](docs/lists.md) | List and quote continuation, ending a list, renumbering, task boxes |
-| [`docs/tables.md`](docs/tables.md) | Selecting table cells and columns |
+| [`docs/tables.md`](docs/tables.md) | Selecting table cells and columns, and moving rows and columns |

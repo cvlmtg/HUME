@@ -898,6 +898,10 @@ fn key_left() -> KeyEvent {
     KeyEvent::new(KeyCode::Left, Modifiers::NONE)
 }
 
+fn key_right() -> KeyEvent {
+    KeyEvent::new(KeyCode::Right, Modifiers::NONE)
+}
+
 fn key_end() -> KeyEvent {
     KeyEvent::new(KeyCode::End, Modifiers::NONE)
 }
