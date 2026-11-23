@@ -355,6 +355,8 @@ The default keys of every picker that uses `core:stdlib`'s picker keymap, the fi
 
 | Key | Action |
 |-----|--------|
+| `Backspace` | Delete character before cursor |
+| `Ctrl-w` | Delete word before cursor |
 | `↓` / `Ctrl-n` | Select the next item |
 | `↑` / `Ctrl-p` | Select the previous item |
 | `PageDown` / `PageUp` | Page the list |

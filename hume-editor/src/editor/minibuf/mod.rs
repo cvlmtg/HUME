@@ -225,7 +225,7 @@ impl MiniBuffer {
 ///
 /// `/` (and `\` on Windows) is treated as a separator so that path arguments
 /// delete one component at a time (`/tmp/alpha/one.txt` → `/tmp/alpha/` → …).
-fn word_boundary_back(s: &str, cursor: usize) -> usize {
+pub(in crate::editor) fn word_boundary_back(s: &str, cursor: usize) -> usize {
     let is_sep = |slice: &str| {
         slice
             .chars()

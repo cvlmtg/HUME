@@ -316,6 +316,31 @@ fn pop_grapheme_on_an_empty_query_is_a_no_op_even_for_a_live_session() {
 }
 
 #[test]
+fn delete_word_on_an_empty_query_is_a_no_op_even_for_a_live_session() {
+    let mut s = open_live();
+    assert!(s.delete_word().is_none());
+}
+
+#[test]
+fn delete_word_on_a_live_session_returns_its_query_change_callback() {
+    let mut s = open_live();
+    let _ = s.insert_str("src/edit");
+    assert!(s.delete_word().is_some());
+    assert_eq!(s.query(), "src/");
+}
+
+#[test]
+fn delete_word_widens_a_filter_sessions_matches() {
+    let mut s = open();
+    s.push(items(&["foo", "bar"]));
+    s.set_query("foo zz".to_string());
+    assert_eq!(s.matched_len(), 0);
+    let _ = s.delete_word();
+    assert_eq!(s.query(), "foo ");
+    assert_eq!(s.matched_len(), 1);
+}
+
+#[test]
 fn better_match_ranks_first_regardless_of_insertion() {
     let mut s = open();
     // Scattered subsequence pushed before the boundary match.

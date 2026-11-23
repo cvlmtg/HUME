@@ -19,6 +19,7 @@ use hume_ui::list_row::ListRow;
 
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use super::super::super::keymap::CanonicalKey;
+use super::super::super::minibuf::word_boundary_back;
 use super::super::super::replay::{Choice, Picked};
 use super::super::list_row::{RenderCall, RenderedRows};
 
@@ -68,8 +69,8 @@ struct AttachedSource {
 /// it, and no `Option` whose `None` arm stands for a mode without naming it.
 enum PickerMode {
     Filter,
-    /// `insert_char`/`pop_grapheme` fire `on_query_change` with the new
-    /// query instead of the query driving the local fuzzy filter; see
+    /// Every query mutator fires `on_query_change` with the new query
+    /// instead of the query driving the local fuzzy filter; see
     /// `rebuild_filtered`'s doc for why a live session's ranking is always
     /// the identity permutation over `items`.
     Live {
@@ -595,18 +596,32 @@ impl PickerSession {
     /// there is nothing to notify either way.
     #[must_use = "queue this via queue_steel_call, or the query-change notification is skipped"]
     pub(in crate::editor) fn pop_grapheme(&mut self) -> Option<Callback> {
-        if self.query.is_empty() {
-            return None;
-        }
-        self.query.truncate(hume_rope::grapheme::prev_str_boundary(
+        self.truncate_query(hume_rope::grapheme::prev_str_boundary(
             &self.query,
             self.query.len(),
-        ));
+        ))
+    }
+
+    /// Removes the query's last word ([`word_boundary_back`]), then
+    /// requeries. Returns `None` without effect when there is no word to
+    /// remove.
+    #[must_use = "queue this via queue_steel_call, or the query-change notification is skipped"]
+    pub(in crate::editor) fn delete_word(&mut self) -> Option<Callback> {
+        self.truncate_query(word_boundary_back(&self.query, self.query.len()))
+    }
+
+    /// Cuts the query back to `end` and requeries. `None` without effect
+    /// when `end` is the query's length: nothing was removed.
+    fn truncate_query(&mut self, end: usize) -> Option<Callback> {
+        if end == self.query.len() {
+            return None;
+        }
+        self.query.truncate(end);
         self.rerank();
         self.query_changed()
     }
 
-    /// Shared tail of `insert_char`/`insert_str`/`pop_grapheme`. A filter
+    /// Shared tail of every query mutator. A filter
     /// session's rows answer the new query, so the rows `#:render` made are
     /// forgotten. A live session's keep theirs until its requery delivers:
     /// this returns its `on_query_change` callback and arms `requery_armed`
@@ -628,8 +643,7 @@ impl PickerSession {
     }
 
     /// Replaces the query wholesale and reranks. Test-only: production code
-    /// only ever changes the query one grapheme at a time (`insert_char`/
-    /// `pop_grapheme`) or one paste at a time (`insert_str`), never
+    /// changes the query only through the incremental mutators, never
     /// wholesale.
     #[cfg(test)]
     fn set_query(&mut self, query: String) {

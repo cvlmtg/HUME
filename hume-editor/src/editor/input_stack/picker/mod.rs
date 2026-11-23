@@ -432,8 +432,9 @@ pub(in crate::editor) fn move_picker(
 /// item's payload (`#f` when nothing matches) and the picker's token under
 /// [`CallGuard::PickerKey`](super::super::event::CallGuard::PickerKey),
 /// never invoked inline, and does nothing else.
-/// An unbound `Backspace` deletes from the query and an unbound plain
-/// character types into it; any other unbound key is ignored. A mouse event
+/// An unbound `Backspace` deletes a grapheme from the query, an unbound
+/// Ctrl-w deletes its last word, and an unbound plain character types into
+/// it; any other unbound key is ignored. A mouse event
 /// (click, drag, or wheel) is swallowed the same way: full-modal means the
 /// picker owns the pointer too, so a click can't move the cursor in the
 /// buffer underneath it.
@@ -454,23 +455,19 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
             .queue_picker_key(PickerKeyRun::new(token, canonical, selected), call);
         return;
     }
-    match key.code {
-        KeyCode::Backspace => {
-            // `None` (and so no fire) both on an already-empty query and
-            // on a non-live session; see `pop_grapheme`'s doc.
-            let cb = session.pop_grapheme();
-            queue_query_change(&mut ed.state, r, cb);
-        }
+    let cb = match key.code {
+        KeyCode::Backspace => session.pop_grapheme(),
+        KeyCode::Char('w') if key.modifiers.contains(Modifiers::CONTROL) => session.delete_word(),
         KeyCode::Char(ch)
             if !key
                 .modifiers
                 .intersects(Modifiers::CONTROL | Modifiers::ALT) =>
         {
-            let cb = session.insert_char(ch);
-            queue_query_change(&mut ed.state, r, cb);
+            session.insert_char(ch)
         }
-        _ => {}
-    }
+        _ => return,
+    };
+    queue_query_change(&mut ed.state, r, cb);
 }
 
 /// Joined and flattened to one line, same as a minibuffer paste, then
@@ -488,7 +485,7 @@ fn picker_paste(
 }
 
 /// Queues `cb`, the `on_query_change` callback a `PickerSession` query
-/// mutator (`insert_char`/`pop_grapheme`) just returned, if any, with
+/// mutator just returned, if any, with
 /// `(token query)` as it stands right now, via `queue_steel_call`,
 /// never invoked inline, same discipline as every other picker callback
 /// (`close_picker`). The token is the session's feed token for this query,

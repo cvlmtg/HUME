@@ -242,6 +242,17 @@ fn backspace_on_empty_keeps_picker_open() {
     assert_eq!(ed.state.input.picker().unwrap().query(), "");
 }
 
+// ── Ctrl-w ───────────────────────────────────────────────────────────────────
+
+#[test]
+fn ctrl_w_deletes_the_last_path_component_of_the_query() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_picker(&mut ed, &["one"]);
+    type_chars(&mut ed, "src/edit");
+    ed.feed_key(key_ctrl('w'));
+    assert_eq!(ed.state.input.picker().unwrap().query(), "src/");
+}
+
 // ── Keymap ───────────────────────────────────────────────────────────────────
 
 #[test]
@@ -321,6 +332,23 @@ fn bound_backspace_runs_its_binding_instead_of_deleting() {
 
     assert_eq!(ed.state.input.picker().unwrap().query(), "o");
     assert_eq!(callback_name(&pending_calls(&ed)[0].0), "backspace");
+}
+
+#[test]
+fn bound_ctrl_w_runs_its_binding_instead_of_deleting() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_session(
+        &mut ed,
+        &["one"],
+        vec![binding(key_ctrl('w'), "ctrl-w")],
+        PickerOpts::default(),
+    );
+    ed.feed_key(key('o'));
+
+    ed.feed_key(key_ctrl('w'));
+
+    assert_eq!(ed.state.input.picker().unwrap().query(), "o");
+    assert_eq!(callback_name(&pending_calls(&ed)[0].0), "ctrl-w");
 }
 
 #[test]
