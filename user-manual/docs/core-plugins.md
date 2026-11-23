@@ -9,7 +9,7 @@ HUME ships these plugins under the `core:` namespace:
 - [`core:pickers`](core-plugins/pickers.md): fuzzy pickers
 - [`core:git-diff`](core-plugins/git-diff.md): live git diff
 - [`core:undotree`](core-plugins/undotree.md): an undo-history graph
-- [`core:markdown`](core-plugins/markdown.md): Markdown drawn without its syntax
+- [`core:markdown`](core-plugins/markdown.md): Markdown drawn without its syntax, with help for links, lists and tables
 - [`core:colorizer`](core-plugins/colorizer.md): color literals painted with their color
 - [`core:buffer-words`](core-plugins/buffer-words.md): completion from the words in a buffer
 - [`core:vim-keybind`](core-plugins/vim-keybind.md) and [`core:classic-paste`](core-plugins/classic-paste.md): keymap alternatives
