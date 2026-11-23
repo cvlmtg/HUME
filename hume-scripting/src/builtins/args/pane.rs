@@ -154,5 +154,14 @@ acting_pane_arg! {
     FocusedHandle,
 }
 
+impl ShownHandle {
+    /// The buffer the pane value names. Reading it checks nothing of the
+    /// pane, so a builtin may check its arguments against that buffer's
+    /// text before the host checks the pane.
+    pub(crate) fn buffer(self) -> BufferId {
+        self.0.buffer()
+    }
+}
+
 #[cfg(test)]
 mod tests;

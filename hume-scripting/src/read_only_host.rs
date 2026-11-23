@@ -588,6 +588,9 @@ impl SyntaxHost for ReadOnlyHost<'_> {
     ) -> Result<Captures, String> {
         offered(self.inner.get_mut().syntax()).syntax_captures(bid, language, query, ranges)
     }
+    fn fold_start(&mut self, pane: ShownHandle, line: ContentLine) -> Result<bool, String> {
+        offered(self.inner.get_mut().syntax()).fold_start(pane, line)
+    }
 }
 
 impl DiffHost for ReadOnlyHost<'_> {

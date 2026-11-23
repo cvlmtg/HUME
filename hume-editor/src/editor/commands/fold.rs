@@ -3,9 +3,13 @@
 //! through [`apply_fold`].
 
 use hume_core::{Count, PaneId};
+use hume_engine::builtins::fold_column::FoldStarts;
+use hume_engine::folds::HiddenLines;
 use hume_engine::pipeline::EngineView;
+use hume_engine::providers::FoldMark;
 use hume_ops::MotionMode;
 use hume_rope::line::ContentLine;
+use hume_rope::offset::InclusiveRange;
 use hume_treesitter::layers::SyntaxLayers;
 
 use super::{CommandPane, pane_view};
@@ -86,6 +90,22 @@ pub(in crate::editor) fn apply_fold(
     pane.open_folds_at(&open);
     pane.close_folds(folds, text);
     Ok(())
+}
+
+/// Whether a fold starts on `line` in `buf` for a pane whose closed folds
+/// hide `hidden`: whether the pane's fold column draws a caret there, read
+/// from `buf`'s tree as it stands.
+pub(in crate::editor) fn fold_starts_on(
+    buf: &Buffer,
+    hidden: &HiddenLines,
+    line: ContentLine,
+) -> bool {
+    let mut starts = FoldStarts::default();
+    starts.reset(hidden.clone());
+    if let Some(syntax) = buf.syntax_source() {
+        starts.read([InclusiveRange::new(line, line)], syntax, buf.text().rope());
+    }
+    starts.mark(line) != FoldMark::None
 }
 
 /// Apply `op` at the line of each selection head of pane `t`.

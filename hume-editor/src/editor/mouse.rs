@@ -23,16 +23,13 @@
 //! layer's policy, reached only after the stack has let the event through.
 
 use hume_core::PaneId;
-use hume_engine::builtins::fold_column::FoldStarts;
 use hume_engine::display_lines::{BlockSlot, DisplayLineMap};
 use hume_engine::pane::{Pane, Viewport};
 use hume_engine::pipeline::{PaneHit, SeamHandle};
-use hume_engine::providers::FoldMark;
 use hume_engine::scope_headers::PaneRow;
 use hume_grid::{Position, Rect};
 use hume_platform::terminal::MouseReporting;
 use hume_rope::line::ContentLine;
-use hume_rope::offset::InclusiveRange;
 use termina::event::{MouseButton, MouseEvent, MouseEventKind};
 
 use super::commands;
@@ -339,12 +336,7 @@ impl Editor {
             PaneRow::Header(line) => line,
             PaneRow::Body(pos) => (dlm.slot(pos) == BlockSlot::Content(0)).then_some(pos.line)?,
         };
-        let mut starts = FoldStarts::default();
-        starts.reset(dlm.hidden().clone());
-        if let Some(syntax) = doc.syntax_source() {
-            starts.read([InclusiveRange::new(line, line)], syntax, rope);
-        }
-        (starts.mark(line) != FoldMark::None).then_some(line)
+        commands::fold_starts_on(doc, dlm.hidden(), line).then_some(line)
     }
 
     /// Resolve `hit` to the buffer cluster under it, at its pane's drawn size

@@ -9,7 +9,7 @@ use hume_core::{
 };
 use steel::rerrs::SteelErr;
 
-use crate::host::Captures;
+use crate::host::{Captures, ShownHandle};
 use crate::{Effect, GrammarReg, PendingLanguageReg, SteelCtx};
 
 use super::SteelResult;
@@ -18,7 +18,7 @@ use super::args::{
     optional_list_to_string_pairs, optional_list_to_strings, optional_path_arg,
     optional_string_arg, path_arg, string_arg, under_cwd,
 };
-use super::buffers::{line_ranges_arg, live_text};
+use super::buffers::{content_line_arg, line_ranges_arg, live_text};
 use super::errors::generic_err;
 use super::ids::{ParsedText, downcast};
 
@@ -308,6 +308,19 @@ pub(crate) fn syntax_captures(
         .syntax_captures(bid, &language, &query, &ranges)
         .map_err(generic_err)?;
     Ok(captures_list(&captures))
+}
+
+/// `(fold-start? pane line)`: whether a fold starts on content `line` in
+/// `pane`'s pane, as [`crate::host::SyntaxHost::fold_start`] answers it.
+/// Raises for a `line` past the buffer's last content line.
+pub(crate) fn fold_start(ctx: &mut SteelCtx, pane: ShownHandle, line: usize) -> SteelResult {
+    let text = live_text(ctx, pane.buffer())?;
+    let line = content_line_arg(line, text.content_line_count()).map_err(generic_err)?;
+    ctx.host
+        .require(|h| h.syntax())?
+        .fold_start(pane, line)
+        .map(SteelVal::BoolV)
+        .map_err(generic_err)
 }
 
 /// `(parsed-text-captures parsed language query-source)`: the

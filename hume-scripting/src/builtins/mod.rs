@@ -650,6 +650,7 @@ builtins! {
     open "language-has-grammar?" syntax::language_has_grammar(name: SteelVal);
     cmd "%syntax-captures" => "syntax-captures" syntax::syntax_captures(pane: args::LiveBuffer, language: String, query: String, ranges: SteelVal);
     cmd "parsed-text-captures" syntax::parsed_text_captures(parsed: SteelVal, language: String, query: String);
+    cmd "fold-start?" syntax::fold_start(pane: args::ShownPane, line: args::Usize);
 
     // Editor-integration directory info, read from `ctx.dirs` (computed
     // once by `ScriptingHost::new`). Callable from anywhere (`open`).

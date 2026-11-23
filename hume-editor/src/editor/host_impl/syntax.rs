@@ -5,11 +5,12 @@ use std::sync::Arc;
 use hume_core::BufferId;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
-use hume_scripting::host::{CaptureEntry, Captures, SyntaxHost};
+use hume_scripting::host::{CaptureEntry, Captures, ShownHandle, SyntaxHost};
 use hume_treesitter::captures::{Capture, CaptureQuery};
 use hume_treesitter::registry::GrammarBundle;
 
 use super::EditorHostImpl;
+use crate::editor::commands::fold_starts_on;
 use crate::editor::syntax::{GrammarLoads, SyntaxUse, ensure_syntax_current};
 
 impl<'a> SyntaxHost for EditorHostImpl<'a> {
@@ -39,6 +40,17 @@ impl<'a> SyntaxHost for EditorHostImpl<'a> {
             query.collect(layers, text.rope(), ranges)
         });
         Ok(captures_of(&query, matches))
+    }
+
+    fn fold_start(&mut self, pane: ShownHandle, line: ContentLine) -> Result<bool, String> {
+        let t = self.shown(pane)?;
+        let bid = t.bid(self.view);
+        ensure_syntax_current(self.state, &mut self.view.registry, bid, SyntaxUse::Folds);
+        Ok(fold_starts_on(
+            self.state.buffers.get(bid),
+            self.state.hidden_lines(self.view, t.pid()),
+            line,
+        ))
     }
 }
 

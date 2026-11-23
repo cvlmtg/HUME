@@ -133,6 +133,7 @@
 (#%register-global "first-path-outside")
 (#%register-global "flip-selections")
 (#%register-global "focused-pane")
+(#%register-global "fold-start?")
 (#%register-global "get-buffer-option")
 (#%register-global "get-option")
 (#%register-global "goto-alternate-buffer")

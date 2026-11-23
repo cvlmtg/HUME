@@ -34,6 +34,7 @@ const PANE_PROBES: &[&str] = &[
     "(buffer-revision-diff p 0)",
     "(buffer-changes-since p #f)",
     r#"(syntax-captures p "markdown" "(atx_heading) @h")"#,
+    "(fold-start? p 0)",
     r#"(lsp-notify! p "m" (hash))"#,
     "(lsp-servers p)",
     "(lsp-route p #:feature 'hover)",

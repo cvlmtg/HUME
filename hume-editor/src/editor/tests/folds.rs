@@ -540,6 +540,61 @@ fn toggle_fold_on_a_folds_closing_line_opens_it() {
     assert_eq!(closed(&ed), []);
 }
 
+/// `(fold-start? bid line)` for each line of the focused buffer, in order:
+/// `t` where it holds, `f` where it does not.
+fn fold_starts(ed: &mut Editor) -> String {
+    let tmp = tempfile::tempdir().unwrap();
+    log_probe(
+        ed,
+        tmp.path(),
+        r#"(apply string-append (map (lambda (line) (if (fold-start? bid line) "t" "f")) (range 0 (buffer-line-count bid))))"#,
+    )
+}
+
+#[test]
+fn fold_start_holds_on_the_lines_regions_start_on() {
+    let mut ed = rust_editor(&RS.replacen("x", "-[x]>", 1));
+    assert_eq!(fold_starts(&mut ed), "tffffttffff");
+}
+
+#[test]
+fn fold_start_holds_on_a_closed_folds_line_and_not_on_the_lines_it_hides() {
+    let mut ed = rust_editor(&RS.replacen("fn b", "-[f]>n b", 1));
+    keys(&mut ed, "zc");
+    assert_eq!(closed(&ed), [(5, 10)]);
+    assert_eq!(fold_starts(&mut ed), "tfffftfffff");
+}
+
+#[test]
+fn fold_start_reads_the_tree_of_the_current_text() {
+    let mut ed = rust_editor(&RS.replacen("x", "-[x]>", 1));
+    ed.feed_key(key('x'));
+    ed.feed_key(key('d'));
+    assert!(
+        ed.doc().current_layers().is_none(),
+        "premise: the tree is stale"
+    );
+    assert_eq!(fold_starts(&mut ed), "tfffttffff");
+}
+
+#[test]
+fn fold_start_holds_nowhere_without_a_grammar() {
+    let mut ed = editor("-[a]> {\n    b\n}\n");
+    assert_eq!(fold_starts(&mut ed), "fff");
+}
+
+#[test]
+fn fold_start_raises_past_the_last_line() {
+    let mut ed = rust_editor(&RS.replacen("x", "-[x]>", 1));
+    let tmp = tempfile::tempdir().unwrap();
+    log_probe(&mut ed, tmp.path(), r#"(if (fold-start? bid 11) "t" "f")"#);
+    assert!(
+        status(&ed).contains("line 11 is out of range"),
+        "{}",
+        status(&ed)
+    );
+}
+
 #[test]
 fn open_all_folds_opens_every_fold() {
     let mut ed = rust_editor(&RS.replacen("x", "-[x]>", 1));

@@ -6,6 +6,8 @@ use hume_core::BufferId;
 use hume_rope::line::ContentLine;
 use hume_rope::offset::ExclusiveRange;
 
+use super::ShownHandle;
+
 /// What a query captured: each match as the entries of its nodes, each
 /// entry naming one of `names`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -48,4 +50,11 @@ pub trait SyntaxHost {
         query: &str,
         ranges: &[ExclusiveRange<ContentLine>],
     ) -> Result<Captures, String>;
+
+    /// Whether a fold starts on `line` in `pane`'s pane, where its fold
+    /// column puts a caret: a closed fold starts there, or a foldable region
+    /// of the buffer's tree does, the tree brought up to date with the text
+    /// first. `false` for a buffer whose language names no regions. Backs
+    /// `(fold-start? pane line)`.
+    fn fold_start(&mut self, pane: ShownHandle, line: ContentLine) -> Result<bool, String>;
 }
