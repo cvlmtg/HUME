@@ -43,6 +43,7 @@ Enter, `o` and `O` are bound only with `'continue-lists` on.
 | | | `format-text/markdown` | `(format-text/markdown text parsed)`: a popup's conceals, line backgrounds and highlights |
 | Insert | Enter | `markdown/enter` | Continue the list or quote, or end it on an empty item |
 | Normal | `o`, `O` | `markdown/open-below`, `markdown/open-above` | Open a line continuing the list or quote |
+| Normal | `g d` | `markdown/follow-link` | Follow the link under the primary cursor; a wiki or reference link runs `lsp/goto-definition` |
 | Normal | `G X` | `markdown/toggle-task` | Check or uncheck task boxes |
 | Normal | `m i \|`, `m a \|` | `markdown/select-cell`, `markdown/select-around-cell` | Select the cell's text, or the cell with its pipe |
 | Normal | `m \|` | `markdown/select-column` | Select the primary selection's column |
@@ -55,6 +56,6 @@ Enter, `o` and `O` are bound only with `'continue-lists` on.
 |---|---|
 | [`docs/architecture.md`](docs/architecture.md) | Decisions, limitations, file layout, rendering, popups, how the queries fetch and filter matches |
 | [`docs/elements.md`](docs/elements.md) | What each element is drawn as, and the grammar's node shapes |
-| [`docs/links.md`](docs/links.md) | Link paste and link-path completion |
+| [`docs/links.md`](docs/links.md) | Link paste, link-path completion and following links |
 | [`docs/lists.md`](docs/lists.md) | List and quote continuation, renumbering, task boxes |
 | [`docs/tables.md`](docs/tables.md) | Reading table rows, selecting cells and columns, moving rows and columns |

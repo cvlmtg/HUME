@@ -6,7 +6,7 @@
          md-preview/skip-while md-preview/skip-blanks
          md-preview/quote-cols md-preview/bucket md-preview/extent
          md-preview/conceal md-preview/hidden-revealing
-         md-preview/conceal-before? md-preview/group md-preview/runs-of md-preview/runs md-preview/children
+         md-preview/conceal-before? md-preview/shown-text md-preview/group md-preview/runs-of md-preview/runs md-preview/children
          md-preview/child md-preview/captured
          md-preview/group-by md-preview/unchecked-box md-preview/checked-box
          md-preview/start-col md-preview/end-col md-preview/capture-line md-preview/line-end
@@ -99,6 +99,19 @@
   (let ([a-start (hash-ref a 'start-char)] [b-start (hash-ref b 'start-char)])
     (or (< a-start b-start)
         (and (= a-start b-start) (> (hash-ref a 'end-char) (hash-ref b 'end-char))))))
+
+;;; The chars `span`, `(start . end)`, as the preview shows them once `conceals`, sorted by
+;;; `md-preview/conceal-before?`, apply. `slice` reads the text between two offsets.
+(define (md-preview/shown-text span conceals slice)
+  (let ([end (cdr span)])
+    (let loop ([cs conceals] [at (car span)] [out '()])
+      (let ([from (and (pair? cs) (hash-ref (car cs) 'start-char))])
+        (cond
+          [(or (not from) (>= from end)) (apply string-append (reverse (cons (slice at end) out)))]
+          [(< from at) (loop (cdr cs) at out)]
+          [else (loop (cdr cs)
+                      (min end (hash-ref (car cs) 'end-char))
+                      (cons (or (hash-try-get (car cs) 'text) "") (cons (slice at from) out)))])))))
 
 ;;; `items` in a hash by `(key item)`, each key's items in order.
 (define (md-preview/group-by key items)

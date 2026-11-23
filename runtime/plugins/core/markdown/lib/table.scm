@@ -13,19 +13,6 @@
     (cons start
           (+ start (string-length (trim-end (slice start (md-preview/capture-end cell))))))))
 
-(define (md-preview/shown-width span conceals slice)
-  (let loop ([cs conceals] [at (car span)] [width 0])
-    (let ([raw (lambda (end) (string-width (slice at end)))])
-      (cond
-        [(null? cs) (+ width (raw (cdr span)))]
-        [(< (md-preview/char-start (car cs)) at) (loop (cdr cs) at width)]
-        [else
-         (let ([c (car cs)])
-           (loop (cdr cs)
-                 (hash-ref c 'end-char)
-                 (+ width (raw (md-preview/char-start c))
-                    (string-width (or (hash-try-get c 'text) "")))))]))))
-
 (define (md-preview/measure-row row cells conceals line-of line-info)
   (let* ([info (md-preview/capture-line row line-of line-info)]
          [slice (md-preview/line-slicer info)]
@@ -34,7 +21,7 @@
                                    conceals
                                    md-preview/char-start)])
     (cons row
-          (map (lambda (s cs) (list (car s) (cdr s) (md-preview/shown-width s cs slice)))
+          (map (lambda (s cs) (list (car s) (cdr s) (string-width (md-preview/shown-text s cs slice))))
                spans
                owned))))
 

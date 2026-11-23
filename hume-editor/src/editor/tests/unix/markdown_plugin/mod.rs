@@ -2227,6 +2227,7 @@ fn the_completion_documentation_box_draws_markdown_without_its_syntax() {
     assert_eq!(error_log(&p.ed), Vec::<String>::new());
 }
 
+mod follow_link;
 mod link_paste;
 mod link_paths;
 mod lists;

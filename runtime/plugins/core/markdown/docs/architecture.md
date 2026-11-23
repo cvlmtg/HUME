@@ -53,7 +53,7 @@
 | `lib/entities.scm` | The named entities replaced and the numeric references accepted |
 | `lib/render.scm` | `md-preview/elements` (the [fenced-block filter](#fenced-blocks), conceal order), and the buffer render |
 | `lib/text.scm` | `md-preview/elements` over a popup's text |
-| `lib/destinations.scm`, `lib/links.scm`, `lib/paths.scm` | Link destinations, link paste and link-path completion: [`links.md`](links.md) |
+| `lib/destinations.scm`, `lib/links.scm`, `lib/paths.scm` | Link destinations, link paste, link-path completion and following links: [`links.md`](links.md) |
 | `lib/lists.scm` | List prefixes, ending a list, renumbering, task boxes: [`lists.md`](lists.md) |
 | `lib/cells.scm`, `lib/moves.scm` | Reading table rows, and the edits that move rows and columns: [`tables.md`](tables.md) |
 

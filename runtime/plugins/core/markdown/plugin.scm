@@ -56,6 +56,7 @@
   (lambda (pane)
     (md-preview/track! pane)
     (md-preview/note-tree! pane)
+    (md-links/follow-waiting! pane)
     (md-preview/render-soon! pane)))
 
 (register-hook! 'on-buffer-close
@@ -69,6 +70,12 @@
 
 (register-hook! 'on-paste
   (lambda (pane pasted previous) (md-links/paste-link pane pasted previous)))
+
+(define-command! "markdown/follow-link"
+  "Follow the link under the primary cursor: open the file or heading it names, or a web address, mail address or image in the system's app. A wiki or reference link runs lsp/goto-definition. Returns #f, doing nothing, off a link, or on a wiki or reference link with no lsp/goto-definition."
+  md-links/follow!)
+
+(bind-key! 'normal "g d" "markdown/follow-link" #:keymap md-preview/keymap)
 
 (register-completion-source! "markdown:paths" md-paths/complete!
   #:target 'buffer #:priority 20 #:token-chars "!\"$%&'*+,-./:;=?@[]^`{|}~")

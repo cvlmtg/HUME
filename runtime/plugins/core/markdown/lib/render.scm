@@ -6,7 +6,8 @@
 (require "inline.scm")
 (require "table.scm")
 
-(provide md-preview/render-buffer! md-preview/clear! md-preview/elements md-preview/line-reader)
+(provide md-preview/render-buffer! md-preview/clear! md-preview/elements md-preview/line-reader
+         md-preview/drawn)
 
 (define md-preview/source "markdown-preview")
 
@@ -79,6 +80,10 @@
                 (cons (if (<= (hash-ref c 'end-char) line-end) c (hash-insert c 'end-char line-end))
                       out))))))
 
+;;; `conceals` as the preview draws them: in `md-preview/conceal-before?` order, clamped.
+(define (md-preview/drawn line-of line-info conceals)
+  (md-preview/clamped line-of line-info (sort conceals md-preview/conceal-before?)))
+
 (define (md-preview/elements blocks inline-captures ranges line-of line-info line-count rule-width)
   (let* ([contents (md-preview/fence-contents blocks)]
          [zones (md-preview/fence-zones contents)]
@@ -93,11 +98,10 @@
                        line-of line-info)
                      '())]
          [tables (md-preview/table-elements table-runs inline ranges line-of line-info line-count)])
-    (hash 'conceals (md-preview/clamped line-of line-info
-                                        (sort (append (hash-ref elements 'conceals)
-                                                      (hash-ref tables 'conceals)
-                                                      (hash-ref tables 'inline))
-                                              md-preview/conceal-before?))
+    (hash 'conceals (md-preview/drawn line-of line-info
+                                      (append (hash-ref elements 'conceals)
+                                              (hash-ref tables 'conceals)
+                                              (hash-ref tables 'inline)))
           'bands (hash-ref elements 'bands)
           'highlights (hash-ref elements 'highlights))))
 

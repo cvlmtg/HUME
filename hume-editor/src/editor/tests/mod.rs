@@ -635,10 +635,19 @@ fn open_other_buffer(ed: &mut Editor, text: &str) -> BufferId {
 
 /// The text of every error in the message log, oldest first.
 fn error_log(ed: &Editor) -> Vec<String> {
+    log_at(ed, Severity::Error)
+}
+
+/// The text of every warning in the message log, oldest first.
+fn warning_log(ed: &Editor) -> Vec<String> {
+    log_at(ed, Severity::Warning)
+}
+
+fn log_at(ed: &Editor, severity: Severity) -> Vec<String> {
     ed.state
         .message_log
         .entries()
-        .filter(|e| e.severity == Severity::Error)
+        .filter(|e| e.severity == severity)
         .map(|e| e.text.to_string())
         .collect()
 }

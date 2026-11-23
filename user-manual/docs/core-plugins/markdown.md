@@ -52,6 +52,18 @@ In a link's destination, right after `](` or `](<`, `Ctrl-Space` lists the files
 - A name with a space, or with a parenthesis that has no partner, goes between `<` and `>`. A folder's name gets only the `<`, so you can go on to a file inside it, which adds the `>`.
 - Typing a space inside `<` and `>` closes the list; `Ctrl-Space` opens it again.
 
+## Following a link
+
+`g d` follows the link under the cursor:
+
+- A link to a file, such as `[notes](notes/todo.md)`, opens the file. A relative path is read from the Markdown file's folder, and `%20` in it stands for a space. A path to a missing file or to a folder shows an error.
+- A link to a heading, such as `[today](notes/todo.md#today)` or `[intro](#intro)`, also moves to that heading. The part after `#` is the heading's text as the preview shows it, written in lowercase, with spaces as `-` and punctuation dropped: `## [API](api.md) & more` is `#api--more`. A second heading with the same text adds `-1`, a third `-2`, and so on. When no heading matches, the file opens at its start and a warning says so. For a file that has just opened, the warning can take up to a second, and the cursor still moves to the heading if it turns up after that. A `#` alone, as in `[top](#)`, goes to the start.
+- A web address or a mail link, such as `[site](https://example.com)`, `<https://example.com>`, `[me](mailto:me@example.com)` or `<me@example.com>`, opens in the app your system uses for it: your browser, or your mail app. A link with any other scheme, such as `file:` or `ftp:`, shows an error.
+- An image, such as `![logo](logo.png)`, opens in your system's image viewer. An image link to a file that isn't an image opens that file in HUME.
+- A wiki link, such as `[[todo]]`, and a reference link, such as `[docs][1]`, or `[docs]` with a `[docs]: …` line, go to the Markdown [language server](../lsp.md#install-a-server). marksman follows them only when the project's folder is a git repository or holds a `.marksman.toml` file. Any text in square brackets counts as a reference link.
+
+Elsewhere, `g d` does nothing.
+
 ## Lists
 
 ### Continuing a list
@@ -109,6 +121,7 @@ With a Markdown [language server](../lsp.md#install-a-server) installed (`:lsp-i
 | `markdown/enter` | What `Enter` does in a Markdown buffer |
 | `markdown/open-below`, `markdown/open-above` | What `o` and `O` do in a Markdown buffer |
 | `markdown/toggle-task` | What `G X` does in a Markdown buffer |
+| `markdown/follow-link` | What `g d` does in a Markdown buffer. Called with `call!`, it returns `#f`, doing nothing, when the cursor is on no link, or on a wiki or reference link with no `lsp/goto-definition` command, so a key can run another command after it |
 | `markdown/select-cell` | What `m i \|` does in a Markdown buffer |
 | `markdown/select-around-cell` | What `m a \|` does in a Markdown buffer |
 | `markdown/select-column` | What `m \|` does in a Markdown buffer |

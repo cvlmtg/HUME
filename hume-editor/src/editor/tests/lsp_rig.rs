@@ -244,13 +244,7 @@ impl LspRig {
     /// The text of every Warning the log holds, oldest first: what a probe
     /// reports through `(log! 'warning …)`.
     pub(in crate::editor) fn warnings(&self) -> Vec<String> {
-        self.ed
-            .state
-            .message_log
-            .entries()
-            .filter(|e| e.severity == hume_core::Severity::Warning)
-            .map(|e| e.text.clone())
-            .collect()
+        super::warning_log(&self.ed)
     }
 
     /// Every request sent to `sid` with `method`, in order: its params.
