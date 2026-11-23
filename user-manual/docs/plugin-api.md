@@ -547,7 +547,7 @@ Any plugin can drive a picker with these editor functions, opening one and pushi
 
 - `#:pending #t` marks the panel as "results still arriving" until the first `picker-push!` or `picker-replace!`.
 - `#:truncate` is `'head` (default) or `'tail`, the end of an over-long row that is cut.
-- `#:render` styles or rewrites each row as it is shown; see [Custom pickers](writing-plugins.md#custom-pickers).
+- `#:render` styles or rewrites each row as it is shown; see [Drawing rows](writing-plugins.md#drawing-rows).
 - `#:on-close` is called once when the picker closes.
 
 ## Other UI widgets

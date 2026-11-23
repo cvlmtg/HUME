@@ -517,7 +517,7 @@ To run a program, pick the call by what you need from it:
 | Its output right away, from something quick (`git rev-parse`) | `(run-capture! cmd args)` |
 | Output the user watches, inside an `#:inline-output` command (an installer, a `git clone`) | `(run-inline-output! cmd args)` |
 | Its result later, without making the user wait | `(spawn-async! cmd args callback)` |
-| Lines that fill a picker as the program prints them | `picker-source-spawn!`, or `picker-command-source` for a picker that reruns it on every query (see [Custom pickers](#custom-pickers)) |
+| Lines that fill a picker as the program prints them | `picker-source-spawn!`, or `picker-command-source` for a picker that reruns it on every query (see [Streaming items](#streaming-items) and [Live requery](#live-requery-live-grep)) |
 
 All four start the program in HUME's working directory unless given `#:cwd`, and look it up on the `PATH` HUME started with; `find-program` does the same lookup. They deny git a credential prompt, so a private repository fails instead of hanging HUME.
 
@@ -714,6 +714,8 @@ The modal fuzzy-finder panel behind [Fuzzy Finder](pickers.md) is a generic widg
 
 `items` is a list of `(display . payload)` pairs. `display` is the string shown and matched against. `payload` is anything you like (a path, a number, a hash) except `#f`, which means "nothing matches"; HUME never looks inside it.
 
+### Picker keys
+
 `keymap` is every key the picker answers besides typing. It's a hash from a key to a procedure of two arguments:
 
 - The key is written as `bind-key!` writes one (`"ctrl-v"`, `"alt-o"`, `"f5"`), never a sequence like `"z f"`.
@@ -738,11 +740,15 @@ To change or add a key, set it in that map:
   #:prompt "files: ")
 ```
 
+### Closing a picker
+
 `#:on-close` takes a procedure of no arguments, called once when the picker closes, however it closes: a binding's `picker-close!`, a `picker-close!` from anywhere else, or a second picker opening and replacing this one. Use it to clean up after the picker, such as cancelling a `spawn-async!` job still filling it.
 
 `picker!` returns a token naming this picker, which `picker-close!` takes. The close does nothing if the picker has since been closed or replaced, so a late callback (a `spawn-async!` result, say) never tears down a different picker the user has opened since.
 
 When `.` repeats a `#:repeatable` command, `picker!` answers without opening and returns `#f` (see [Dot-repeat](#dot-repeat)), so check the token before using it.
+
+### Streaming items
 
 For a handful of items (buffers, a plugin's own static list, a quick synchronous command's output), pass the whole list to `picker!`. For large lists (file lists, grep-style output), open the picker empty and stream an external command's output into it:
 
@@ -763,14 +769,26 @@ For a handful of items (buffers, a plugin's own static list, a quick synchronous
 
 A NUL inside a line shows as `:` in the display but stays in the payload. Some commands use NUL to separate the fields of one line (`rg --vimgrep --null`), and the binding still sees the real separator.
 
+A spawned source's nonzero exit is reported as an error. For a command where some nonzero exits are a normal outcome (`rg` exits `1` for "no matches"), pass `#:ok-exit-codes`. The list replaces the usual "zero is success" rule instead of adding to it, so include `0`. Give `rg` an explicit path, since without one it searches its empty input:
+
+```scheme
+(picker-source-spawn! token "rg" (list "--vimgrep" "--" pattern ".") #:ok-exit-codes '(0 1))
+```
+
 Closing or replacing the picker before the command finishes stops the command. For results your plugin produces itself (an LSP request, a timer), append batches of `(display . payload)` items with `(picker-push! token items)` instead.
 
 `picker-source-spawn!` shows the user that results are still loading. A picker filled by `picker-push!` from a `spawn-async!` callback has no such signal, so pass `#:pending #t` to `picker!` when opening it empty. That marks the panel as "results still arriving" until the first `picker-push!` or `picker-replace!` call lands.
+
+For a query that drives the source itself instead of filtering an already-fetched list, see [Live requery](#live-requery-live-grep) below.
+
+### Long rows
 
 A row too wide for the panel is clipped to fit, with `…` at the dropped end. `#:truncate` picks the end:
 
 - `'head` (default) drops the front and keeps the tail: right for a file path, whose file name sits at the end.
 - `'tail` drops the back and keeps the head: right for a row whose distinguishing part sits at the front, like a grep match's `path:line:col:` prefix before the line preview.
+
+### Drawing rows
 
 To show rows differently from the text the query matches, pass `#:render`, a procedure of three arguments. Before the panel shows rows it hasn't drawn, it calls `(render rows budget query)`:
 
@@ -800,14 +818,6 @@ Use `string-width` and `string-fit` to fit a row to `budget`; a row still wider 
 ```
 
 `render` can read buffers, selections and settings but not change the editor, as a drawer's can't. An attempt to change the editor, an error, or a result that isn't one row display per item closes the picker, calls `#:on-close`, and shows the error.
-
-A spawned source's nonzero exit is reported as an error. For a command where some nonzero exits are a normal outcome (`rg` exits `1` for "no matches"), pass `#:ok-exit-codes`. The list replaces the usual "zero is success" rule instead of adding to it, so include `0`. Give `rg` an explicit path, since without one it searches its empty input:
-
-```scheme
-(picker-source-spawn! token "rg" (list "--vimgrep" "--" pattern ".") #:ok-exit-codes '(0 1))
-```
-
-For a query that drives the source itself instead of filtering an already-fetched list, see [Live requery](#live-requery-live-grep) below.
 
 ## Live requery (live grep)
 
