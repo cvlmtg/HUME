@@ -457,7 +457,7 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
 }
 
 /// Joined and flattened to one line, same as a minibuffer paste, then
-/// appended to the query in one bulk mutation: one rerank, at most one
+/// inserted at the query cursor in one bulk mutation: one rerank, at most one
 /// `on_query_change` callback, instead of one per pasted char.
 fn picker_paste(
     state: &mut EditorState,

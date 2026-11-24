@@ -135,7 +135,8 @@ with a blank line and shows them with `show-read-only-buffer!`, in the buffer `[
 ### Picker keymap
 
 `stdlib/picker-keymap` is the one default keymap a picker takes: `picker!` and
-`live-picker!` answer no key besides typing and `Backspace` unless their keymap binds it.
+`live-picker!` answer no key besides typing, `Backspace`, `Ctrl-w`, `Left` and `Right`
+unless their keymap binds it.
 It is a plain hashmap built per call around the plugin's own handler, so a plugin reuses it
 whole or `hash-insert`s the keys it wants different.
 

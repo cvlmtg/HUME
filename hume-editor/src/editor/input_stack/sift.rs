@@ -224,7 +224,8 @@ fn update_live_sift(state: &mut EditorState, r: LayerRef) {
 
 /// Why [`sift_within`] left the selections alone.
 pub(in crate::editor) enum SiftFailure {
-    /// The input doesn't compile to a regex.
+    /// The input gives no regex: nothing follows its flags, or the pattern
+    /// is not a valid regex.
     Pattern(PatternError),
     /// No selection contains a match.
     NoMatch,
