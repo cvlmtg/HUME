@@ -169,7 +169,7 @@ The statusline is configured from Scheme:
 (configure-statusline! '("Mode" "Separator" "FileName") '() '("Position"))
 ```
 
-The three arguments are lists of element name strings for the left, center and right sections.
+The three arguments are lists of element name strings for the left, center and right sections. While a `:`, `/` or other prompt is open, it takes the place of the left and center sections.
 
 Available elements:
 

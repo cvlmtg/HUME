@@ -3,32 +3,31 @@
 ## Unreleased
 
 ### Breaking changes
-- The `"MiniBuf"` statusline element is gone: remove it from `configure-statusline!`. An open prompt always takes the left of the statusline.
-- `syntax-captures` and `parsed-text-captures` return one list per match, holding the nodes it captures. For one flat list, write `(call! "stdlib/concat" (syntax-captures ...))`; with a pattern that captures several nodes, that list repeats the enclosing node once per match and is not in text order.
+- The `"MiniBuf"` statusline element is gone: remove it from `configure-statusline!`.
+- `syntax-captures` and `parsed-text-captures` return one list per match, holding the nodes it captures. For one flat list, write `(call! "stdlib/concat" (syntax-captures ...))`.
 
 ### Editing
-- `.` builds the selection again with the pattern you gave `s`, and with the character you gave `f` or `t` or that `=` or `-` repeated in Extend mode, before it repeats the edit.
+- `.` reuses the pattern `s` sifted with, and the character `f`, `t`, `=` or `-` found in Extend mode, when it builds the selection again.
 - `.` builds a selection made with `n` or `N` in Extend mode again with your current search.
 - `f`, `t`, `=`, `-`, `#`, `{`, `}`, the surround and text-object keys and the structural jumps show "no match" when they find nothing, and leave the selections as they were; `.` then stops instead of editing the selection.
 - `Left` and `Right` move the cursor in a picker's query, so you can type or delete in the middle of it.
 
 ### Plugins & scripting
 - `core:markdown` turns a URL or a file's path pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
-- `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and renumbers a numbered list.
+- `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and keeps a numbered list in order as you add, renumber or delete items.
 - `core:markdown` checks or unchecks a list's task boxes with `G X`.
-- `core:markdown` follows the link under the cursor with `g d`: it opens a linked file at its heading, a web address, mail link or image in your system's app, and asks the language server about anything else, such as wiki and reference links.
-- `core:markdown` selects a table cell with `m i |` or `m a |` and a table column with `m |`; `m |`, `m a |`, `d` deletes a column.
-- `core:markdown` moves table rows with `G T j`/`G T k` and columns with `G T h`/`G T l`, or `G T` and an arrow.
-- `core:markdown` renumbers the items after a list item whose number you change or that you delete, and leaves a list numbered `1.` throughout as it is.
+- `core:markdown` follows the link under the cursor with `g d`.
+- `core:markdown` selects a table cell with `m i |` or `m a |`, and a table column with `m |`.
+- `core:markdown` moves table rows with `G T j`/`G T k` and columns with `G T h`/`G T l`.
 - The `on-paste` hook lets a plugin change the text a paste puts in a buffer.
-- `fold-start?` tells a script whether a fold starts on a line, so a key can toggle a fold only from its first line.
+- `fold-start?` tells a script whether a fold starts on a line.
 
 ### Fixes
 - `Ctrl-w` deletes the word before the cursor in pickers.
 - Deleting a `/` or `s` pattern with `Ctrl-w`, or going back down to an empty line in the search history, restores the selections, as Backspace does.
 - A letter held with Alt, Cmd or any modifier but Shift that no key binds types nothing in Insert mode, the `:`, `/` and other prompts, or pickers.
 - The Markdown preview draws a task box with nothing after it, as in `- [ ]`, as a checkbox.
-- `(` and `)` take a count: `3)` makes the selection three places on primary.
+- `(` and `)` take a count.
 - A `:`, `/` or other prompt line wider than the statusline scrolls to keep the cursor in view.
 - A picker whose prompt is wider than its panel still shows the cursor.
 
