@@ -1,11 +1,19 @@
 //! Where terminal input enters the editor: a key, a mouse event or a
 //! paste, interactively or one key at a time from the headless runner.
 
-use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind};
+use termina::event::{Event as TerminalEvent, KeyEvent, KeyEventKind, Modifiers};
 
 use super::Editor;
 use super::event::EditorEvent;
 use super::input_stack::{InputEvent, PastedText};
+
+/// Whether a key held with `modifiers` stands for its own character: no
+/// modifier but Shift is held. Caps Lock and Num Lock are states, not held
+/// modifiers, so they don't count. An unbound key types its character in
+/// Insert mode, a prompt or a picker only when this holds.
+pub(in crate::editor) fn is_plain(modifiers: Modifiers) -> bool {
+    (modifiers - (Modifiers::SHIFT | Modifiers::CAPS_LOCK | Modifiers::NUM_LOCK)).is_empty()
+}
 
 impl Editor {
     /// Process one key event: dispatch it, wait for a pipe run it started,

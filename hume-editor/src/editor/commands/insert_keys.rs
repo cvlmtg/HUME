@@ -8,7 +8,7 @@
 //! `&mut EditorState` + `&mut EngineView` (see `host_impl.rs`'s own doc),
 //! never a whole `&mut Editor`.
 
-use termina::event::{KeyCode, KeyEvent, Modifiers};
+use termina::event::{KeyCode, KeyEvent};
 
 use hume_editing::indent::ElectricTrigger;
 use hume_engine::pipeline::EngineView;
@@ -25,6 +25,7 @@ use hume_ops::motion::cmd_move_right;
 use crate::editor::EditorState;
 use crate::editor::completion;
 use crate::editor::event::EditorEvent;
+use crate::editor::input::is_plain;
 use crate::editor::input_stack::InsertEntry;
 
 use super::{
@@ -49,7 +50,7 @@ pub(in crate::editor) fn insert_default_key(
     key: KeyEvent,
 ) -> bool {
     match key.code {
-        KeyCode::Char(ch) if !key.modifiers.contains(Modifiers::CONTROL) => {
+        KeyCode::Char(ch) if is_plain(key.modifiers) => {
             let (ap_enabled, ap_pairs) = doc(state, view, fp.pane())
                 .overrides
                 .auto_pairs_ref(&state.settings);

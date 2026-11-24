@@ -550,3 +550,23 @@ fn extend_mode_ctrl_d_extends() {
         "head must move in Extend mode"
     );
 }
+
+// ── Insert mode — modified letters ─────────────────────────────────────────
+
+/// An unbound letter held with any modifier but Shift types nothing; with
+/// Shift it types.
+#[test]
+fn insert_mode_types_a_letter_only_with_no_modifier_but_shift() {
+    let mut ed = editor_from_kitty("-[h]>ello\n");
+    ed.handle_key(key('i'));
+    for modifiers in [
+        Modifiers::ALT,
+        Modifiers::SUPER,
+        Modifiers::HYPER,
+        Modifiers::META,
+    ] {
+        ed.handle_key(KeyEvent::new(KeyCode::Char('x'), modifiers));
+    }
+    ed.handle_key(KeyEvent::new(KeyCode::Char('X'), Modifiers::SHIFT));
+    assert_eq!(ed.doc().text().to_string(), "Xhello\n");
+}

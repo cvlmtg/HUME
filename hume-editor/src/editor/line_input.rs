@@ -3,6 +3,8 @@ use std::ops::Range;
 use hume_rope::grapheme::{next_str_boundary, prev_str_boundary};
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
+use super::input::is_plain;
+
 /// One line of typed text and its edit cursor: the minibuffer's input and
 /// a picker's query. [`edit`](Self::edit) is the one table of text-editing
 /// keys both share; each layer handles its own keys (Enter, history,
@@ -39,20 +41,16 @@ impl LineInput {
 
     /// Applies one text-editing key: `Backspace` deletes the grapheme
     /// before the cursor, `Ctrl-w` the word before it (see
-    /// [`word_boundary_back`]), and a character with neither Ctrl nor Alt
-    /// types at the cursor. Whether the text changed: `false` for any
-    /// other key, and for a deletion with nothing before the cursor.
+    /// [`word_boundary_back`]), and a character with no modifier but Shift
+    /// ([`is_plain`]) types at the cursor. Whether the text changed: `false`
+    /// for any other key, and for a deletion with nothing before the cursor.
     pub(in crate::editor) fn edit(&mut self, key: KeyEvent) -> bool {
         match key.code {
             KeyCode::Backspace => self.delete_back_to(prev_str_boundary(&self.text, self.cursor)),
             KeyCode::Char('w') if key.modifiers.contains(Modifiers::CONTROL) => {
                 self.delete_back_to(word_boundary_back(&self.text, self.cursor))
             }
-            KeyCode::Char(ch)
-                if !key
-                    .modifiers
-                    .intersects(Modifiers::CONTROL | Modifiers::ALT) =>
-            {
+            KeyCode::Char(ch) if is_plain(key.modifiers) => {
                 self.text.insert(self.cursor, ch);
                 self.cursor += ch.len_utf8();
                 true

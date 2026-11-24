@@ -48,11 +48,28 @@ fn ctrl_w_with_nothing_before_the_cursor_changes_nothing() {
 }
 
 #[test]
-fn alt_and_ctrl_letters_type_nothing() {
+fn a_letter_with_a_modifier_other_than_shift_types_nothing() {
     let mut l = line("ab", 0);
-    assert!(!l.edit(KeyEvent::new(KeyCode::Char('x'), Modifiers::ALT)));
-    assert!(!l.edit(key_ctrl('x')));
+    for modifiers in [
+        Modifiers::CONTROL,
+        Modifiers::ALT,
+        Modifiers::SUPER,
+        Modifiers::HYPER,
+        Modifiers::META,
+        Modifiers::SHIFT | Modifiers::SUPER,
+    ] {
+        assert!(!l.edit(KeyEvent::new(KeyCode::Char('x'), modifiers)));
+    }
     assert_eq!((l.text(), l.cursor()), ("ab", 2));
+}
+
+#[test]
+fn a_letter_with_shift_or_a_lock_types() {
+    let mut l = line("", 0);
+    assert!(l.edit(KeyEvent::new(KeyCode::Char('X'), Modifiers::SHIFT)));
+    assert!(l.edit(KeyEvent::new(KeyCode::Char('Y'), Modifiers::CAPS_LOCK)));
+    assert!(l.edit(KeyEvent::new(KeyCode::Char('1'), Modifiers::NUM_LOCK)));
+    assert_eq!((l.text(), l.cursor()), ("XY1", 3));
 }
 
 #[test]

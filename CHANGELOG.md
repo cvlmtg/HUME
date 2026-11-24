@@ -24,7 +24,7 @@
 ### Fixes
 - `Ctrl-w` deletes the word before the cursor in pickers.
 - Deleting a `/` or `s` pattern with `Ctrl-w`, or going back down to an empty line in the search history, restores the selections, as Backspace does.
-- An Alt+letter that no key binds types nothing in the `:`, `/` and other prompts, as in pickers.
+- A letter held with Alt, Cmd or any modifier but Shift that no key binds types nothing in Insert mode, the `:`, `/` and other prompts, or pickers.
 - The Markdown preview draws a task box with nothing after it, as in `- [ ]`, as a checkbox.
 - `(` and `)` take a count: `3)` makes the selection three places on primary.
 

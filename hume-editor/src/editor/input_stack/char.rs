@@ -19,11 +19,12 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::register::{MACRO_REGISTER, is_valid_macro_register, is_valid_register_name};
 use steel::rvals::SteelVal;
-use termina::event::{KeyCode, Modifiers, MouseEventKind};
+use termina::event::{KeyCode, MouseEventKind};
 
 use super::super::commands::{self, PendingDispatch};
 use super::super::error::CommandError;
 use super::super::event::PendingWork;
+use super::super::input::is_plain;
 use super::super::paste_plan::PlannedPaste;
 use super::super::replay::{Answer, AnswerTicket, InputOpener, PendingAnswer, ReplayRefusal};
 use super::super::{Editor, EditorState};
@@ -270,7 +271,7 @@ fn char_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     let escape = matches!(&ev, InputEvent::Key(key) if key.code == KeyCode::Escape);
     let read = match ev {
         InputEvent::Key(key) => {
-            let plain = (key.modifiers - Modifiers::SHIFT).is_empty();
+            let plain = is_plain(key.modifiers);
             match key.code {
                 KeyCode::Char(ch) => Some((ch, plain)),
                 KeyCode::Enter => Some(('\n', plain)),
