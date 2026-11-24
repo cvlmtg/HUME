@@ -28,7 +28,7 @@ use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 use hume_engine::types::Scope;
-use hume_rope::width::{CursorWindow, chrome_width, truncate_to_width};
+use hume_rope::width::{CursorWindow, chrome_width, fit_prompt};
 
 use super::list_row::{ListRow, draw_row};
 
@@ -141,16 +141,15 @@ pub struct MatchCounts {
 pub struct InputLayout {
     prompt: String,
     prompt_width: usize,
-    counts: Option<String>,
+    /// The counter's text and width.
+    counts: Option<(String, usize)>,
     pub query_cells: usize,
 }
 
 /// The input row a frame paints: an [`InputLayout`] and the part of the
 /// query its [`InputLayout::query_cells`] show around the cursor.
 pub struct InputRow {
-    prompt: String,
-    prompt_width: usize,
-    counts: Option<String>,
+    layout: InputLayout,
     before: String,
     before_width: usize,
     at: String,
@@ -173,13 +172,10 @@ pub fn input_layout(rect: Rect, prompt: &str, counts: &MatchCounts) -> InputLayo
     };
     let counts_width = chrome_width(&counts);
 
-    // Clip the prompt itself only in the pathological case where it alone
-    // exceeds the inner width. The common case (empty or a short label)
-    // leaves this a no-op, so an empty prompt renders identically to no
-    // prompt at all. The readable prefix matters more than the tail for a
-    // fixed label, so this keeps the *head* (unlike the query, which keeps
-    // the text around its cursor).
-    let (prompt, prompt_width) = truncate_to_width(prompt, inner_width);
+    // A fixed label reads from its start, so a prompt too wide for the row
+    // keeps its head (the query keeps the text around its cursor), and the
+    // cursor always keeps a cell after it. An empty prompt takes no cells.
+    let (prompt, prompt_width) = fit_prompt(prompt, inner_width);
 
     let after_prompt_width = inner_width.saturating_sub(prompt_width);
     // The counter needs 1 col for the cursor cell + 1 col of gap before it.
@@ -192,7 +188,7 @@ pub fn input_layout(rect: Rect, prompt: &str, counts: &MatchCounts) -> InputLayo
         } else {
             after_prompt_width
         },
-        counts: show_counts.then_some(counts),
+        counts: show_counts.then_some((counts, counts_width)),
     }
 }
 
@@ -200,9 +196,7 @@ impl InputLayout {
     /// The row with `window`, the query scrolled to [`Self::query_cells`].
     pub fn with_query(self, window: CursorWindow<'_>) -> InputRow {
         InputRow {
-            prompt: self.prompt,
-            prompt_width: self.prompt_width,
-            counts: self.counts,
+            layout: self,
             before: window.before.to_owned(),
             before_width: window.before_width,
             at: window.at.to_owned(),
@@ -278,11 +272,12 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     let input_y = inner.y;
 
     let row = &state.input;
-    if row.prompt_width > 0 {
-        canvas.write_text_run(inner_x, input_y, &row.prompt, styles.text, inner_right);
+    let layout = &row.layout;
+    if layout.prompt_width > 0 {
+        canvas.write_text_run(inner_x, input_y, &layout.prompt, styles.text, inner_right);
     }
 
-    let query_x = inner_x + row.prompt_width as u16;
+    let query_x = inner_x + layout.prompt_width as u16;
     canvas.write_text_run(query_x, input_y, &row.before, styles.text, inner_right);
     let cursor_x = query_x + row.before_width as u16;
     if cursor_x < inner_right {
@@ -290,8 +285,8 @@ pub(in crate::picker_panel) fn draw_picker_panel(
         let after_x = canvas.write_text_run(cursor_x, input_y, cell, styles.cursor, inner_right);
         canvas.write_text_run(after_x, input_y, &row.after, styles.text, inner_right);
     }
-    if let Some(counts) = &row.counts {
-        let counts_x = inner.right() - chrome_width(counts) as u16;
+    if let Some((counts, counts_width)) = &layout.counts {
+        let counts_x = inner.right() - *counts_width as u16;
         canvas.write_text_run(counts_x, input_y, counts, styles.text, inner_right);
     }
 

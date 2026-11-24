@@ -329,6 +329,12 @@ pub fn truncate_suffix_to_width(s: &str, max_display_width: usize) -> (&str, usi
     (&s[start..], display_col)
 }
 
+/// The prompt shown before a one-line chrome input of `cells` cells, and its
+/// width: the prompt's head, cut so the cursor keeps at least one cell.
+pub fn fit_prompt(prompt: &str, cells: usize) -> (&str, usize) {
+    truncate_to_width(prompt, cells.saturating_sub(1))
+}
+
 /// The part of a one-line chrome input that fits in a window of cells with
 /// its edit cursor in view: [`window_around_cursor`]'s result. Every field
 /// is whole clusters of the input.

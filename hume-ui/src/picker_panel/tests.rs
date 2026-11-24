@@ -433,36 +433,32 @@ fn draw_picker_panel_renders_prompt_before_query() {
     );
 }
 
+/// A five-cell input row under a ten-cell prompt shows the prompt's first
+/// four cells and the cursor on the fifth.
 #[test]
-fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
+fn a_prompt_wider_than_the_panel_keeps_a_cell_for_the_cursor() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
     let geo = PanelGeometry {
-        rect: rect(0, 0, 7, 4), // inner_width = 5, narrower than the prompt alone
+        rect: rect(0, 0, 7, 4),
         list_rows: 1,
     };
-    let mut s = state("query text", &["row"], Some(0), &geo);
-    s.input = input(
-        &geo,
-        "much longer prompt than the panel",
-        "query text",
-        "query text".len(),
-        &counts(1),
-    );
-
-    // Must not panic even though the prompt alone exceeds inner_width, and
-    // must leave the query with zero budget rather than overflow the row.
-    draw_picker_panel(&mut canvas, &s, styles(), &theme);
+    let mut s = state("query", &["row"], Some(0), &geo);
+    s.input = input(&geo, "abcdefghij", "query", "query".len(), &counts(1));
+    let cursor_fg = Rgb(1, 2, 3);
+    let styles = PickerStyles {
+        cursor: resolved(cursor_fg),
+        ..styles()
+    };
+    draw_picker_panel(&mut canvas, &s, styles, &theme);
 
     let inner_x = geo.rect.x + 1;
-    let row: String = (inner_x..inner_x + 5)
-        .map(|x| buf[(x, 1)].text().to_string())
+    let cursor_cells: Vec<bool> = (inner_x..inner_x + 5)
+        .map(|x| buf[(x, 1)].style().fg == Some(cursor_fg))
         .collect();
-    assert_eq!(
-        row, "much ",
-        "prompt clipped to the inner width, query dropped"
-    );
+    assert_eq!(cursor_cells, vec![false, false, false, false, true]);
+    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 7, 1)), @"│abcd │");
 }
 
 #[test]

@@ -1,7 +1,7 @@
 pub(in crate::editor) mod history;
 
 use hume_grid::Rect;
-use hume_rope::width::{chrome_width, truncate_to_width};
+use hume_rope::width::{chrome_width, fit_prompt};
 
 use self::history::{HistoryDir, HistoryKind};
 use super::input_stack::{InputEvent, LayerRef, PastedText};
@@ -15,7 +15,7 @@ use hume_core::BindMode;
 /// command, a search or sift pattern, a shell command for `|`, or the
 /// answer to a Steel prompt.
 #[derive(Clone)]
-pub(crate) struct MiniBuffer {
+pub(in crate::editor) struct MiniBuffer {
     /// The text shown before the input: `:` for commands, `/`/`?` for search,
     /// `⫽` for sift, `|` for a shell command, or a Steel prompt's `label`
     /// (`(prompt! label …)`), of arbitrary length.
@@ -30,7 +30,7 @@ pub(crate) struct MiniBuffer {
 /// The completion a minibuffer line offers, which decides the source Tab
 /// resolves to (`EditorState::trigger_minibuf_completion`).
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub(crate) enum PromptCompletion {
+pub(in crate::editor) enum PromptCompletion {
     /// The `:` line: the command name, then that command's own completer.
     CommandLine,
     /// One registered minibuffer source, which finds its own token in the
@@ -93,8 +93,7 @@ pub(super) enum MiniBufferEvent {
     Confirm(String),
     /// Enter with empty input: treat as cancel.
     ConfirmEmpty,
-    /// Backspace was pressed when the input is empty (nothing to delete).
-    /// All modes treat this as a cancel / dismiss request.
+    /// Backspace on an empty line, which has nothing to delete.
     BackspaceOnEmpty,
     /// Up pressed: caller should recall the previous history entry for this prompt.
     HistoryPrev,
@@ -134,7 +133,7 @@ impl MiniBuffer {
     /// it, scrolled as little as it can from the last frame's.
     pub(in crate::editor) fn statusline_view(&mut self, area: Rect) -> MinibufView {
         let cells = usize::from(area.width);
-        let (prompt, prompt_width) = truncate_to_width(&self.prompt, cells.saturating_sub(1));
+        let (prompt, prompt_width) = fit_prompt(&self.prompt, cells);
         let cursor = self.line.cursor();
         let window = self.line.scroll_window(cells - prompt_width);
         MinibufView {
@@ -150,7 +149,7 @@ impl MiniBuffer {
     /// Handle a single key event for standard mini-buffer editing.
     ///
     /// Covers the prompt's own keys: cancel (Esc/Ctrl-c), confirm (Enter),
-    /// dismiss (Backspace on an empty line) and history (Up/Down). Every
+    /// Backspace on an empty line and history (Up/Down). Every
     /// other key goes to [`LineInput::edit`]. Returns a [`MiniBufferEvent`]
     /// describing the outcome so the caller can apply mode-specific logic.
     pub(super) fn handle_key(&mut self, key: termina::event::KeyEvent) -> MiniBufferEvent {
@@ -169,9 +168,6 @@ impl MiniBuffer {
                 }
             }
             KeyCode::Backspace if self.line.text().is_empty() => MiniBufferEvent::BackspaceOnEmpty,
-            // Up/Down are handled by the caller (mode-specific history ring).
-            // Do NOT bind Ctrl-n / Ctrl-p here: those are reserved for
-            // future completion-popup navigation.
             KeyCode::Up => MiniBufferEvent::HistoryPrev,
             KeyCode::Down => MiniBufferEvent::HistoryNext,
             _ => MiniBufferEvent::Line(self.line.edit(key)),

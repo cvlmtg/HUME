@@ -22,7 +22,7 @@ pub(in crate::editor) enum LineEdit {
 /// both share; each layer handles its own keys (Enter, history, picker
 /// actions) before handing a key here.
 #[derive(Clone, Default)]
-pub(crate) struct LineInput {
+pub(in crate::editor) struct LineInput {
     text: String,
     /// Byte offset of the edit cursor within `text`. Always on a UTF-8
     /// char boundary.
@@ -45,7 +45,7 @@ impl LineInput {
         }
     }
 
-    pub(crate) fn text(&self) -> &str {
+    pub(in crate::editor) fn text(&self) -> &str {
         &self.text
     }
 

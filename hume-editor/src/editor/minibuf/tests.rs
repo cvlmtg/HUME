@@ -56,6 +56,16 @@ fn an_offset_off_the_window_lands_on_its_first_cell_or_on_the_cursor() {
     assert_eq!((view.x_at(0), view.x_at(16)), (2, 6));
 }
 
+/// A prompt as wide as the row shows its first eight cells and leaves the
+/// last one to the cursor.
+#[test]
+fn a_prompt_wider_than_the_row_keeps_its_head_and_a_cell_for_the_cursor() {
+    let mut mb = MiniBuffer::with_prefill("abcdefghijkl", "x".to_owned());
+    let view = mb.statusline_view(AREA);
+    insta::assert_snapshot!(view.text(), @"abcdefgh");
+    assert_eq!(view.cursor_x(), 9);
+}
+
 /// The input area's own column counts: the text starts at `area.x`.
 #[test]
 fn the_view_starts_at_the_input_area_column() {

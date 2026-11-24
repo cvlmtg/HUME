@@ -523,7 +523,7 @@ impl EditorState {
     /// The minibuf the statusline row shows now: `Some` only when its layer
     /// is `top()` (see `InputStack::top_minibuf_mut`).
     #[cfg(test)]
-    pub(crate) fn minibuf(&self) -> Option<&MiniBuffer> {
+    pub(in crate::editor) fn minibuf(&self) -> Option<&MiniBuffer> {
         self.input.top_minibuf()
     }
 

@@ -363,6 +363,28 @@ fn truncate_to_width_zero_budget_is_empty() {
 }
 
 #[test]
+fn fit_prompt_keeps_a_prompt_that_leaves_the_cursor_a_cell() {
+    assert_eq!(fit_prompt("ab", 3), ("ab", 2));
+}
+
+#[test]
+fn fit_prompt_cuts_a_prompt_as_wide_as_the_cells_to_leave_the_cursor_one() {
+    assert_eq!(fit_prompt("abc", 3), ("ab", 2));
+    assert_eq!(fit_prompt("abcdef", 3), ("ab", 2));
+}
+
+#[test]
+fn fit_prompt_drops_a_wide_cluster_at_the_cut_whole() {
+    assert_eq!(fit_prompt("a日b", 3), ("a", 1));
+}
+
+#[test]
+fn fit_prompt_with_one_cell_or_none_is_empty() {
+    assert_eq!(fit_prompt("ab", 1), ("", 0));
+    assert_eq!(fit_prompt("ab", 0), ("", 0));
+}
+
+#[test]
 fn truncate_to_width_drops_a_whole_placeholder_that_would_overshoot() {
     // 'a' (1 col) fits budget 4, but the zero-width space's `<200b>`
     // placeholder needs 6 more (1+6=7 > 4). Dropped whole, same rule a

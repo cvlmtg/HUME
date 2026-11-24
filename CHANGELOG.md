@@ -30,6 +30,7 @@
 - The Markdown preview draws a task box with nothing after it, as in `- [ ]`, as a checkbox.
 - `(` and `)` take a count: `3)` makes the selection three places on primary.
 - A `:`, `/` or other prompt line wider than the statusline scrolls to keep the cursor in view.
+- A picker whose prompt is wider than its panel still shows the cursor.
 
 ## [0.22.2] - 2026-11-19
 

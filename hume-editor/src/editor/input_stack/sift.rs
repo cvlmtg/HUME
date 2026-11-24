@@ -172,6 +172,8 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             sift.end(&mut ed.state, Some(&pattern));
             commands::finish_text_operand(ed, sift.then, sift.input.take_answer(), Some(pattern));
         }
+        // Sift stays open here. The restore undoes a click made under the
+        // empty prompt; an edit that empties the line has restored already.
         MiniBufferEvent::BackspaceOnEmpty => restore_sift_snapshot(&mut ed.state, r),
         MiniBufferEvent::Line(LineEdit::Changed) => update_live_sift(&mut ed.state, r),
         // Up/Down are reserved for minibuffer history: no-op in sift-within.
