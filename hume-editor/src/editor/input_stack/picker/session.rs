@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 use hume_core::{HostToken, TruncateEnd};
 use hume_platform::process::line_source::SpawnedLineSource;
+use hume_rope::width::CursorWindow;
 use hume_scripting::host::{
     LivePickerOpts, PickerBinding, PickerCommonOpts, PickerOpts, display_item,
 };
@@ -650,14 +651,15 @@ impl PickerSession {
     }
 
     /// Byte offset of the edit cursor in [`Self::query`].
+    #[cfg(test)]
     pub(in crate::editor) fn query_cursor(&self) -> usize {
         self.query.cursor()
     }
 
-    /// Scrolls the query's window to `cells` cells around its cursor
-    /// ([`LineInput::scroll_window`]) and returns the byte where it starts.
-    pub(in crate::editor) fn scroll_query(&mut self, cells: usize) -> usize {
-        self.query.scroll_window(cells).start
+    /// The query's window of `cells` cells around its cursor, scrolled from
+    /// the last one ([`LineInput::scroll_window`]).
+    pub(in crate::editor) fn scroll_query(&mut self, cells: usize) -> CursorWindow<'_> {
+        self.query.scroll_window(cells)
     }
 
     pub(in crate::editor) fn selected(&self) -> usize {

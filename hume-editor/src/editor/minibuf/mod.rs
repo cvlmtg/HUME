@@ -62,6 +62,11 @@ impl MinibufView {
         &self.text
     }
 
+    /// Screen column where [`Self::text`] starts.
+    pub(crate) fn x(&self) -> u16 {
+        self.x
+    }
+
     /// Screen column of the edit cursor.
     pub(in crate::editor) fn cursor_x(&self) -> u16 {
         self.x_at(self.cursor)

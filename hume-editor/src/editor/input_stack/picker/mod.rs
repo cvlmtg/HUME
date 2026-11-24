@@ -137,24 +137,22 @@ impl Editor {
                 let rows = session.window_rows(geo.list_rows, geo.list_width());
                 let selected_row =
                     (!rows.is_empty()).then(|| session.selected() - session.scroll());
-                let mut view = hume_ui::picker_panel::PickerViewState {
-                    prompt: session.prompt().to_string(),
-                    query: session.query().to_string(),
-                    cursor: session.query_cursor(),
-                    // Scrolled below, to the row this view lays out.
-                    query_start: 0,
-                    rows,
-                    selected_row,
+                let counts = hume_ui::picker_panel::MatchCounts {
                     matched: session.matched_len(),
                     total: session.total_len(),
                     pending: session.is_pending(),
+                };
+                let layout =
+                    hume_ui::picker_panel::input_layout(geo.rect, session.prompt(), &counts);
+                let cells = layout.query_cells;
+                Some(hume_ui::picker_panel::PickerViewState {
+                    input: layout.with_query(session.scroll_query(cells)),
+                    rows,
+                    selected_row,
                     rect: geo.rect,
                     list_rows: geo.list_rows,
                     border: self.state.settings.popup_border,
-                };
-                let cells = hume_ui::picker_panel::input_row(&view).query_cells;
-                view.query_start = session.scroll_query(cells);
-                Some(view)
+                })
             }
             _ => None,
         };

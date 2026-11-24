@@ -9,6 +9,7 @@ use crate::list_row::SpanScopes;
 use hume_engine::theme::ScopeRegistry;
 use hume_engine::types::{Modifiers, ScopeId};
 use hume_rope::spanned::SpannedText;
+use hume_rope::width::window_around_cursor;
 
 fn rect(x: u16, y: u16, w: u16, h: u16) -> Rect {
     Rect::new(x, y, w, h)
@@ -27,6 +28,29 @@ fn styles() -> PickerStyles {
     }
 }
 
+/// `n` items, all matched, none still arriving.
+fn counts(n: usize) -> MatchCounts {
+    MatchCounts {
+        matched: n,
+        total: n,
+        pending: false,
+    }
+}
+
+/// The input row of a panel at `geo` as the write side resolves it for a
+/// fresh query: `prompt`, then `query` with its cursor at byte `cursor`.
+fn input(
+    geo: &PanelGeometry,
+    prompt: &str,
+    query: &str,
+    cursor: usize,
+    counts: &MatchCounts,
+) -> InputRow {
+    let layout = input_layout(geo.rect, prompt, counts);
+    let cells = layout.query_cells;
+    layout.with_query(window_around_cursor(query, cursor, cells, 0))
+}
+
 fn state(
     query: &str,
     rows: &[&str],
@@ -34,18 +58,12 @@ fn state(
     geo: &PanelGeometry,
 ) -> PickerViewState {
     PickerViewState {
-        prompt: String::new(),
-        query: query.to_string(),
-        cursor: query.len(),
-        query_start: 0,
+        input: input(geo, "", query, query.len(), &counts(rows.len())),
         rows: rows
             .iter()
             .map(|s| Some(Arc::new(ListRow::plain(s.to_string()))))
             .collect(),
         selected_row,
-        matched: rows.len(),
-        total: rows.len(),
-        pending: false,
         rect: geo.rect,
         list_rows: geo.list_rows,
         border: true,
@@ -244,7 +262,16 @@ fn draw_picker_panel_pending_marks_the_counter_snapshot() {
         list_rows: 3,
     };
     let mut s = state("ab", &[], None, &geo);
-    s.pending = true;
+    s.input = input(
+        &geo,
+        "",
+        "ab",
+        2,
+        &MatchCounts {
+            pending: true,
+            ..counts(0)
+        },
+    );
     draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     insta::assert_snapshot!(symbols_in(&buf, geo.rect), @r"
@@ -266,9 +293,13 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     let mut buf = Grid::new(20, 20);
     let theme = Theme::default();
     let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
+    let three_of_42 = MatchCounts {
+        matched: 3,
+        total: 42,
+        pending: false,
+    };
     let mut s = state("q", &[], None, &geo_wide);
-    s.matched = 3;
-    s.total = 42;
+    s.input = input(&geo_wide, "", "q", 1, &three_of_42);
     draw_picker_panel(&mut canvas, &s, styles(), &theme);
     assert!(symbols_in(&buf, geo_wide.rect).contains("3/42"));
 
@@ -279,8 +310,7 @@ fn draw_picker_panel_counts_shown_when_room_and_dropped_when_narrow() {
     let mut buf2 = Grid::new(20, 20);
     let mut canvas2 = Canvas::new(&mut buf2, theme.ui().invisible, None);
     let mut s2 = state("q", &[], None, &geo_narrow);
-    s2.matched = 3;
-    s2.total = 42;
+    s2.input = input(&geo_narrow, "", "q", 1, &three_of_42);
     draw_picker_panel(&mut canvas2, &s2, styles(), &theme);
     assert!(
         !symbols_in(&buf2, geo_narrow.rect).contains("3/42"),
@@ -322,7 +352,7 @@ fn draw_picker_panel_marks_the_cluster_under_a_mid_query_cursor() {
         list_rows: 1,
     };
     let mut s = state("abc", &[], None, &geo);
-    s.cursor = 1;
+    s.input = input(&geo, "", "abc", 1, &counts(0));
     let cursor_fg = Rgb(1, 2, 3);
     let styles = PickerStyles {
         cursor: resolved(cursor_fg),
@@ -348,7 +378,7 @@ fn draw_picker_panel_shows_a_wide_cluster_under_the_cursor() {
         list_rows: 1,
     };
     let mut s = state("日本語", &[], None, &geo);
-    s.cursor = "日本".len();
+    s.input = input(&geo, "", "日本語", "日本".len(), &counts(0));
     let cursor_fg = Rgb(1, 2, 3);
     let styles = PickerStyles {
         cursor: resolved(cursor_fg),
@@ -374,7 +404,7 @@ fn draw_picker_panel_keeps_a_cursor_near_the_start_of_a_long_query_visible() {
         list_rows: 1,
     };
     let mut s = state("abcdefghij", &[], None, &geo);
-    s.cursor = 1;
+    s.input = input(&geo, "", "abcdefghij", 1, &counts(0));
     draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 10, 1)), @"│abcd 0/0│");
@@ -390,7 +420,7 @@ fn draw_picker_panel_renders_prompt_before_query() {
         list_rows: 1,
     };
     let mut s = state("ab", &[], None, &geo); // matched = total = 0
-    s.prompt = "f: ".to_string();
+    s.input = input(&geo, "f: ", "ab", 2, &counts(0));
     draw_picker_panel(&mut canvas, &s, styles(), &theme);
 
     let inner_x = geo.rect.x + 1;
@@ -413,7 +443,13 @@ fn draw_picker_panel_prompt_wider_than_panel_clips_without_panic() {
         list_rows: 1,
     };
     let mut s = state("query text", &["row"], Some(0), &geo);
-    s.prompt = "much longer prompt than the panel".to_string();
+    s.input = input(
+        &geo,
+        "much longer prompt than the panel",
+        "query text",
+        "query text".len(),
+        &counts(1),
+    );
 
     // Must not panic even though the prompt alone exceeds inner_width, and
     // must leave the query with zero budget rather than overflow the row.

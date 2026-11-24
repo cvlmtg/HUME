@@ -28,7 +28,7 @@ use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 use hume_engine::types::Scope;
-use hume_rope::width::{chrome_width, truncate_to_width, window_around_cursor};
+use hume_rope::width::{CursorWindow, chrome_width, truncate_to_width};
 
 use super::list_row::{ListRow, draw_row};
 
@@ -55,19 +55,8 @@ const CHROME_ROWS: u16 = 3;
 /// Fully-resolved panel content and position, computed once per frame by
 /// the write side (`Editor::sync_picker_view`); the overlay only paints.
 pub struct PickerViewState {
-    /// Label painted before the query on the input row, e.g. `"files: "`.
-    /// Empty by default, which takes no cells: the query starts at the
-    /// row's left edge. Not yet width-clipped (a paint-time concern, same as
-    /// `query`).
-    pub prompt: String,
-    /// Raw query text (not yet truncated; that's a paint-time concern, so
-    /// this snapshot stays a dumb value, not pre-formatted UI).
-    pub query: String,
-    /// Byte offset of the edit cursor in `query`, on a cluster boundary.
-    pub cursor: usize,
-    /// Byte offset in `query` where its window starts, already scrolled to
-    /// [`InputRow::query_cells`] around `cursor` this frame.
-    pub query_start: usize,
+    /// The input row, laid out and with its query scrolled for this frame.
+    pub input: InputRow,
     /// The rows of the current scroll window, in ranked order, already
     /// scrolled and cut to the list width; the widget never re-windows. A
     /// `#:render` row is shared with the item it shows, and is `None`, which
@@ -77,15 +66,6 @@ pub struct PickerViewState {
     /// On-screen index into `rows` of the selected row (`selected - scroll`
     /// from the store); `None` when `rows` is empty.
     pub selected_row: Option<usize>,
-    /// `PickerSession::matched_len` / `total_len`, rendered as a
-    /// right-aligned `"matched/total"` counter on the input row.
-    pub matched: usize,
-    pub total: usize,
-    /// `PickerSession::is_pending`: appends a "still arriving" marker to
-    /// the counter so a picker opened empty (`spawn-async!`-backed, or a
-    /// live `picker-source-spawn!` source) doesn't read as "zero results"
-    /// while its job is still running.
-    pub pending: bool,
     /// Outer footprint (including the 1-cell frame), centered in the panes
     /// region this same frame.
     pub rect: Rect,
@@ -143,24 +123,53 @@ pub fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
     })
 }
 
-/// The input row laid out inside the panel's frame: the prompt as it fits,
-/// the `matched/total` counter when it fits, and the cells the query gets
-/// between them.
-pub struct InputRow<'a> {
-    prompt: &'a str,
+/// The counter on the input row: `PickerSession::matched_len` and
+/// `total_len`, shown right-aligned as `matched/total`.
+pub struct MatchCounts {
+    pub matched: usize,
+    pub total: usize,
+    /// `PickerSession::is_pending`: the counter gets a "still arriving"
+    /// marker, so a picker opened empty (`spawn-async!`-backed, or a live
+    /// `picker-source-spawn!` source) doesn't read as "zero results" while
+    /// its job is still running.
+    pub pending: bool,
+}
+
+/// The input row of a panel at `rect` laid out without its query: the
+/// prompt as it fits, the counter when it fits, and the cells the query
+/// gets between them. [`Self::with_query`] adds the query's window.
+pub struct InputLayout {
+    prompt: String,
     prompt_width: usize,
     counts: Option<String>,
     pub query_cells: usize,
 }
 
-/// Lays out `state`'s input row: the one layout the painter draws and the
-/// write side scrolls the query to.
-pub fn input_row(state: &PickerViewState) -> InputRow<'_> {
-    let inner_width = inner_area(state.rect).width as usize;
-    let counts = if state.pending {
-        format!("{}/{} …", state.matched, state.total)
+/// The input row a frame paints: an [`InputLayout`] and the part of the
+/// query its [`InputLayout::query_cells`] show around the cursor.
+pub struct InputRow {
+    prompt: String,
+    prompt_width: usize,
+    counts: Option<String>,
+    before: String,
+    before_width: usize,
+    at: String,
+    after: String,
+}
+
+/// Lays out the input row of a panel at `rect` with `prompt` (e.g.
+/// `"files: "`, empty for none) and `counts`.
+pub fn input_layout(rect: Rect, prompt: &str, counts: &MatchCounts) -> InputLayout {
+    let inner_width = inner_area(rect).width as usize;
+    let MatchCounts {
+        matched,
+        total,
+        pending,
+    } = counts;
+    let counts = if *pending {
+        format!("{matched}/{total} …")
     } else {
-        format!("{}/{}", state.matched, state.total)
+        format!("{matched}/{total}")
     };
     let counts_width = chrome_width(&counts);
 
@@ -170,13 +179,13 @@ pub fn input_row(state: &PickerViewState) -> InputRow<'_> {
     // prompt at all. The readable prefix matters more than the tail for a
     // fixed label, so this keeps the *head* (unlike the query, which keeps
     // the text around its cursor).
-    let (prompt, prompt_width) = truncate_to_width(&state.prompt, inner_width);
+    let (prompt, prompt_width) = truncate_to_width(prompt, inner_width);
 
     let after_prompt_width = inner_width.saturating_sub(prompt_width);
     // The counter needs 1 col for the cursor cell + 1 col of gap before it.
     let show_counts = after_prompt_width >= counts_width + 2;
-    InputRow {
-        prompt,
+    InputLayout {
+        prompt: prompt.to_owned(),
         prompt_width,
         query_cells: if show_counts {
             after_prompt_width - counts_width - 1
@@ -184,6 +193,21 @@ pub fn input_row(state: &PickerViewState) -> InputRow<'_> {
             after_prompt_width
         },
         counts: show_counts.then_some(counts),
+    }
+}
+
+impl InputLayout {
+    /// The row with `window`, the query scrolled to [`Self::query_cells`].
+    pub fn with_query(self, window: CursorWindow<'_>) -> InputRow {
+        InputRow {
+            prompt: self.prompt,
+            prompt_width: self.prompt_width,
+            counts: self.counts,
+            before: window.before.to_owned(),
+            before_width: window.before_width,
+            at: window.at.to_owned(),
+            after: window.after.to_owned(),
+        }
     }
 }
 
@@ -253,24 +277,18 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     let inner_right = inner.right();
     let input_y = inner.y;
 
-    let row = input_row(state);
+    let row = &state.input;
     if row.prompt_width > 0 {
-        canvas.write_text_run(inner_x, input_y, row.prompt, styles.text, inner_right);
+        canvas.write_text_run(inner_x, input_y, &row.prompt, styles.text, inner_right);
     }
 
-    let window = window_around_cursor(
-        &state.query,
-        state.cursor,
-        row.query_cells,
-        state.query_start,
-    );
     let query_x = inner_x + row.prompt_width as u16;
-    canvas.write_text_run(query_x, input_y, window.before, styles.text, inner_right);
-    let cursor_x = query_x + window.before_width as u16;
+    canvas.write_text_run(query_x, input_y, &row.before, styles.text, inner_right);
+    let cursor_x = query_x + row.before_width as u16;
     if cursor_x < inner_right {
-        let cell = if window.at.is_empty() { " " } else { window.at };
+        let cell = if row.at.is_empty() { " " } else { &row.at };
         let after_x = canvas.write_text_run(cursor_x, input_y, cell, styles.cursor, inner_right);
-        canvas.write_text_run(after_x, input_y, window.after, styles.text, inner_right);
+        canvas.write_text_run(after_x, input_y, &row.after, styles.text, inner_right);
     }
     if let Some(counts) = &row.counts {
         let counts_x = inner.right() - chrome_width(counts) as u16;

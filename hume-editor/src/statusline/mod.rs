@@ -21,12 +21,10 @@ use elements::{
     StatuslineElement,
 };
 
-/// Hardcoded left section for Command/Search modes.
-const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
-
-/// The cells the `MiniBuf` text gets on the statusline row `statusline`:
-/// all of it after the left section's [`EDGE_PAD`], since [`MINIBUF_LEFT`]
-/// holds nothing before it.
+/// The cells an open minibuffer's text gets on the statusline row
+/// `statusline`: all of it after the left [`EDGE_PAD`]. The text is drawn at
+/// the column its [`MinibufView`] resolved from this, the one the terminal
+/// cursor and the completion popup are placed from.
 pub(crate) fn minibuf_input_area(statusline: Rect) -> Rect {
     let pad = chrome_width(EDGE_PAD) as u16;
     Rect {
@@ -465,15 +463,17 @@ fn render_statusline(
 ) {
     let config = editor.state.settings.statusline();
 
+    // An open minibuffer replaces the left and center sections.
     let (left_elems, center_elems, right_elems): (
         &[StatusElement],
         &[StatusElement],
         &[StatusElement],
     ) = if editor.minibuf.is_some() {
-        (MINIBUF_LEFT, &[], &config.right)
+        (&[], &[], &config.right)
     } else {
         (&config.left, &config.center, &config.right)
     };
+    let left_x = editor.minibuf.map_or(area.x, MinibufView::x);
 
     fill_row_colors(canvas, colors, area, y);
 
@@ -491,15 +491,16 @@ fn render_statusline(
     let filepath_display;
     let (left_spans, center_spans, right_spans) = if filepath_full.is_empty() {
         (
-            pad_left(render_section(left_elems, editor, colors, ""), colors),
+            left_section(left_elems, editor, colors, ""),
             render_section(center_elems, editor, colors, ""),
             pad_right(render_section(right_elems, editor, colors, ""), colors),
         )
     } else {
-        let m_left = pad_left(render_section(left_elems, editor, colors, ""), colors);
+        let m_left = left_section(left_elems, editor, colors, "");
         let m_center = render_section(center_elems, editor, colors, "");
         let m_right = pad_right(render_section(right_elems, editor, colors, ""), colors);
-        let fixed_w = section_width(&m_left) as usize
+        let fixed_w = usize::from(left_x - area.x)
+            + section_width(&m_left) as usize
             + section_width(&m_center) as usize
             + section_width(&m_right) as usize;
         // Subtract 1 for the inter-element space that render_section inserts
@@ -508,10 +509,7 @@ fn render_statusline(
         filepath_display = elements::file_path::shorten_path_to_width(&filepath_full, budget);
 
         let left = if left_elems.contains(&StatusElement::FilePath) {
-            pad_left(
-                render_section(left_elems, editor, colors, &filepath_display),
-                colors,
-            )
+            left_section(left_elems, editor, colors, &filepath_display)
         } else {
             m_left
         };
@@ -535,7 +533,6 @@ fn render_statusline(
     let center_w = section_width(&center_spans);
     let right_w = section_width(&right_spans);
 
-    let left_x = area.x;
     let left_end = left_x + left_w;
     let right_x = area.right().saturating_sub(right_w);
     let right_fits = right_x >= left_end;
@@ -596,6 +593,25 @@ pub(crate) fn render_element<'a>(
         StatusElement::ReadOnly => ReadOnlyElement::render(editor, colors),
         StatusElement::Diagnostics => DiagnosticsElement::render(editor, colors),
         StatusElement::Custom(name) => elements::custom::render(editor, name, colors),
+    }
+}
+
+/// The left section's spans: the open minibuffer's text, drawn from its
+/// view's column, or `elements` after the edge pad, drawn from the row's
+/// start.
+fn left_section<'a>(
+    elements: &[StatusElement],
+    editor: &'a HumeStatusline<'_>,
+    colors: &EditorColors,
+    filepath_text: &'a str,
+) -> Vec<(Cow<'a, str>, ResolvedStyle)> {
+    if editor.minibuf.is_some() {
+        vec![MiniBufElement::render(editor, colors)]
+    } else {
+        pad_left(
+            render_section(elements, editor, colors, filepath_text),
+            colors,
+        )
     }
 }
 
