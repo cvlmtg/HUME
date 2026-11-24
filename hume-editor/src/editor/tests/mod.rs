@@ -903,11 +903,11 @@ fn key_delete() -> KeyEvent {
     KeyEvent::new(KeyCode::Delete, Modifiers::NONE)
 }
 
-fn key_left() -> KeyEvent {
+pub(in crate::editor) fn key_left() -> KeyEvent {
     KeyEvent::new(KeyCode::Left, Modifiers::NONE)
 }
 
-fn key_right() -> KeyEvent {
+pub(in crate::editor) fn key_right() -> KeyEvent {
     KeyEvent::new(KeyCode::Right, Modifiers::NONE)
 }
 

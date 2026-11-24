@@ -36,6 +36,7 @@ fn state(
     PickerViewState {
         prompt: String::new(),
         query: query.to_string(),
+        cursor: query.len(),
         rows: rows
             .iter()
             .map(|s| Some(Arc::new(ListRow::plain(s.to_string()))))
@@ -308,6 +309,80 @@ fn draw_picker_panel_truncates_query_tail_keeping_cursor_visible() {
         row.starts_with("hij"),
         "expected tail truncation, got {row:?}"
     );
+}
+
+#[test]
+fn draw_picker_panel_marks_the_cluster_under_a_mid_query_cursor() {
+    let mut buf = Grid::new(20, 20);
+    let theme = Theme::default();
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
+    let geo = PanelGeometry {
+        rect: rect(0, 0, 20, 4),
+        list_rows: 1,
+    };
+    let mut s = state("abc", &[], None, &geo);
+    s.cursor = 1;
+    let cursor_fg = Some(Rgb(1, 2, 3));
+    let styles = PickerStyles {
+        cursor: ResolvedStyle {
+            fg: cursor_fg,
+            ..Default::default()
+        },
+        ..styles()
+    };
+    draw_picker_panel(&mut canvas, &s, styles, &theme);
+
+    let inner_x = geo.rect.x + 1;
+    let cursor_cells: Vec<bool> = (inner_x..inner_x + 4)
+        .map(|x| buf[(x, 1)].style().fg == cursor_fg)
+        .collect();
+    assert_eq!(cursor_cells, vec![false, true, false, false]);
+    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 20, 1)), @"│abc            0/0│");
+}
+
+#[test]
+fn draw_picker_panel_shows_a_wide_cluster_under_the_cursor() {
+    let mut buf = Grid::new(20, 20);
+    let theme = Theme::default();
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
+    let geo = PanelGeometry {
+        rect: rect(0, 0, 11, 4), // inner_width = 9; counts "0/0" leaves a 4-col query budget
+        list_rows: 1,
+    };
+    let mut s = state("日本語", &[], None, &geo);
+    s.cursor = "日本".len();
+    let cursor_fg = Some(Rgb(1, 2, 3));
+    let styles = PickerStyles {
+        cursor: ResolvedStyle {
+            fg: cursor_fg,
+            ..Default::default()
+        },
+        ..styles()
+    };
+    draw_picker_panel(&mut canvas, &s, styles, &theme);
+
+    let inner_x = geo.rect.x + 1;
+    let cursor_cells: Vec<bool> = (inner_x..inner_x + 5)
+        .map(|x| buf[(x, 1)].style().fg == cursor_fg)
+        .collect();
+    assert_eq!(cursor_cells, vec![false, false, true, true, false]);
+    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 11, 1)), @"│本語  0/0│");
+}
+
+#[test]
+fn draw_picker_panel_keeps_a_cursor_near_the_start_of_a_long_query_visible() {
+    let mut buf = Grid::new(20, 20);
+    let theme = Theme::default();
+    let mut canvas = Canvas::new(&mut buf, theme.ui().invisible, None);
+    let geo = PanelGeometry {
+        rect: rect(0, 0, 10, 4), // inner_width = 8; counts "0/0" leaves a 3-col query budget
+        list_rows: 1,
+    };
+    let mut s = state("abcdefghij", &[], None, &geo);
+    s.cursor = 1;
+    draw_picker_panel(&mut canvas, &s, styles(), &theme);
+
+    insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 10, 1)), @"│abcd 0/0│");
 }
 
 #[test]

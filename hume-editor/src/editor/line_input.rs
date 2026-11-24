@@ -5,10 +5,21 @@ use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::input::is_plain;
 
+/// What a key did to a [`LineInput`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(in crate::editor) enum LineEdit {
+    /// The text changed.
+    Changed,
+    /// The cursor moved.
+    Moved,
+    /// The key changed neither the text nor the cursor.
+    Ignored,
+}
+
 /// One line of typed text and its edit cursor: the minibuffer's input and
-/// a picker's query. [`edit`](Self::edit) is the one table of text-editing
-/// keys both share; each layer handles its own keys (Enter, history,
-/// cursor movement, picker actions) before handing a key here.
+/// a picker's query. [`edit`](Self::edit) is the one table of line keys
+/// both share; each layer handles its own keys (Enter, history, picker
+/// actions) before handing a key here.
 #[derive(Clone, Default)]
 pub(crate) struct LineInput {
     text: String,
@@ -39,12 +50,13 @@ impl LineInput {
         *self = Self::new(text);
     }
 
-    /// Applies one text-editing key: `Backspace` deletes the grapheme
-    /// before the cursor, `Ctrl-w` the word before it (see
-    /// [`word_boundary_back`]), and a character with no modifier but Shift
-    /// ([`is_plain`]) types at the cursor. Whether the text changed: `false`
-    /// for any other key, and for a deletion with nothing before the cursor.
-    pub(in crate::editor) fn edit(&mut self, key: KeyEvent) -> bool {
+    /// Applies one line key: `Backspace` deletes the grapheme before the
+    /// cursor, `Ctrl-w` the word before it (see [`word_boundary_back`]), a
+    /// character with no modifier but Shift ([`is_plain`]) types at the
+    /// cursor, and `Left`/`Right` move it one grapheme. A deletion with
+    /// nothing before the cursor and a move past either end are
+    /// [`LineEdit::Ignored`], as is any other key.
+    pub(in crate::editor) fn edit(&mut self, key: KeyEvent) -> LineEdit {
         match key.code {
             KeyCode::Backspace => self.delete_back_to(prev_str_boundary(&self.text, self.cursor)),
             KeyCode::Char('w') if key.modifiers.contains(Modifiers::CONTROL) => {
@@ -53,9 +65,11 @@ impl LineInput {
             KeyCode::Char(ch) if is_plain(key.modifiers) => {
                 self.text.insert(self.cursor, ch);
                 self.cursor += ch.len_utf8();
-                true
+                LineEdit::Changed
             }
-            _ => false,
+            KeyCode::Left => self.move_to(prev_str_boundary(&self.text, self.cursor)),
+            KeyCode::Right => self.move_to(next_str_boundary(&self.text, self.cursor)),
+            _ => LineEdit::Ignored,
         }
     }
 
@@ -78,25 +92,22 @@ impl LineInput {
         self.cursor = start + replacement.len();
     }
 
-    /// Moves the cursor one grapheme left; a no-op at the start.
-    pub(in crate::editor) fn move_left(&mut self) {
-        self.cursor = prev_str_boundary(&self.text, self.cursor);
+    fn move_to(&mut self, to: usize) -> LineEdit {
+        if to == self.cursor {
+            return LineEdit::Ignored;
+        }
+        self.cursor = to;
+        LineEdit::Moved
     }
 
-    /// Moves the cursor one grapheme right; a no-op at the end.
-    pub(in crate::editor) fn move_right(&mut self) {
-        self.cursor = next_str_boundary(&self.text, self.cursor);
-    }
-
-    /// Deletes `start..cursor` and moves the cursor to `start`. Whether
-    /// anything was deleted.
-    fn delete_back_to(&mut self, start: usize) -> bool {
+    /// Deletes `start..cursor` and moves the cursor to `start`.
+    fn delete_back_to(&mut self, start: usize) -> LineEdit {
         if start == self.cursor {
-            return false;
+            return LineEdit::Ignored;
         }
         self.text.drain(start..self.cursor);
         self.cursor = start;
-        true
+        LineEdit::Changed
     }
 }
 

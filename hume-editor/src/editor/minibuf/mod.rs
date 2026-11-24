@@ -5,7 +5,7 @@ use hume_rope::width::chrome_width;
 use self::history::{HistoryDir, HistoryKind};
 use super::input_stack::{InputEvent, LayerRef, PastedText};
 use super::keymap::WalkResult;
-use super::line_input::LineInput;
+use super::line_input::{LineEdit, LineInput};
 use super::replay::dispatch_command_line_key;
 use super::{Editor, EditorState};
 use hume_core::BindMode;
@@ -109,8 +109,8 @@ impl MiniBuffer {
     /// Handle a single key event for standard mini-buffer editing.
     ///
     /// Covers the prompt's own keys: cancel (Esc/Ctrl-c), confirm (Enter),
-    /// history (Up/Down) and left/right cursor movement. Every other key
-    /// goes to [`LineInput::edit`]. Returns a [`MiniBufferEvent`]
+    /// dismiss (Backspace on an empty line) and history (Up/Down). Every
+    /// other key goes to [`LineInput::edit`]. Returns a [`MiniBufferEvent`]
     /// describing the outcome so the caller can apply mode-specific logic.
     pub(super) fn handle_key(&mut self, key: termina::event::KeyEvent) -> MiniBufferEvent {
         use termina::event::{KeyCode, Modifiers};
@@ -128,21 +128,16 @@ impl MiniBuffer {
                 }
             }
             KeyCode::Backspace if self.line.text().is_empty() => MiniBufferEvent::BackspaceOnEmpty,
-            KeyCode::Left => {
-                self.line.move_left();
-                MiniBufferEvent::CursorMoved
-            }
-            KeyCode::Right => {
-                self.line.move_right();
-                MiniBufferEvent::CursorMoved
-            }
             // Up/Down are handled by the caller (mode-specific history ring).
             // Do NOT bind Ctrl-n / Ctrl-p here: those are reserved for
             // future completion-popup navigation.
             KeyCode::Up => MiniBufferEvent::HistoryPrev,
             KeyCode::Down => MiniBufferEvent::HistoryNext,
-            _ if self.line.edit(key) => MiniBufferEvent::Edited,
-            _ => MiniBufferEvent::Ignored,
+            _ => match self.line.edit(key) {
+                LineEdit::Changed => MiniBufferEvent::Edited,
+                LineEdit::Moved => MiniBufferEvent::CursorMoved,
+                LineEdit::Ignored => MiniBufferEvent::Ignored,
+            },
         }
     }
 }

@@ -721,7 +721,7 @@ The modal fuzzy-finder panel behind [Fuzzy Finder](pickers.md) is a generic widg
 - The key is written as `bind-key!` writes one (`"ctrl-v"`, `"alt-o"`, `"f5"`), never a sequence like `"z f"`.
 - The procedure gets the selected item's payload, or `#f` when nothing matches, and the picker's token.
 
-A key the keymap doesn't bind does nothing, except a plain character, which types into the query, `Backspace`, which deletes a character from it, and `Ctrl-w`, which deletes a word; bind any of them to change that. `picker!` raises when two keys in the keymap are the same key, such as `"ctrl-n"` and `"c-n"`.
+A key the keymap doesn't bind does nothing, except a plain character, which types into the query, `Backspace`, which deletes a character from it, `Ctrl-w`, which deletes a word, and `Left` and `Right`, which move the cursor in it; bind any of them to change that. `picker!` raises when two keys in the keymap are the same key, such as `"ctrl-n"` and `"c-n"`.
 
 A binding never closes the picker by itself: it calls `(picker-close! token)`. To move the selection it calls `(picker-move! token count #:by 'row)`. `#:by` is `'row` (the default), `'page` or `'half-page`, and a negative `count` moves up.
 

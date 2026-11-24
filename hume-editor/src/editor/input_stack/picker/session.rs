@@ -19,7 +19,7 @@ use hume_ui::list_row::ListRow;
 
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use super::super::super::keymap::CanonicalKey;
-use super::super::super::line_input::LineInput;
+use super::super::super::line_input::{LineEdit, LineInput};
 use super::super::super::replay::{Choice, Picked};
 use super::super::list_row::{RenderCall, RenderedRows};
 
@@ -119,7 +119,6 @@ pub(in crate::editor) struct PickerSession {
     /// path; see its `take_supersede` exception, doc'd there rather than
     /// here.
     items: Vec<PickerItem>,
-    /// The query, its cursor always at the end: no picker key moves it.
     query: LineInput,
     /// Ranked indices into `items`, rebuilt on every rerank.
     filtered: Vec<u32>,
@@ -557,8 +556,9 @@ impl PickerSession {
             .is_some_and(|attached| attached.source.has_exited())
     }
 
-    /// Applies one text-editing key to the query ([`LineInput::edit`]) and
-    /// requeries. `None` without effect when the key changed nothing.
+    /// Applies one line key to the query ([`LineInput::edit`]) and, when it
+    /// changed the text, requeries. `None` for a key that only moved the
+    /// cursor or changed nothing.
     ///
     /// Returns the mode's `on_query_change` callback to fire (`None` for a
     /// non-live session). The caller, not this method, queues it via
@@ -575,7 +575,7 @@ impl PickerSession {
         &mut self,
         key: termina::event::KeyEvent,
     ) -> Option<Callback> {
-        if !self.query.edit(key) {
+        if self.query.edit(key) != LineEdit::Changed {
             return None;
         }
         self.rerank();
@@ -647,6 +647,11 @@ impl PickerSession {
 
     pub(in crate::editor) fn query(&self) -> &str {
         self.query.text()
+    }
+
+    /// Byte offset of the edit cursor in [`Self::query`].
+    pub(in crate::editor) fn query_cursor(&self) -> usize {
+        self.query.cursor()
     }
 
     pub(in crate::editor) fn selected(&self) -> usize {

@@ -253,6 +253,16 @@ fn ctrl_w_deletes_the_last_path_component_of_the_query() {
     assert_eq!(ed.state.input.picker().unwrap().query(), "src/");
 }
 
+#[test]
+fn backspace_after_left_deletes_inside_the_query() {
+    let mut ed = editor_from("-[a]>bc\n");
+    open_test_picker(&mut ed, &["one"]);
+    type_chars(&mut ed, "abc");
+    ed.feed_key(key_left());
+    ed.feed_key(key_backspace());
+    assert_eq!(ed.state.input.picker().unwrap().query(), "ac");
+}
+
 // ── Keymap ───────────────────────────────────────────────────────────────────
 
 #[test]

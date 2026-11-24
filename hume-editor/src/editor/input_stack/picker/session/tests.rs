@@ -2,7 +2,7 @@
 //! every other large module in `editor/` follows for its own `mod tests`.
 
 use super::*;
-use crate::editor::tests::{key, key_backspace, key_ctrl};
+use crate::editor::tests::{key, key_backspace, key_ctrl, key_left};
 use steel::rvals::SteelVal;
 
 fn items(displays: &[&str]) -> Vec<PickerItem> {
@@ -328,6 +328,23 @@ fn ctrl_w_on_a_live_session_returns_its_query_change_callback() {
     let _ = s.insert_str("src/edit");
     assert!(s.edit_query(key_ctrl('w')).is_some());
     assert_eq!(s.query(), "src/");
+}
+
+#[test]
+fn typing_after_left_inserts_before_the_last_character() {
+    let mut s = open();
+    let _ = s.insert_str("abc");
+    assert!(s.edit_query(key_left()).is_none());
+    let _ = s.edit_query(key('x'));
+    assert_eq!((s.query(), s.query_cursor()), ("abxc", 3));
+}
+
+#[test]
+fn a_cursor_move_on_a_live_session_fires_no_query_change() {
+    let mut s = open_live();
+    let _ = s.insert_str("ab");
+    assert!(s.edit_query(key_left()).is_none());
+    assert_eq!(s.query(), "ab");
 }
 
 #[test]

@@ -140,6 +140,7 @@ impl Editor {
                 Some(hume_ui::picker_panel::PickerViewState {
                     prompt: session.prompt().to_string(),
                     query: session.query().to_string(),
+                    cursor: session.query_cursor(),
                     rows,
                     selected_row,
                     matched: session.matched_len(),

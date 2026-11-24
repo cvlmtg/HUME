@@ -9,6 +9,7 @@
 - `.` builds the selection again with the pattern you gave `s`, and with the character you gave `f` or `t` or that `=` or `-` repeated in Extend mode, before it repeats the edit.
 - `.` builds a selection made with `n` or `N` in Extend mode again with your current search.
 - `f`, `t`, `=`, `-`, `#`, `{`, `}`, the surround and text-object keys and the structural jumps show "no match" when they find nothing, and leave the selections as they were; `.` then stops instead of editing the selection.
+- `Left` and `Right` move the cursor in a picker's query, so you can type or delete in the middle of it.
 
 ### Plugins & scripting
 - `core:markdown` turns a URL or a file's path pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.

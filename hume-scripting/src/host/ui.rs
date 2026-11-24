@@ -302,8 +302,9 @@ pub trait UiHost {
     /// runs its binding, queued, and nothing else, so the picker stays open
     /// until a binding calls `picker-close!`. An unbound character with no
     /// modifier but Shift types into the query, an unbound `Backspace`
-    /// deletes a grapheme from it, an unbound Ctrl-w deletes its last word,
-    /// and any other unbound key does nothing. `Err` when two specs name the
+    /// deletes the grapheme before its cursor, an unbound Ctrl-w the word
+    /// before it, an unbound Left or Right moves the cursor, and any other
+    /// unbound key does nothing. `Err` when two specs name the
     /// same key.
     ///
     /// `on_close` fires once, queued, however the picker closes:

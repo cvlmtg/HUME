@@ -28,7 +28,10 @@ use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 use hume_engine::types::Scope;
-use hume_rope::width::{chrome_width, truncate_suffix_to_width, truncate_to_width};
+use hume_rope::grapheme::next_str_boundary;
+use hume_rope::width::{
+    chrome_cluster_width, chrome_width, truncate_suffix_to_width, truncate_to_width,
+};
 
 use super::list_row::{ListRow, draw_row};
 
@@ -60,9 +63,11 @@ pub struct PickerViewState {
     /// row's left edge. Not yet width-clipped (a paint-time concern, same as
     /// `query`).
     pub prompt: String,
-    /// Raw query text (not yet tail-truncated; that's a paint-time
-    /// concern, so this snapshot stays a dumb value, not pre-formatted UI).
+    /// Raw query text (not yet truncated; that's a paint-time concern, so
+    /// this snapshot stays a dumb value, not pre-formatted UI).
     pub query: String,
+    /// Byte offset of the edit cursor in `query`, on a cluster boundary.
+    pub cursor: usize,
     /// The rows of the current scroll window, in ranked order, already
     /// scrolled and cut to the list width; the widget never re-windows. A
     /// `#:render` row is shared with the item it shows, and is `None`, which
@@ -169,9 +174,10 @@ pub(in crate::picker_panel) fn picker_styles(theme: &Theme) -> PickerStyles {
 /// though the overlay loop hands every pane the same whole-panes-region
 /// rect (`hume-engine/src/pipeline/mod.rs`'s "may span panes" overlay pass).
 ///
-/// Layout: row 0 inside the frame is the input line (query tail, a block
-/// cursor cell at the end styled `ui.cursor.primary`, and a right-aligned
-/// `matched/total` counter when it fits); the remaining rows are `state.rows`, with
+/// Layout: row 0 inside the frame is the input line (as much of the query
+/// as fits around its cursor, the cell under the cursor styled
+/// `ui.cursor.primary`, and a right-aligned `matched/total` counter when
+/// it fits); the remaining rows are `state.rows`, with
 /// `state.selected_row` highlighted across the full inner width. `rows` is
 /// never re-windowed here: the store already scrolled it.
 pub(in crate::picker_panel) fn draw_picker_panel(
@@ -215,8 +221,8 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     // exceeds the inner width. The common case (empty or a short label)
     // leaves this a no-op, so an empty prompt renders identically to no
     // prompt at all. The readable prefix matters more than the tail for a
-    // fixed label, so this keeps the *head* (unlike the query's own
-    // tail-truncation below).
+    // fixed label, so this keeps the *head* (unlike the query below, which
+    // keeps the text around its cursor).
     let (prompt_shown, prompt_width) = truncate_to_width(&state.prompt, inner_width);
     if prompt_width > 0 {
         canvas.write_text_run(inner_x, input_y, prompt_shown, styles.text, inner_right);
@@ -230,16 +236,35 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     } else {
         after_prompt_width.saturating_sub(1)
     };
-    // Remove leading graphemes until the query fits `query_budget`, keeping
-    // the *tail*, so the cursor cell (always at the end of the query, per
-    // the store's append/pop-at-end-only editing model) stays visible.
-    let (query_tail, query_width) = truncate_suffix_to_width(&state.query, query_budget);
+    // The query gets the budget plus the reserved cursor cell. The text
+    // before the cursor keeps its tail and leaves room for the whole
+    // cluster under the cursor (one cell at the end of the query); the text
+    // after it, which starts with that cluster, gets what is left.
+    let query_cells = query_budget + 1;
+    let cursor_cluster = &state.query[state.cursor..next_str_boundary(&state.query, state.cursor)];
+    let cursor_width = if cursor_cluster.is_empty() {
+        1
+    } else {
+        chrome_cluster_width(cursor_cluster)
+    };
+    let (before, before_width) = truncate_suffix_to_width(
+        &state.query[..state.cursor],
+        query_cells.saturating_sub(cursor_width),
+    );
+    let (after, _) = truncate_to_width(&state.query[state.cursor..], query_cells - before_width);
 
     let query_x = inner_x + prompt_width as u16;
-    canvas.write_text_run(query_x, input_y, query_tail, styles.text, inner_right);
-    let cursor_x = query_x + query_width as u16;
+    canvas.write_text_run(query_x, input_y, before, styles.text, inner_right);
+    let cursor_x = query_x + before_width as u16;
+    canvas.write_text_run(cursor_x, input_y, after, styles.text, inner_right);
     if cursor_x < inner_right {
-        canvas.write_text_run(cursor_x, input_y, " ", styles.cursor, inner_right);
+        let under_cursor = &after[..next_str_boundary(after, 0)];
+        let cell = if under_cursor.is_empty() {
+            " "
+        } else {
+            under_cursor
+        };
+        canvas.write_text_run(cursor_x, input_y, cell, styles.cursor, inner_right);
     }
     if show_counts {
         let counts_x = inner.right() - counts_width as u16;

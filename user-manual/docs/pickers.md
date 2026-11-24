@@ -57,6 +57,7 @@ Once a picker is open:
 |-----|--------|
 | Type | Filter the list |
 | `Backspace` / `Ctrl-w` | Delete a character / a word from the query |
+| `Left` / `Right` | Move the cursor in the query |
 | `Down` / `Ctrl-n` | Move the selection down |
 | `Up` / `Ctrl-p` | Move the selection up |
 | `PageDown` / `PageUp` | Page the list |
