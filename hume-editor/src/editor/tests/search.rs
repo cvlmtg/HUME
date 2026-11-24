@@ -1,4 +1,5 @@
 use super::*;
+use crate::editor::minibuf::history::HistoryKind;
 use pretty_assertions::assert_eq;
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -385,6 +386,21 @@ fn sift_within_esc_restores() {
     assert_ne!(state(&ed), original);
     ed.handle_key(key_esc());
     assert_eq!(ed.state.mode(), Mode::Normal);
+    assert_eq!(state(&ed), original);
+}
+
+/// `Ctrl-w` that deletes the whole pattern restores the original
+/// selections, as Backspace does.
+#[test]
+fn sift_within_ctrl_w_emptying_the_pattern_restores() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    let original = state(&ed);
+    ed.handle_key(key('s'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    assert_ne!(state(&ed), original);
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(ed.state.mode(), Mode::Sift);
     assert_eq!(state(&ed), original);
 }
 
@@ -1207,13 +1223,13 @@ fn search_edit_after_recall_demotes_to_scratch() {
 /// Backspace on an empty search input (second Backspace in the sequence
 /// `/f` → Backspace → Backspace) must dismiss and return to Normal.
 ///
-/// Mirrors command mode: `EmptiedByBackspace` stays open; `BackspaceOnEmpty`
-/// cancels.
+/// Mirrors command mode: a Backspace that empties the line stays open; one
+/// on an empty line cancels.
 #[test]
 fn search_backspace_on_empty_dismisses() {
     let mut ed = editor_from("-[h]>ello world\n");
 
-    // /f → Backspace: EmptiedByBackspace (input empty, but stay in Search).
+    // /f → Backspace: the input is empty, but Search stays open.
     ed.handle_key(key('/'));
     ed.handle_key(key('f'));
     ed.handle_key(key_backspace());
@@ -1237,7 +1253,7 @@ fn search_backspace_on_empty_dismisses() {
 }
 
 /// Backspace when the search input was empty from the start must dismiss
-/// immediately (no EmptiedByBackspace intermediate step).
+/// immediately.
 #[test]
 fn search_backspace_on_empty_from_start_dismisses() {
     let mut ed = editor_from("-[h]>ello world\n");
@@ -1247,4 +1263,41 @@ fn search_backspace_on_empty_from_start_dismisses() {
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert!(ed.state.minibuf().is_none());
     assert_eq!(state(&ed), "-[h]>ello world\n");
+}
+
+/// `Ctrl-w` that deletes the whole pattern restores the selection and
+/// clears the search, as Backspace does, and keeps Search open.
+#[test]
+fn search_ctrl_w_emptying_the_pattern_restores_and_clears() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.handle_key(key('/'));
+    for ch in "world".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(state(&ed), "hello -[world]>\n");
+
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(ed.state.mode(), Mode::Search);
+    assert_eq!(state(&ed), "-[h]>ello world\n");
+    assert!(ed.search_pattern().is_none());
+}
+
+/// Down past the newest history match back to an empty line restores the
+/// selection and clears the search the recalled pattern previewed.
+#[test]
+fn search_history_down_to_an_empty_line_restores_and_clears() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.state
+        .history
+        .get_mut(HistoryKind::SearchForward)
+        .push("world".to_owned());
+
+    ed.handle_key(key('/'));
+    ed.handle_key(key_up());
+    assert_eq!(state(&ed), "hello -[world]>\n");
+
+    ed.handle_key(key_down());
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
+    assert_eq!(state(&ed), "-[h]>ello world\n");
+    assert!(ed.search_pattern().is_none());
 }

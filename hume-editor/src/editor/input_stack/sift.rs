@@ -171,10 +171,7 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             sift.end(&mut ed.state, Some(&pattern));
             commands::finish_text_operand(ed, sift.then, sift.input.take_answer(), Some(pattern));
         }
-        MiniBufferEvent::EmptiedByBackspace | MiniBufferEvent::BackspaceOnEmpty => {
-            // Restore original selections when pattern is fully erased.
-            restore_sift_snapshot(&mut ed.state, r);
-        }
+        MiniBufferEvent::BackspaceOnEmpty => restore_sift_snapshot(&mut ed.state, r),
         MiniBufferEvent::Edited => update_live_sift(&mut ed.state, r),
         // Up/Down are reserved for minibuffer history: no-op in sift-within.
         MiniBufferEvent::CursorMoved
@@ -185,12 +182,16 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 }
 
 /// Replace selections with the matches within the original selections
-/// ([`sift_within`]). Called on every keystroke in Sift mode.
+/// ([`sift_within`]). Called on every keystroke in Sift mode. An empty
+/// pattern restores the original selections.
 fn update_live_sift(state: &mut EditorState, r: LayerRef) {
-    let pattern = match state.input.minibuf() {
-        Some(mb) if !mb.line.text().is_empty() => mb.line.text().to_owned(),
-        _ => return,
+    let Some(pattern) = state.input.minibuf().map(|mb| mb.line.text().to_owned()) else {
+        return;
     };
+    if pattern.is_empty() {
+        restore_sift_snapshot(state, r);
+        return;
+    }
 
     let Some(sift) = state.input.at::<SiftLayer>(r) else {
         return;

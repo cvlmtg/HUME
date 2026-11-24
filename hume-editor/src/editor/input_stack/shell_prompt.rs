@@ -107,9 +107,7 @@ fn handle_shell_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
             }
             finish_shell_prompt(ed, r, Some(command));
         }
-        MiniBufferEvent::EmptiedByBackspace
-        | MiniBufferEvent::Edited
-        | MiniBufferEvent::CursorMoved => shell_line_edited(&mut ed.state),
+        MiniBufferEvent::Edited | MiniBufferEvent::CursorMoved => shell_line_edited(&mut ed.state),
         MiniBufferEvent::HistoryPrev => {
             minibuf::recall_history(ed, HistoryKind::Pipe, HistoryDir::Prev);
         }

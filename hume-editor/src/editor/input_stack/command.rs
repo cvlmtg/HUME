@@ -161,14 +161,13 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             ed.state.truncate_layers(&ed.view, r);
             let _ = execute_command_line(ed, &raw);
         }
-        // An edit, cursor move, or Backspace that clears to empty demotes
-        // any active history recall back to scratch. EmptiedByBackspace
-        // keeps the minibuffer open (showing just the prompt) so a second
-        // Backspace is needed to dismiss. Avoids accidental closure when
-        // the user deletes a one-char typo.
-        MiniBufferEvent::EmptiedByBackspace
-        | MiniBufferEvent::Edited
-        | MiniBufferEvent::CursorMoved => command_line_edited(&mut ed.state),
+        // An edit or cursor move demotes any active history recall back to
+        // scratch. An edit that empties the line keeps the minibuffer open:
+        // only a Backspace on an empty line dismisses it, so deleting a
+        // one-char typo doesn't close the prompt.
+        MiniBufferEvent::Edited | MiniBufferEvent::CursorMoved => {
+            command_line_edited(&mut ed.state);
+        }
         MiniBufferEvent::HistoryPrev => {
             minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Prev);
         }

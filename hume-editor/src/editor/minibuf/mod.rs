@@ -48,12 +48,8 @@ pub(super) enum MiniBufferEvent {
     Confirm(String),
     /// Enter with empty input: treat as cancel.
     ConfirmEmpty,
-    /// Input changed (char typed or deleted), input is now non-empty.
+    /// The text changed: a character typed or deleted.
     Edited,
-    /// Backspace deleted the last character, leaving the input empty.
-    /// Search/select use this to restore their snapshot but stay open.
-    /// Command mode keeps the minibuffer open so a second Backspace is needed.
-    EmptiedByBackspace,
     /// Backspace was pressed when the input is empty (nothing to delete).
     /// All modes treat this as a cancel / dismiss request.
     BackspaceOnEmpty,
@@ -145,15 +141,8 @@ impl MiniBuffer {
             // future completion-popup navigation.
             KeyCode::Up => MiniBufferEvent::HistoryPrev,
             KeyCode::Down => MiniBufferEvent::HistoryNext,
-            _ => {
-                if !self.line.edit(key) {
-                    MiniBufferEvent::Ignored
-                } else if key.code == KeyCode::Backspace && self.line.text().is_empty() {
-                    MiniBufferEvent::EmptiedByBackspace
-                } else {
-                    MiniBufferEvent::Edited
-                }
-            }
+            _ if self.line.edit(key) => MiniBufferEvent::Edited,
+            _ => MiniBufferEvent::Ignored,
         }
     }
 }

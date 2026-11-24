@@ -160,22 +160,6 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
                 Some(pattern),
             );
         }
-        MiniBufferEvent::EmptiedByBackspace => {
-            // First Backspace cleared the last character: restore position but
-            // stay in Search mode. A second Backspace (BackspaceOnEmpty) dismisses.
-            restore_search_snapshot(&mut ed.state, r);
-            let Some(search) = ed.state.input.at::<SearchLayer>(r) else {
-                return;
-            };
-            let Some((bid, _)) = search.snap.selections() else {
-                return;
-            };
-            search::ops::clear_buffer_search(
-                &mut ed.state.buffers,
-                &mut ed.state.panes.entries,
-                bid,
-            );
-        }
         MiniBufferEvent::BackspaceOnEmpty => {
             // Input already empty: user pressed Backspace a second time to
             // dismiss. Teardown restores the snapshot, clears the search, and
@@ -210,11 +194,11 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
 /// keystroke while in Search mode. Targets the session's own pane and the
 /// buffer its snapshot was read from, the only text the snapshot's
 /// selections belong to, as cancel-restore/clear below do (see
-/// [`PaneSnapshot`]'s own doc).
+/// [`PaneSnapshot`]'s own doc). An empty pattern previews nothing: the
+/// selections go back to the snapshot and the buffer's search is cleared.
 fn update_live_search(state: &mut EditorState, r: LayerRef) {
-    let pattern = match state.input.minibuf() {
-        Some(mb) if !mb.line.text().is_empty() => mb.line.text().to_owned(),
-        _ => return,
+    let Some(pattern) = state.input.minibuf().map(|mb| mb.line.text().to_owned()) else {
+        return;
     };
     let Some(search) = state.input.at::<SearchLayer>(r) else {
         return;
@@ -234,6 +218,11 @@ fn update_live_search(state: &mut EditorState, r: LayerRef) {
     };
 
     let bid = origin.bid;
+    if pattern.is_empty() {
+        restore_search_snapshot(state, r);
+        search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.entries, bid);
+        return;
+    }
     match preview_search(state, origin, direction, mode, &pattern) {
         Ok(true) => {}
         // No match: restore position to pre-search.
