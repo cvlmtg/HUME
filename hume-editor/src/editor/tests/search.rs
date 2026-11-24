@@ -1282,6 +1282,24 @@ fn search_ctrl_w_emptying_the_pattern_restores_and_clears() {
     assert!(ed.search_pattern().is_none());
 }
 
+/// Deleting a flagged pattern down to its flags (`m/`) restores the
+/// selection and clears the search, as deleting an unflagged one does.
+#[test]
+fn search_deleting_the_pattern_after_a_flag_restores_and_clears() {
+    let mut ed = editor_from("-[h]>ello world\n");
+    ed.handle_key(key('/'));
+    for ch in "m/world".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(state(&ed), "hello -[world]>\n");
+
+    ed.handle_key(key_ctrl('w'));
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "m/");
+    assert_eq!(ed.state.mode(), Mode::Search);
+    assert_eq!(state(&ed), "-[h]>ello world\n");
+    assert!(ed.search_pattern().is_none());
+}
+
 /// Down past the newest history match back to an empty line restores the
 /// selection and clears the search the recalled pattern previewed.
 #[test]

@@ -6,7 +6,7 @@ use hume_editing::state::EditState;
 use hume_editing::text::BufferText;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
-use hume_ops::search::compile_search_input;
+use hume_ops::search::{PatternError, compile_search_input};
 use hume_ops::selection_cmd::sift_matches_within;
 
 use super::super::error::CommandError;
@@ -218,14 +218,14 @@ fn update_live_sift(state: &mut EditorState, r: LayerRef) {
             }
         }
         // An empty or invalid pattern, or nothing matched: restore originals.
-        Err(SiftFailure::Invalid | SiftFailure::NoMatch) => restore_sift_snapshot(state, r),
+        Err(SiftFailure::Pattern(_) | SiftFailure::NoMatch) => restore_sift_snapshot(state, r),
     }
 }
 
 /// Why [`sift_within`] left the selections alone.
 pub(in crate::editor) enum SiftFailure {
     /// The input doesn't compile to a regex.
-    Invalid,
+    Pattern(PatternError),
     /// No selection contains a match.
     NoMatch,
 }
@@ -239,7 +239,7 @@ pub(in crate::editor) fn sift_within(
     sels: SelectionSet,
     raw: &str,
 ) -> Result<SelectionSet, SiftFailure> {
-    let (_, regex) = compile_search_input(raw).ok_or(SiftFailure::Invalid)?;
+    let (_, regex) = compile_search_input(raw).map_err(SiftFailure::Pattern)?;
     sift_matches_within(EditState::bind(text.clone(), sels), &regex)
         .map(EditState::into_selections)
         .ok_or(SiftFailure::NoMatch)

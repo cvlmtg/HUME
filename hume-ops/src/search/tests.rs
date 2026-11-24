@@ -136,7 +136,22 @@ fn render_leaves_leading_slash_pattern_untouched() {
 #[test]
 fn compile_refuses_an_empty_pattern_with_or_without_flags() {
     for input in ["", "m/", "v/", "mv/"] {
-        assert!(compile_search_input(input).is_none(), "input {input:?}");
+        assert_eq!(
+            compile_search_input(input).err(),
+            Some(PatternError::Empty),
+            "input {input:?}"
+        );
+    }
+}
+
+#[test]
+fn compile_refuses_a_regex_that_does_not_parse_as_invalid() {
+    for input in ["(", "m/("] {
+        assert_eq!(
+            compile_search_input(input).err(),
+            Some(PatternError::Invalid),
+            "input {input:?}"
+        );
     }
 }
 

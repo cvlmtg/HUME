@@ -201,9 +201,9 @@ fn clear_search_acts_on_its_panes_buffer_even_when_remote() {
     let mut ed = editor_from("-[a]>bc\n");
     let (_, bid_a, pid_b, bid_b) = split_two_buffers(&mut ed, "bbb\n");
     ed.state.buffers.get_mut(bid_a).search_pattern =
-        crate::editor::search::SearchPattern::compile("a");
+        crate::editor::search::SearchPattern::compile("a").ok();
     ed.state.buffers.get_mut(bid_b).search_pattern =
-        crate::editor::search::SearchPattern::compile("b");
+        crate::editor::search::SearchPattern::compile("b").ok();
 
     let ran = live_host!(ed)
         .run_command_sync(

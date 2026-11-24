@@ -1315,7 +1315,7 @@ fn header_row_above_the_viewport_draws_search_and_diagnostic_highlights() {
     let pid = focused_split(&mut ed, bid);
     pin_no_wrap(&mut ed);
     ed.state.buffers.get_mut(bid).search_pattern =
-        crate::editor::search::SearchPattern::compile("impl");
+        crate::editor::search::SearchPattern::compile("impl").ok();
     ed.state.buffer_positions.diagnostics.replace(
         hume_lsp::backend::ServerId(0),
         bid,
@@ -1380,7 +1380,7 @@ fn search_match_starting_above_the_viewport_paints_its_part_in_it() {
     pin_no_wrap(&mut ed);
     // Line 9 is `let x7 = 7;` and line 10 `let x8 = 8;`.
     ed.state.buffers.get_mut(bid).search_pattern =
-        crate::editor::search::SearchPattern::compile("x7 = 7;\n        let x8");
+        crate::editor::search::SearchPattern::compile("x7 = 7;\n        let x8").ok();
     wheel_down(&mut ed, pid, 10);
     assert_eq!(top_line(&ed, pid), 10, "premise: line 9 is above the top");
 
@@ -1399,7 +1399,8 @@ fn search_match_starting_on_a_header_line_paints_only_the_drawn_lines() {
     pin_no_wrap(&mut ed);
     // From `S` on line 0 through `let x0` on line 2.
     ed.state.buffers.get_mut(bid).search_pattern =
-        crate::editor::search::SearchPattern::compile("S \\{\n    fn a\\(\\) \\{\n        let x0");
+        crate::editor::search::SearchPattern::compile("S \\{\n    fn a\\(\\) \\{\n        let x0")
+            .ok();
     wheel_down(&mut ed, pid, 10);
     assert_eq!(
         drawn_lines(&mut ed, pid, 3),

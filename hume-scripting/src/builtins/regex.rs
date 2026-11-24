@@ -58,7 +58,7 @@ impl FromSteelVal for ArgRegex {
 pub(crate) fn regex(pattern: SteelVal) -> SteelResult {
     let input = string_arg(pattern, "pattern")?;
     let (_flags, regex) = compile_search_input(&input)
-        .ok_or_else(|| generic_err(format!("{input:?} is not a valid search pattern")))?;
+        .map_err(|_| generic_err(format!("{input:?} is not a valid search pattern")))?;
     Ok(SteelRegex(Arc::new(Compiled { input, regex }))
         .into_steelval()
         .expect("SteelRegex into_steelval"))

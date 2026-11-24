@@ -6,7 +6,7 @@ use hume_editing::state::EditState;
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 use hume_ops::MotionMode;
-use hume_ops::search::{MatchScan, MatchSeed, SearchDirection};
+use hume_ops::search::{MatchScan, MatchSeed, PatternError, SearchDirection};
 
 use super::super::error::CommandError;
 use super::super::jump_list::JumpEntry;
@@ -194,8 +194,9 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
 /// keystroke while in Search mode. Targets the session's own pane and the
 /// buffer its snapshot was read from, the only text the snapshot's
 /// selections belong to, as cancel-restore/clear below do (see
-/// [`PaneSnapshot`]'s own doc). An empty pattern previews nothing: the
-/// selections go back to the snapshot and the buffer's search is cleared.
+/// [`PaneSnapshot`]'s own doc). An input with nothing after its flags
+/// previews nothing: the selections go back to the snapshot and the
+/// buffer's search is cleared.
 fn update_live_search(state: &mut EditorState, r: LayerRef) {
     let Some(pattern) = state.input.minibuf().map(|mb| mb.line.text().to_owned()) else {
         return;
@@ -203,39 +204,35 @@ fn update_live_search(state: &mut EditorState, r: LayerRef) {
     let Some(search) = state.input.at::<SearchLayer>(r) else {
         return;
     };
-    let Some((bid, sels)) = search.snap.selections() else {
-        return;
-    };
-    if pattern.is_empty() {
-        restore_search_snapshot(state, r);
-        search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.entries, bid);
-        return;
-    }
     let direction = search.direction;
     let mode = if search.then.ctx.extend {
         MotionMode::Extend
     } else {
         MotionMode::Move
     };
-    let origin = SearchOrigin {
+    let Some(origin) = search.snap.selections().map(|(bid, sels)| SearchOrigin {
         pane: search.snap.pane(),
         bid,
         sels: sels.clone(),
+    }) else {
+        return;
     };
 
+    let bid = origin.bid;
     match preview_search(state, origin, direction, mode, &pattern) {
         Ok(true) => {}
         // No match: restore position to pre-search.
         Ok(false) => restore_search_snapshot(state, r),
+        Err(PatternError::Empty) => {
+            restore_search_snapshot(state, r);
+            search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.entries, bid);
+        }
         // Invalid regex in progress: clear pattern so highlights disappear.
-        Err(InvalidPattern) => {
+        Err(PatternError::Invalid) => {
             search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.entries, bid);
         }
     }
 }
-
-/// `raw` doesn't compile to a search regex.
-pub(in crate::editor) struct InvalidPattern;
 
 /// Where a search starts: pane `pane`'s selections `sels` on buffer `bid`.
 pub(in crate::editor) struct SearchOrigin {
@@ -268,11 +265,11 @@ pub(in crate::editor) fn preview_search(
     direction: SearchDirection,
     mode: MotionMode,
     raw: &str,
-) -> Result<bool, InvalidPattern> {
+) -> Result<bool, PatternError> {
     let SearchOrigin { pane, bid, sels } = origin;
     let pattern = &mut state.buffers.get_mut(bid).search_pattern;
     if pattern.as_ref().is_none_or(|sp| sp.pattern_str != raw) {
-        *pattern = Some(SearchPattern::compile(raw).ok_or(InvalidPattern)?);
+        *pattern = Some(SearchPattern::compile(raw)?);
     }
     let multi = pattern.as_ref().expect("set above").multi();
     search::ops::update_buffer_matches(&mut state.buffers, bid);

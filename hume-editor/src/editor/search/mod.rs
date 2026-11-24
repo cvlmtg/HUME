@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use hume_editing::text::BufferText;
 use hume_editing::tracked::Tracked;
-use hume_ops::search::compile_search_input;
+use hume_ops::search::{PatternError, compile_search_input};
 use hume_rope::cluster::{ClusterRange, ClusterStart};
 
 // ── Per-buffer types ──────────────────────────────────────────────────────────
@@ -37,12 +37,12 @@ pub(in crate::editor) struct SearchPattern {
 }
 
 impl SearchPattern {
-    /// Parse `raw`'s leading flags and compile the remaining pattern. `None`
-    /// on an invalid regex; the caller leaves `Buffer.search_pattern`
+    /// Parse `raw`'s leading flags and compile the remaining pattern. `Err`
+    /// on an empty or invalid one; the caller leaves `Buffer.search_pattern`
     /// untouched (or `None`) rather than storing a half-valid pattern.
-    pub(in crate::editor) fn compile(raw: &str) -> Option<Self> {
+    pub(in crate::editor) fn compile(raw: &str) -> Result<Self, PatternError> {
         let (_flags, regex) = compile_search_input(raw)?;
-        Some(Self {
+        Ok(Self {
             regex: Arc::new(regex),
             pattern_str: raw.to_string(),
         })

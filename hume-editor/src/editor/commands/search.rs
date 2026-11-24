@@ -8,14 +8,14 @@ use hume_editing::word::{CharClass, WordChars, is_word_boundary};
 use hume_engine::pipeline::EngineView;
 use hume_ops::MotionMode;
 use hume_ops::search::{
-    MatchScan, MatchSeed, SearchDirection, SearchFlags, find_all_matches, render_search_input,
-    word_search_pattern,
+    MatchScan, MatchSeed, PatternError, SearchDirection, SearchFlags, find_all_matches,
+    render_search_input, word_search_pattern,
 };
 use hume_ops::text_object::inner_word_impl;
 
 use super::super::input_stack::{
-    InvalidPattern, PaneSnapshot, SearchLayer, SearchOrigin, SiftFailure, SiftLayer, commit_search,
-    preview_search, sift_within,
+    PaneSnapshot, SearchLayer, SearchOrigin, SiftFailure, SiftLayer, commit_search, preview_search,
+    sift_within,
 };
 use super::super::replay::WaitingInput;
 use super::super::{EditorState, MiniBuffer};
@@ -58,8 +58,9 @@ pub(super) fn open_search_prompt(
 }
 
 /// Search `t` for `raw` from its current selections: the preview the prompt
-/// runs per keystroke, then the commit. An invalid pattern touches nothing;
-/// a pattern with no match is still recorded and reported as "no match".
+/// runs per keystroke, then the commit. An empty or invalid pattern touches
+/// nothing; a pattern with no match is still recorded and reported as "no
+/// match".
 fn search_with_pattern(
     state: &mut EditorState,
     view: &EngineView,
@@ -76,7 +77,7 @@ fn search_with_pattern(
         sels,
     };
     let matched = preview_search(state, origin(sels.clone()), direction, mode, raw)
-        .map_err(|InvalidPattern| invalid_pattern(raw))?;
+        .map_err(|e| pattern_error(raw, e))?;
     commit_search(state, view, raw.to_string(), direction, origin(sels));
     state.history.begin_session_all();
     if matched {
@@ -86,9 +87,12 @@ fn search_with_pattern(
     }
 }
 
-/// `raw` doesn't compile to a regex.
-fn invalid_pattern(raw: &str) -> CommandError {
-    CommandError::new(format!("invalid pattern: {raw}"))
+/// What a search or sift command reports when `raw` gives no regex.
+fn pattern_error(raw: &str, e: PatternError) -> CommandError {
+    match e {
+        PatternError::Empty => CommandError::new("empty pattern"),
+        PatternError::Invalid => CommandError::new(format!("invalid pattern: {raw}")),
+    }
 }
 
 /// Search forward for `pattern`.
@@ -129,10 +133,11 @@ fn ensure_search_pattern<'a>(
             let pattern = state
                 .registers
                 .search_register()
-                .filter(|p| !p.is_empty())
                 .ok_or_else(|| CommandError::transient("no search pattern"))?;
-            SearchPattern::compile(pattern)
-                .ok_or_else(|| CommandError::transient("invalid search pattern"))?
+            SearchPattern::compile(pattern).map_err(|e| match e {
+                PatternError::Empty => CommandError::transient("no search pattern"),
+                PatternError::Invalid => CommandError::transient("invalid search pattern"),
+            })?
         }
     };
     Ok(slot.insert(sp))
@@ -293,7 +298,7 @@ pub(in crate::editor) fn cmd_sift_within(
         state.sift_scans += 1;
     }
     let sifted = sift_within(doc(state, view, t).text(), sels, pattern).map_err(|e| match e {
-        SiftFailure::Invalid => invalid_pattern(pattern),
+        SiftFailure::Pattern(e) => pattern_error(pattern, e),
         SiftFailure::NoMatch => CommandError::transient("no match"),
     })?;
     set_pane_selections(state, view, t, sifted);
@@ -426,7 +431,7 @@ fn set_search_pattern(
     raw: String,
 ) -> Result<(), CommandError> {
     let sp = SearchPattern::compile(&raw)
-        .ok_or_else(|| CommandError::transient("invalid search pattern"))?;
+        .map_err(|_| CommandError::transient("invalid search pattern"))?;
     state.registers.set_search_register(raw);
     let bid = t.bid(view);
     state.buffers.get_mut(bid).search_pattern = Some(sp);

@@ -141,21 +141,30 @@ pub fn render_search_input(flags: SearchFlags, pattern: &str) -> String {
     rendered
 }
 
+/// Why [`compile_search_input`] produced no regex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PatternError {
+    /// Nothing follows the flags: `""`, `"m/"`.
+    Empty,
+    /// The pattern is not a valid regex.
+    Invalid,
+}
+
 /// Parse `input` for leading flags, then compile the remaining pattern:
 /// literally (via `escape_regex`) when `verbatim` is set, as smart-case
-/// regex otherwise. `None` when the pattern after the flags is empty or is
-/// not a valid regex.
-pub fn compile_search_input(input: &str) -> Option<(SearchFlags, Regex)> {
+/// regex otherwise.
+pub fn compile_search_input(input: &str) -> Result<(SearchFlags, Regex), PatternError> {
     let (flags, pattern) = parse_search_input(input);
     if pattern.is_empty() {
-        return None;
+        return Err(PatternError::Empty);
     }
     let regex = if flags.verbatim {
         compile_search_regex(&escape_regex(pattern))
     } else {
         compile_search_regex(pattern)
-    }?;
-    Some((flags, regex))
+    }
+    .ok_or(PatternError::Invalid)?;
+    Ok((flags, regex))
 }
 
 /// Find the next regex match in `text`, starting at `from`.

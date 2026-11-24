@@ -396,7 +396,7 @@ fn call_search_forward_with_an_invalid_pattern_writes_nothing() {
     );
 }
 
-/// An empty pattern, or one that is only flags, is an invalid pattern: the
+/// An empty pattern, or one that is only flags, is reported as empty: the
 /// previous search stays in place and `call!` answers `#f`.
 #[test]
 fn call_search_forward_with_an_empty_pattern_keeps_the_last_search() {
@@ -410,7 +410,7 @@ fn call_search_forward_with_an_empty_pattern_keeps_the_last_search() {
             ),
         );
         assert_eq!(text(&ed), "helxx\n", "pattern {empty:?}");
-        assert!(has_error(&ed, "invalid pattern"), "pattern {empty:?}");
+        assert!(has_error(&ed, "empty pattern"), "pattern {empty:?}");
         assert_eq!(reg(&ed, 's'), vec!["lo"], "pattern {empty:?}");
         assert_eq!(
             search_history(&ed, HistoryKind::SearchForward),
@@ -566,7 +566,7 @@ fn call_sift_within_with_an_empty_pattern_reports_and_keeps_the_selection() {
             ),
         );
         assert_eq!(text(&ed), "xx cd\n", "pattern {empty:?}");
-        assert!(has_error(&ed, "invalid pattern"), "pattern {empty:?}");
+        assert!(has_error(&ed, "empty pattern"), "pattern {empty:?}");
     }
 }
 
