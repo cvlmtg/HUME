@@ -28,21 +28,24 @@ fn scrolled_line(lefts: usize) -> MiniBuffer {
 #[test]
 fn a_line_wider_than_the_row_shows_its_tail_before_a_cursor_at_its_end() {
     let view = scrolled_line(0).statusline_view(AREA);
-    assert_eq!((view.text(), view.cursor_x()), (":jklmnop", 9));
+    insta::assert_snapshot!(view.text(), @":jklmnop");
+    assert_eq!(view.cursor_x(), 9);
 }
 
 /// The cursor on `n`, after `:jklm`.
 #[test]
 fn the_cursor_moves_left_across_a_scrolled_line_and_the_text_stays() {
     let view = scrolled_line(3).statusline_view(AREA);
-    assert_eq!((view.text(), view.cursor_x()), (":jklmnop", 6));
+    insta::assert_snapshot!(view.text(), @":jklmnop");
+    assert_eq!(view.cursor_x(), 6);
 }
 
 /// The cursor on `i`, the window's first cell after `:`.
 #[test]
 fn the_cursor_moved_before_the_window_scrolls_it_one_cluster() {
     let view = scrolled_line(8).statusline_view(AREA);
-    assert_eq!((view.text(), view.cursor_x()), (":ijklmnop", 2));
+    insta::assert_snapshot!(view.text(), @":ijklmnop");
+    assert_eq!(view.cursor_x(), 2);
 }
 
 /// Byte 0 (`a`) scrolled off the left lands on the first input cell, and an

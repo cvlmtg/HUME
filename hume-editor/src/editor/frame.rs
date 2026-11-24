@@ -378,10 +378,15 @@ impl Editor {
     /// The statusline provider over this editor: the fixture the element
     /// tests need, since `HumeStatusline`'s fields are assembled from
     /// disjoint borrows that a test holding a whole `&Editor` doesn't have to
-    /// bother splitting. It shows no minibuffer: `prepare_frame` resolves
-    /// that, so a test of the minibuffer's text renders a frame.
+    /// bother splitting. It panics while a minibuffer is open: only
+    /// `prepare_frame` resolves the view that row shows, so a test of that
+    /// row renders a frame.
     #[cfg(test)]
     pub(crate) fn statusline(&self) -> crate::statusline::HumeStatusline<'_> {
+        assert!(
+            self.state.minibuf().is_none(),
+            "the statusline fixture cannot show an open minibuffer; render a frame instead"
+        );
         let focused_bid = self.focused_buffer_id();
         let focused_state = self
             .state
