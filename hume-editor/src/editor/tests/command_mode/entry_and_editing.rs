@@ -1,6 +1,7 @@
 //! Entering command mode, typed commands, and editing the `:` line.
 
 use super::*;
+use hume_grid::Rect;
 use pretty_assertions::assert_eq;
 
 // ── Command mode ──────────────────────────────────────────────────────────────
@@ -13,6 +14,65 @@ fn colon_enters_command_mode() {
     assert!(ed.state.minibuf().is_some());
     assert_eq!(ed.state.minibuf().unwrap().prompt, ":");
     assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
+}
+
+/// The statusline row of a `width`-cell frame, trailing blanks dropped, and
+/// the cell the terminal cursor sits on.
+fn statusline_and_cursor_cell(ed: &mut Editor, width: u16) -> (String, String) {
+    let height = 5;
+    let buf = ed.render_to_buf(Rect::new(0, 0, width, height));
+    let y = height - 1;
+    let row: String = (0..width).map(|x| cell(&buf, x, y)).collect();
+    let frame = ed.prepare_frame(&mut hume_engine::pipeline::RenderContext::new());
+    let x = frame.minibuf.unwrap().cursor_x();
+    (row.trim_end().to_owned(), cell(&buf, x, y))
+}
+
+#[test]
+fn a_command_line_wider_than_the_row_scrolls_to_keep_the_cursor_in_view() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "abcdefghijklmnopqrst");
+    let (row, under_cursor) = statusline_and_cursor_cell(&mut ed, 12);
+    insta::assert_snapshot!(row, @" :lmnopqrst");
+    assert_eq!(under_cursor, " ");
+
+    for _ in 0..20 {
+        ed.feed_key(key_left());
+    }
+    let (row, under_cursor) = statusline_and_cursor_cell(&mut ed, 12);
+    insta::assert_snapshot!(row, @" :abcdefghij");
+    assert_eq!(under_cursor, "a");
+}
+
+/// `lmnopqrst` stays on the row while the cursor walks left from its end to
+/// `p`, and `qrst` after the cursor stays in view.
+#[test]
+fn the_cursor_moves_across_a_scrolled_command_line_and_the_text_stays() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "abcdefghijklmnopqrst");
+    statusline_and_cursor_cell(&mut ed, 12);
+    for _ in 0..5 {
+        ed.feed_key(key_left());
+        statusline_and_cursor_cell(&mut ed, 12);
+    }
+    let (row, under_cursor) = statusline_and_cursor_cell(&mut ed, 12);
+    insta::assert_snapshot!(row, @" :lmnopqrst");
+    assert_eq!(under_cursor, "p");
+}
+
+#[test]
+fn a_wide_command_line_keeps_the_cluster_under_the_cursor_in_view() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    type_chars(&mut ed, "日本語日本語日本語");
+    for _ in 0..4 {
+        ed.feed_key(key_left());
+    }
+    let (row, under_cursor) = statusline_and_cursor_cell(&mut ed, 12);
+    insta::assert_snapshot!(row, @" :本語日本語");
+    assert_eq!(under_cursor, "語");
 }
 
 /// Truncate-before-execute: a `:cmd` body runs with the `Command` layer

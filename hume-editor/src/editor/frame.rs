@@ -28,6 +28,7 @@ use super::buffer::store::BufferStore;
 use super::buffer::{Buffer, BufferFile};
 use super::geometry::LayoutKey;
 use super::input_stack::ResolvedPopupLayout;
+use super::minibuf::MinibufView;
 use super::pane_state::PaneEntries;
 use super::{Editor, EditorState};
 
@@ -114,6 +115,15 @@ impl FramePacer {
     }
 }
 
+/// What [`Editor::prepare_frame`] resolved for one frame: its layout and
+/// what the statusline shows of the minibuffer, which the terminal cursor,
+/// the completion popup and the statusline all place from.
+pub(in crate::editor) struct PreparedFrame {
+    pub(in crate::editor) screen: ScreenLayout,
+    /// `None` while no minibuffer is open.
+    pub(in crate::editor) minibuf: Option<MinibufView>,
+}
+
 /// What `Editor::run`'s loop draws frames with, kept from one frame to the
 /// next.
 pub(in crate::editor) struct FrameTarget<'a> {
@@ -153,18 +163,21 @@ impl Editor {
             ctx,
             cursor_black,
         } = target;
-        let frame_layout = self.prepare_frame(ctx);
+        let frame = self.prepare_frame(ctx);
+        let minibuf_open = frame.minibuf.is_some();
 
         // Compute terminal cursor position before the draw closure to avoid
         // split-borrow conflicts: pane borrows and rope borrows must end
         // before `&mut self.view` is captured by the closure.
-        let cursor_screen = if let Some(mb) = self.state.minibuf() {
+        let cursor_screen = if let Some(view) = &frame.minibuf {
             // Minibuf active (Command / Search / Select): place the terminal
             // cursor in the statusline at the minibuf edit position. Always a
             // bar: HUME's prompt modes have no cursor-shape option of their
             // own, unlike the document's own Insert-mode cursor below.
-            let statusline_row = frame_layout.statusline_area().y;
-            Some(Position::new(mb.statusline_cursor_x(), statusline_row))
+            Some(Position::new(
+                view.cursor_x(),
+                frame.screen.statusline_area().y,
+            ))
         } else {
             // Reads `cursor_shape()` directly rather than through
             // `resolve_pane_settings`: the focused pane's own
@@ -186,7 +199,7 @@ impl Editor {
                     // The focused pane's origin in the frame's layout, so the
                     // cursor lands inside the pane, not at the origin.
                     let focused =
-                        super::input_stack::FocusedBox::new(&self.state, &self.view, &frame_layout);
+                        super::input_stack::FocusedBox::new(&self.state, &self.view, &frame.screen);
                     let (x, y) = super::mouse::content_pos_to_screen(
                         content_x,
                         row,
@@ -205,7 +218,7 @@ impl Editor {
         let _ = hume_platform::terminal::begin_synchronized_update(term);
         let area = self.view.terminal_area();
         let grid = screen.frame(area.width, area.height);
-        self.render_into(grid, ctx, frame_layout);
+        self.render_into(grid, ctx, frame);
         screen.present(cursor_screen)?;
 
         // Emitted *after* the frame so it's the last escape sequence the
@@ -230,7 +243,7 @@ impl Editor {
         // The write is best-effort: a terminal that doesn't understand
         // DECSCUSR ignores it, and a genuine I/O failure surfaces from the
         // frame's one flush below.
-        let shape = if self.state.minibuf().is_some() {
+        let shape = if minibuf_open {
             crate::editor::settings::CursorShape::Bar
         } else {
             self.state.cursor_shape()
@@ -249,7 +262,7 @@ impl Editor {
         let _ = hume_platform::terminal::set_cursor_shape(term, cursor_style);
         // A minibuffer puts the cursor on the statusline's background; black
         // keeps it visible there. Everywhere else the default colour returns.
-        let black = self.state.minibuf().is_some();
+        let black = minibuf_open;
         if *cursor_black != Some(black) {
             let _ = hume_platform::terminal::set_cursor_color(term, black);
             *cursor_black = Some(black);
@@ -306,15 +319,15 @@ impl Editor {
         }
     }
 
-    /// Render one frame into `grid` as laid out by `layout`, the one
-    /// `prepare_frame` returned, whose terminal area is `grid`'s size. Single
+    /// Render one frame into `grid` as `frame`, the one `prepare_frame`
+    /// returned, lays it out; its terminal area is `grid`'s size. Single
     /// home for the rope and syntax lookups shared by the event loop and
     /// `render_to_buf`.
     pub(super) fn render_into(
         &mut self,
         grid: &mut Grid,
         ctx: &mut RenderContext,
-        layout: ScreenLayout,
+        frame: PreparedFrame,
     ) {
         // Resolved for every active pane up front: `resolve_pane_settings`
         // reads the pane it is asked about, and `render`'s pane loop borrows
@@ -347,6 +360,7 @@ impl Editor {
             focused_bid,
             focused_view: focused_state.view(state.buffers.get(focused_bid).text()),
             focused_search_cursor: &focused_state.search_cursor,
+            minibuf: frame.minibuf.as_ref(),
         };
         let buffers = &state.buffers;
         view.render(
@@ -355,7 +369,7 @@ impl Editor {
                 get_rope: |bid| buffers.try_get(bid).map(|b| b.text().rope()),
                 get_syntax: |bid| buffers.try_get(bid).and_then(Buffer::syntax_source),
                 statusline: &statusline,
-                layout,
+                layout: frame.screen,
             },
             ctx,
         );
@@ -364,7 +378,8 @@ impl Editor {
     /// The statusline provider over this editor: the fixture the element
     /// tests need, since `HumeStatusline`'s fields are assembled from
     /// disjoint borrows that a test holding a whole `&Editor` doesn't have to
-    /// bother splitting.
+    /// bother splitting. It shows no minibuffer: `prepare_frame` resolves
+    /// that, so a test of the minibuffer's text renders a frame.
     #[cfg(test)]
     pub(crate) fn statusline(&self) -> crate::statusline::HumeStatusline<'_> {
         let focused_bid = self.focused_buffer_id();
@@ -379,6 +394,7 @@ impl Editor {
             focused_bid,
             focused_view: focused_state.view(self.state.buffers.get(focused_bid).text()),
             focused_search_cursor: &focused_state.search_cursor,
+            minibuf: None,
         }
     }
 
@@ -393,8 +409,8 @@ impl Editor {
         let mut ctx = RenderContext::new();
         self.resize_terminal(rect.width, rect.height);
         self.settle();
-        let layout = self.prepare_frame(&mut ctx);
-        self.render_into(&mut buf, &mut ctx, layout);
+        let frame = self.prepare_frame(&mut ctx);
+        self.render_into(&mut buf, &mut ctx, frame);
         buf
     }
 
@@ -514,8 +530,9 @@ impl Editor {
     /// cursor's final screen cell.
     ///
     /// Returns the layout this frame's scroll pass and overlays were resolved
-    /// against, for `render_into` to draw.
-    pub(super) fn prepare_frame(&mut self, ctx: &mut RenderContext) -> ScreenLayout {
+    /// against and the minibuffer view resolved with them, for `render_into`
+    /// to draw.
+    pub(super) fn prepare_frame(&mut self, ctx: &mut RenderContext) -> PreparedFrame {
         // `ctx` is reused across frames; the scroll pass refills this.
         ctx.cursor_content_pos = None;
         // Required for correctness, see `EngineView::begin_frame`.
@@ -622,7 +639,13 @@ impl Editor {
         // rows render first: a failed render closes layers these views show.
         let picker_geometry = hume_ui::picker_panel::panel_geometry(screen.pane_area());
         self.prepare_picker_window(picker_geometry.as_ref());
-        self.sync_minibuf_completion_view(&screen);
+        let minibuf_area = crate::statusline::minibuf_input_area(screen.statusline_area());
+        let minibuf = self
+            .state
+            .input
+            .top_minibuf_mut()
+            .map(|mb| mb.statusline_view(minibuf_area));
+        self.sync_minibuf_completion_view(&screen, minibuf.as_ref());
         self.sync_popup_view(&screen, popup_layout, ctx.cursor_content_pos);
         self.sync_menu_view(&screen, ctx.cursor_content_pos);
         self.sync_completion_menu_view(&screen, ctx.cursor_content_pos);
@@ -631,7 +654,7 @@ impl Editor {
         // Bake scopes interned during this frame (extra highlights, inline
         // diagnostics, a new grammar's captures) before render resolves them.
         self.view.theme.bake_if_stale(&self.view.registry);
-        screen
+        PreparedFrame { screen, minibuf }
     }
 
     /// Sync everything that changes display-line counts or columns into the

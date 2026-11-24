@@ -28,6 +28,7 @@
 - A letter held with Alt, Cmd or any modifier but Shift that no key binds types nothing in Insert mode, the `:`, `/` and other prompts, or pickers.
 - The Markdown preview draws a task box with nothing after it, as in `- [ ]`, as a checkbox.
 - `(` and `)` take a count: `3)` makes the selection three places on primary.
+- A `:`, `/` or other prompt line wider than the statusline scrolls to keep the cursor in view.
 
 ## [0.22.2] - 2026-11-19
 

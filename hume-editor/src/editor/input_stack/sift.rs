@@ -10,6 +10,7 @@ use hume_ops::search::{PatternError, compile_search_input};
 use hume_ops::selection_cmd::sift_matches_within;
 
 use super::super::error::CommandError;
+use super::super::line_input::LineEdit;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::paste_plan::PlannedPaste;
 use super::super::replay::WaitingInput;
@@ -172,10 +173,9 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             commands::finish_text_operand(ed, sift.then, sift.input.take_answer(), Some(pattern));
         }
         MiniBufferEvent::BackspaceOnEmpty => restore_sift_snapshot(&mut ed.state, r),
-        MiniBufferEvent::Edited => update_live_sift(&mut ed.state, r),
+        MiniBufferEvent::Line(LineEdit::Changed) => update_live_sift(&mut ed.state, r),
         // Up/Down are reserved for minibuffer history: no-op in sift-within.
-        MiniBufferEvent::CursorMoved
-        | MiniBufferEvent::Ignored
+        MiniBufferEvent::Line(LineEdit::Moved | LineEdit::Ignored)
         | MiniBufferEvent::HistoryPrev
         | MiniBufferEvent::HistoryNext => {}
     }

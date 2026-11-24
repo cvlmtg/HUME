@@ -783,6 +783,40 @@ fn open_real_editor() -> Editor {
     open_headless(None)
 }
 
+/// The picker's input row in a 40x12 frame, trailing blanks dropped.
+fn picker_input_row(ed: &mut Editor) -> String {
+    let buf = ed.render_to_buf(Rect::new(0, 0, 40, 12));
+    let rect = ed
+        .state
+        .views
+        .picker
+        .read()
+        .as_ref()
+        .expect("picker open")
+        .rect;
+    let row: String = (rect.x + 1..rect.right() - 1)
+        .map(|x| cell(&buf, x, rect.y + 1))
+        .collect();
+    row.trim_end().to_owned()
+}
+
+/// `fghij…0123` stays on the row while the cursor walks left from the end
+/// to `z`, so `0123` after the cursor stays in view.
+#[test]
+fn the_cursor_moves_across_a_scrolled_query_and_the_text_stays() {
+    let mut ed = open_real_editor();
+    open_test_picker(&mut ed, &["alpha"]);
+    for ch in "abcdefghijklmnopqrstuvwxyz0123".chars() {
+        ed.feed_key(key(ch));
+    }
+    picker_input_row(&mut ed);
+    for _ in 0..5 {
+        ed.feed_key(key_left());
+        picker_input_row(&mut ed);
+    }
+    insta::assert_snapshot!(picker_input_row(&mut ed), @"fghijklmnopqrstuvwxyz0123  0/1");
+}
+
 #[test]
 fn snapshot_picker_over_populated_buffer_empty_query() {
     let mut ed = open_real_editor();

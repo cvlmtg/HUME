@@ -329,6 +329,60 @@ pub fn truncate_suffix_to_width(s: &str, max_display_width: usize) -> (&str, usi
     (&s[start..], display_col)
 }
 
+/// The part of a one-line chrome input that fits in a window of cells with
+/// its edit cursor in view: [`window_around_cursor`]'s result. Every field
+/// is whole clusters of the input.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CursorWindow<'a> {
+    /// The visible tail of the text before the cursor.
+    pub before: &'a str,
+    /// The width of [`Self::before`]: the cursor's cell within the window.
+    pub before_width: usize,
+    /// The cluster under the cursor: empty at the end of the text, or when
+    /// the cluster is wider than the room left for it.
+    pub at: &'a str,
+    /// The visible text after [`Self::at`].
+    pub after: &'a str,
+}
+
+/// The window of `cells` cells over chrome text `s` that keeps byte
+/// `cursor`, a cluster boundary, in view, scrolled as little as it can from
+/// the window that started at byte `from`, a cluster boundary.
+///
+/// The window starts at `from`, or at the cursor when the cursor is before
+/// it. When the cursor's cluster (one cell at the end of the text) does not
+/// fit after that start, the window keeps the tail of the text before the
+/// cursor that leaves room for it. When the text from that start and the
+/// cell after it leave cells free, the window starts earlier by as much as
+/// fits, so text that fits whole starts at 0. The cell after the text is
+/// kept wherever the cursor is, so moving the cursor off the end does not
+/// scroll. The text from the cursor on gets what is left.
+///
+/// Resolving again from the start this returns gives the same window.
+pub fn window_around_cursor(s: &str, cursor: usize, cells: usize, from: usize) -> CursorWindow<'_> {
+    let (head, tail) = s.split_at(cursor);
+    let cursor_width = tail.graphemes(true).next().map_or(1, chrome_cluster_width);
+    let kept = chrome_width(&head[from.min(cursor)..]);
+    let tail_cells = chrome_width(tail) + 1;
+    let budget = if kept + cursor_width > cells {
+        cells.saturating_sub(cursor_width)
+    } else if kept + tail_cells < cells {
+        cells - tail_cells
+    } else {
+        kept
+    };
+    let (before, before_width) = truncate_suffix_to_width(head, budget);
+    let (rest, _) = truncate_to_width(tail, cells - before_width);
+    let at_len = rest.graphemes(true).next().map_or(0, str::len);
+    let (at, after) = rest.split_at(at_len);
+    CursorWindow {
+        before,
+        before_width,
+        at,
+        after,
+    }
+}
+
 /// The truncation marker every chrome truncator (a list row's cut,
 /// the statusline's dir/filename shortener) prefixes or appends when it
 /// drops text. One glyph, one place its width is asserted, so the two

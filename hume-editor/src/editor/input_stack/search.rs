@@ -10,6 +10,7 @@ use hume_ops::search::{MatchScan, MatchSeed, PatternError, SearchDirection};
 
 use super::super::error::CommandError;
 use super::super::jump_list::JumpEntry;
+use super::super::line_input::LineEdit;
 use super::super::minibuf::history::{HistoryDir, HistoryKind, HistoryStore};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::paste_plan::PlannedPaste;
@@ -166,10 +167,10 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             // begins a fresh history session.
             ed.state.truncate_layers(&ed.view, r);
         }
-        MiniBufferEvent::Edited => search_edited(&mut ed.state, r),
+        MiniBufferEvent::Line(LineEdit::Changed) => search_edited(&mut ed.state, r),
         MiniBufferEvent::HistoryPrev => recall_search_history(ed, r, HistoryDir::Prev),
         MiniBufferEvent::HistoryNext => recall_search_history(ed, r, HistoryDir::Next),
-        MiniBufferEvent::CursorMoved | MiniBufferEvent::Ignored => {}
+        MiniBufferEvent::Line(LineEdit::Moved | LineEdit::Ignored) => {}
     }
 }
 

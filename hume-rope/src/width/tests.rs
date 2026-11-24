@@ -403,6 +403,123 @@ fn truncate_suffix_to_width_zero_budget_is_empty() {
     assert_eq!(truncate_suffix_to_width("abc", 0), ("", 0));
 }
 
+// ── window_around_cursor ─────────────────────────────────────────────────
+
+fn window<'a>(
+    before: &'a str,
+    at: &'a str,
+    after: &'a str,
+    before_width: usize,
+) -> CursorWindow<'a> {
+    CursorWindow {
+        before,
+        at,
+        after,
+        before_width,
+    }
+}
+
+#[test]
+fn window_around_cursor_keeps_text_that_fits_whole() {
+    assert_eq!(
+        window_around_cursor("abc", 1, 10, 0),
+        window("a", "b", "c", 1)
+    );
+}
+
+#[test]
+fn window_around_cursor_at_the_end_keeps_the_tail_and_a_cell_for_the_cursor() {
+    assert_eq!(
+        window_around_cursor("abcdef", 6, 4, 0),
+        window("def", "", "", 3)
+    );
+}
+
+#[test]
+fn window_around_cursor_at_the_start_keeps_the_head() {
+    assert_eq!(
+        window_around_cursor("abcdef", 0, 4, 0),
+        window("", "a", "bcd", 0)
+    );
+}
+
+#[test]
+fn window_around_cursor_in_the_middle_keeps_the_text_before_it() {
+    assert_eq!(
+        window_around_cursor("abcdef", 3, 4, 0),
+        window("abc", "d", "", 3)
+    );
+}
+
+#[test]
+fn window_around_cursor_leaves_room_for_a_wide_cluster_under_the_cursor() {
+    assert_eq!(
+        window_around_cursor("ab\u{65E5}c", 2, 3, 0),
+        window("b", "\u{65E5}", "", 1)
+    );
+}
+
+#[test]
+fn window_around_cursor_drops_a_wide_cluster_wider_than_the_window() {
+    assert_eq!(
+        window_around_cursor("a\u{65E5}", 1, 1, 0),
+        window("", "", "", 0)
+    );
+}
+
+#[test]
+fn window_around_cursor_with_no_cells_is_empty() {
+    assert_eq!(window_around_cursor("abc", 1, 0, 0), window("", "", "", 0));
+}
+
+#[test]
+fn window_around_cursor_keeps_its_start_while_the_cursor_moves_inside_it() {
+    assert_eq!(
+        window_around_cursor("abcdefghij", 6, 4, 4),
+        window("ef", "g", "h", 2)
+    );
+}
+
+#[test]
+fn window_around_cursor_starts_at_a_cursor_moved_before_its_start() {
+    assert_eq!(
+        window_around_cursor("abcdefghij", 3, 4, 4),
+        window("", "d", "efg", 0)
+    );
+}
+
+#[test]
+fn window_around_cursor_typing_past_the_right_edge_keeps_the_cursor_on_it() {
+    assert_eq!(
+        window_around_cursor("abcdefg", 7, 4, 2),
+        window("efg", "", "", 3)
+    );
+}
+
+#[test]
+fn window_around_cursor_moving_off_the_end_keeps_the_start() {
+    assert_eq!(
+        window_around_cursor("abcdefg", 6, 4, 4),
+        window("ef", "g", "", 2)
+    );
+}
+
+#[test]
+fn window_around_cursor_pulls_text_back_in_when_the_text_after_its_start_is_short() {
+    assert_eq!(
+        window_around_cursor("abcdef", 6, 5, 4),
+        window("cdef", "", "", 4)
+    );
+}
+
+#[test]
+fn window_around_cursor_pulls_back_no_wide_cluster_wider_than_the_free_cells() {
+    assert_eq!(
+        window_around_cursor("\u{65E5}ab", 5, 4, 3),
+        window("ab", "", "", 2)
+    );
+}
+
 #[test]
 fn indent_depth_counts_non_breaking_and_ideographic_spaces() {
     assert_eq!(indent_depth("\u{a0}\u{a0}\u{a0}\u{a0}x", 4), 1);
@@ -477,6 +594,52 @@ fn truncate_to_width_never_splits_a_cluster() {
     assert_eq!(truncate_to_width(&s, 2), (&s[..s.len() - 1], 2));
     let s = format!("{ZWJ_FAMILY}b");
     assert_eq!(truncate_to_width(&s, 1), ("", 0));
+}
+
+/// For every cursor position, previous start and width over the corpus, the
+/// window is whole clusters around the cursor, fits its cells, shows the
+/// cluster under the cursor whenever that cluster fits, and comes back
+/// unchanged when resolved again from its own start.
+#[test]
+fn window_around_cursor_shows_whole_clusters_around_the_cursor_over_the_corpus() {
+    for sample in test_fixtures::unicode::ALL {
+        let text = format!("a{sample}b{sample}c");
+        let starts: Vec<usize> = text.grapheme_indices(true).map(|(i, _)| i).collect();
+        let is_boundary = |i: usize| i == text.len() || starts.contains(&i);
+        for &cursor in starts.iter().chain(std::iter::once(&text.len())) {
+            let cluster = text[cursor..].graphemes(true).next().unwrap_or("");
+            for (&from, cells) in starts
+                .iter()
+                .filter(|&&from| from <= cursor)
+                .flat_map(|from| (0..=8).map(move |cells| (from, cells)))
+            {
+                let w = window_around_cursor(&text, cursor, cells, from);
+                let ctx = format!("{text:?} cursor {cursor} from {from} cells {cells}");
+                let start = cursor - w.before.len();
+                let end = cursor + w.at.len() + w.after.len();
+                assert_eq!(&text[start..cursor], w.before, "{ctx}");
+                assert_eq!(&text[cursor..end], format!("{}{}", w.at, w.after), "{ctx}");
+                assert!(is_boundary(start) && is_boundary(end), "{ctx}");
+                assert!(w.at.is_empty() || w.at == cluster, "{ctx}");
+                assert_eq!(w.before_width, chrome_width(w.before), "{ctx}");
+                assert!(
+                    w.before_width + chrome_width(w.at) + chrome_width(w.after) <= cells,
+                    "{ctx}"
+                );
+                if !cluster.is_empty() && chrome_cluster_width(cluster) <= cells {
+                    assert_eq!(w.at, cluster, "{ctx}");
+                }
+                if cluster.is_empty() && cells > 0 {
+                    assert!(w.before_width < cells, "{ctx}");
+                }
+                assert_eq!(
+                    window_around_cursor(&text, cursor, cells, start),
+                    w,
+                    "{ctx}"
+                );
+            }
+        }
+    }
 }
 
 /// A space carrying a combining mark is one blank cluster, as

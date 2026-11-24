@@ -37,6 +37,7 @@ fn state(
         prompt: String::new(),
         query: query.to_string(),
         cursor: query.len(),
+        query_start: 0,
         rows: rows
             .iter()
             .map(|s| Some(Arc::new(ListRow::plain(s.to_string()))))

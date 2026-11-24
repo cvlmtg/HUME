@@ -1,6 +1,7 @@
 pub(in crate::editor) mod history;
 
-use hume_rope::width::chrome_width;
+use hume_grid::Rect;
+use hume_rope::width::{chrome_width, truncate_to_width};
 
 use self::history::{HistoryDir, HistoryKind};
 use super::input_stack::{InputEvent, LayerRef, PastedText};
@@ -37,6 +38,45 @@ pub(crate) enum PromptCompletion {
     Source(&'static str),
 }
 
+/// What the statusline row shows of a [`MiniBuffer`] this frame:
+/// [`MiniBuffer::statusline_view`]'s result, resolved once in
+/// `prepare_frame`. The statusline draws [`text`](Self::text), and the
+/// terminal cursor and the completion popup are placed from it, so all
+/// three agree on what scrolled off.
+pub(crate) struct MinibufView {
+    /// The prompt as shown, then the visible part of the input.
+    text: String,
+    /// Screen column where `text` starts.
+    x: u16,
+    /// Byte length of the prompt's part of `text`.
+    prompt_len: usize,
+    prompt_width: usize,
+    /// Byte offset in the input where its visible part starts.
+    start: usize,
+    /// Byte offset of the edit cursor in the input.
+    cursor: usize,
+}
+
+impl MinibufView {
+    pub(crate) fn text(&self) -> &str {
+        &self.text
+    }
+
+    /// Screen column of the edit cursor.
+    pub(in crate::editor) fn cursor_x(&self) -> u16 {
+        self.x_at(self.cursor)
+    }
+
+    /// Screen column of the cell at `byte_offset` into the input. An offset
+    /// before the visible part lands on its first cell and one after the
+    /// cursor on the cursor's cell, so the column is always on the row.
+    pub(in crate::editor) fn x_at(&self, byte_offset: usize) -> u16 {
+        let offset = byte_offset.clamp(self.start, self.cursor) - self.start;
+        let input = &self.text[self.prompt_len..];
+        self.x + (self.prompt_width + chrome_width(&input[..offset])) as u16
+    }
+}
+
 /// Outcome of feeding one key to [`MiniBuffer::handle_key`].
 ///
 /// Callers match on this to perform the mode-specific follow-up action
@@ -48,19 +88,15 @@ pub(super) enum MiniBufferEvent {
     Confirm(String),
     /// Enter with empty input: treat as cancel.
     ConfirmEmpty,
-    /// The text changed: a character typed or deleted.
-    Edited,
     /// Backspace was pressed when the input is empty (nothing to delete).
     /// All modes treat this as a cancel / dismiss request.
     BackspaceOnEmpty,
-    /// Cursor moved left/right; content unchanged.
-    CursorMoved,
     /// Up pressed: caller should recall the previous history entry for this prompt.
     HistoryPrev,
     /// Down pressed: caller should recall the next history entry (or restore scratch).
     HistoryNext,
-    /// Key was not handled (e.g. unrecognised control sequence).
-    Ignored,
+    /// Any other key, and what it did to the line.
+    Line(LineEdit),
 }
 
 impl MiniBuffer {
@@ -87,23 +123,23 @@ impl MiniBuffer {
         }
     }
 
-    /// Column offset of the cell at `byte_offset` into the line's text
-    /// within the rendered statusline: the 1-column `pad_left` space the
-    /// statusline renderer prepends, plus the prompt's width, plus the
-    /// display width of the text up to `byte_offset` (clamped to its
-    /// length). Add `area.x` to get the absolute screen column.
-    pub(in crate::editor) fn cursor_x_at(&self, byte_offset: usize) -> u16 {
-        let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
-        let prompt_w = chrome_width(&self.prompt) as u16;
-        let input = self.line.text();
-        let safe_offset = byte_offset.min(input.len());
-        let input_w = chrome_width(&input[..safe_offset]) as u16;
-        pad + prompt_w + input_w
-    }
-
-    /// Column offset of the edit cursor within the rendered statusline.
-    pub(in crate::editor) fn statusline_cursor_x(&self) -> u16 {
-        self.cursor_x_at(self.line.cursor())
+    /// What `area`, the statusline's cells for the minibuffer, shows of
+    /// this line: the prompt, cut from its end so the cursor keeps a cell,
+    /// then the part of the input around the edit cursor that fits after
+    /// it, scrolled as little as it can from the last frame's.
+    pub(in crate::editor) fn statusline_view(&mut self, area: Rect) -> MinibufView {
+        let cells = usize::from(area.width);
+        let (prompt, prompt_width) = truncate_to_width(&self.prompt, cells.saturating_sub(1));
+        let cursor = self.line.cursor();
+        let window = self.line.scroll_window(cells - prompt_width);
+        MinibufView {
+            text: [prompt, window.before, window.at, window.after].concat(),
+            x: area.x,
+            prompt_len: prompt.len(),
+            prompt_width,
+            start: cursor - window.before.len(),
+            cursor,
+        }
     }
 
     /// Handle a single key event for standard mini-buffer editing.
@@ -133,11 +169,7 @@ impl MiniBuffer {
             // future completion-popup navigation.
             KeyCode::Up => MiniBufferEvent::HistoryPrev,
             KeyCode::Down => MiniBufferEvent::HistoryNext,
-            _ => match self.line.edit(key) {
-                LineEdit::Changed => MiniBufferEvent::Edited,
-                LineEdit::Moved => MiniBufferEvent::CursorMoved,
-                LineEdit::Ignored => MiniBufferEvent::Ignored,
-            },
+            _ => MiniBufferEvent::Line(self.line.edit(key)),
         }
     }
 }
@@ -202,9 +234,9 @@ pub(in crate::editor) fn command_line_input(
 
 /// Insert `text` as one line ([`PastedText::single_line`]) at the
 /// minibuffer's cursor: the paste half every minibuf-mode layer's paste
-/// handler shares, each then running the follow-up its own `Edited` arm
-/// runs. Whether the input changed: `false` when no minibuffer is live or
-/// `text` flattens to nothing.
+/// handler shares, each then running the follow-up its own key handler
+/// runs for a changed line. Whether the input changed: `false` when no
+/// minibuffer is live or `text` flattens to nothing.
 pub(in crate::editor) fn paste_into_minibuf(state: &mut EditorState, text: &PastedText) -> bool {
     state
         .input

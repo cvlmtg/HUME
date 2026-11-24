@@ -186,6 +186,11 @@ pub(in crate::editor) enum RemovalScope {
     SelfOnly,
 }
 
+/// A completion layer draws above the command line without replacing it.
+fn is_completion(layer: &dyn Layer) -> bool {
+    layer.is::<BufferCompletionLayer>() || layer.is::<MinibufCompletionLayer>()
+}
+
 // Downcasting through `Layer: Any`, as inherent methods on `dyn Layer` so no
 // layer writes it by hand.
 impl dyn Layer {
@@ -545,19 +550,28 @@ impl InputStack {
             .find_map(|(_, layer)| layer.minibuf_mut())
     }
 
-    /// The minibuffer owned by `top()`, skipping completion layers, which
-    /// draw above the command line without replacing it. `None` when a
-    /// minibuf-mode layer is buried under a picker or menu. A layer's own
-    /// handler can use [`Self::minibuf`], since it runs only while on top;
-    /// every other reader goes through [`EditorState::minibuf`].
+    /// [`Self::top_minibuf_mut`], to read.
+    #[cfg(test)]
     pub(in crate::editor) fn top_minibuf(&self) -> Option<&MiniBuffer> {
         self.layers
             .iter()
             .rev()
-            .find(|(_, layer)| {
-                !layer.is::<BufferCompletionLayer>() && !layer.is::<MinibufCompletionLayer>()
-            })
+            .find(|(_, layer)| !is_completion(layer.as_ref()))
             .and_then(|(_, layer)| layer.minibuf())
+    }
+
+    /// The minibuffer owned by `top()`, skipping completion layers, which
+    /// draw above the command line without replacing it: the one the
+    /// statusline row and the terminal cursor show. `None` when a
+    /// minibuf-mode layer is buried under a picker or menu: a buried layer
+    /// reads no keys, so showing it would show a dead prompt. A layer's own
+    /// handler can use [`Self::minibuf`], since it runs only while on top.
+    pub(in crate::editor) fn top_minibuf_mut(&mut self) -> Option<&mut MiniBuffer> {
+        self.layers
+            .iter_mut()
+            .rev()
+            .find(|(_, layer)| !is_completion(layer.as_ref()))
+            .and_then(|(_, layer)| layer.minibuf_mut())
     }
 
     /// The active popup, in either home: a pushed [`PopupLayer`], checked

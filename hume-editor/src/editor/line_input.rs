@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use hume_rope::grapheme::{next_str_boundary, prev_str_boundary};
+use hume_rope::width::{CursorWindow, window_around_cursor};
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
 use super::input::is_plain;
@@ -26,6 +27,10 @@ pub(crate) struct LineInput {
     /// Byte offset of the edit cursor within `text`. Always on a UTF-8
     /// char boundary.
     cursor: usize,
+    /// Byte offset where the last [`scroll_window`](Self::scroll_window)
+    /// started. At or before `cursor`, and a position the cursor or an edit
+    /// start held, so a boundary whatever keys arrive between two frames.
+    scroll: usize,
 }
 
 impl LineInput {
@@ -33,6 +38,7 @@ impl LineInput {
     pub(in crate::editor) fn new(text: String) -> Self {
         Self {
             cursor: text.len(),
+            scroll: 0,
             text,
         }
     }
@@ -90,6 +96,16 @@ impl LineInput {
         let start = span.start;
         self.text.replace_range(span, replacement);
         self.cursor = start + replacement.len();
+        self.scroll = self.scroll.min(start);
+    }
+
+    /// The window of `cells` cells over the text that shows the cursor,
+    /// scrolled as little as it can from the last one this returned. The
+    /// window's start is kept for the next call.
+    pub(in crate::editor) fn scroll_window(&mut self, cells: usize) -> CursorWindow<'_> {
+        let window = window_around_cursor(&self.text, self.cursor, cells, self.scroll);
+        self.scroll = self.cursor - window.before.len();
+        window
     }
 
     fn move_to(&mut self, to: usize) -> LineEdit {
@@ -97,6 +113,7 @@ impl LineInput {
             return LineEdit::Ignored;
         }
         self.cursor = to;
+        self.scroll = self.scroll.min(to);
         LineEdit::Moved
     }
 
@@ -107,6 +124,7 @@ impl LineInput {
         }
         self.text.drain(start..self.cursor);
         self.cursor = start;
+        self.scroll = self.scroll.min(start);
         LineEdit::Changed
     }
 }

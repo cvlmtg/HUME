@@ -6,6 +6,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::error::CommandError;
+use super::super::line_input::LineEdit;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, PromptCompletion};
 use super::super::paste_plan::PlannedPaste;
@@ -107,14 +108,16 @@ fn handle_shell_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
             }
             finish_shell_prompt(ed, r, Some(command));
         }
-        MiniBufferEvent::Edited | MiniBufferEvent::CursorMoved => shell_line_edited(&mut ed.state),
+        MiniBufferEvent::Line(LineEdit::Changed | LineEdit::Moved) => {
+            shell_line_edited(&mut ed.state);
+        }
         MiniBufferEvent::HistoryPrev => {
             minibuf::recall_history(ed, HistoryKind::Pipe, HistoryDir::Prev);
         }
         MiniBufferEvent::HistoryNext => {
             minibuf::recall_history(ed, HistoryKind::Pipe, HistoryDir::Next);
         }
-        MiniBufferEvent::Ignored => {}
+        MiniBufferEvent::Line(LineEdit::Ignored) => {}
     }
 }
 

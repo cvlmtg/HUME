@@ -132,15 +132,17 @@ impl Editor {
             return;
         }
 
-        let resolved = match (self.state.input.picker(), geo) {
+        let resolved = match (self.state.input.picker_mut(), geo) {
             (Some(session), Some(geo)) => {
                 let rows = session.window_rows(geo.list_rows, geo.list_width());
                 let selected_row =
                     (!rows.is_empty()).then(|| session.selected() - session.scroll());
-                Some(hume_ui::picker_panel::PickerViewState {
+                let mut view = hume_ui::picker_panel::PickerViewState {
                     prompt: session.prompt().to_string(),
                     query: session.query().to_string(),
                     cursor: session.query_cursor(),
+                    // Scrolled below, to the row this view lays out.
+                    query_start: 0,
                     rows,
                     selected_row,
                     matched: session.matched_len(),
@@ -149,7 +151,10 @@ impl Editor {
                     rect: geo.rect,
                     list_rows: geo.list_rows,
                     border: self.state.settings.popup_border,
-                })
+                };
+                let cells = hume_ui::picker_panel::input_row(&view).query_cells;
+                view.query_start = session.scroll_query(cells);
+                Some(view)
             }
             _ => None,
         };

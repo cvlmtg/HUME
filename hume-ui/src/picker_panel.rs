@@ -28,10 +28,7 @@ use hume_engine::render::Canvas;
 use hume_engine::theme::Theme;
 use hume_engine::theme::ui_scopes;
 use hume_engine::types::Scope;
-use hume_rope::grapheme::next_str_boundary;
-use hume_rope::width::{
-    chrome_cluster_width, chrome_width, truncate_suffix_to_width, truncate_to_width,
-};
+use hume_rope::width::{chrome_width, truncate_to_width, window_around_cursor};
 
 use super::list_row::{ListRow, draw_row};
 
@@ -68,6 +65,9 @@ pub struct PickerViewState {
     pub query: String,
     /// Byte offset of the edit cursor in `query`, on a cluster boundary.
     pub cursor: usize,
+    /// Byte offset in `query` where its window starts, already scrolled to
+    /// [`InputRow::query_cells`] around `cursor` this frame.
+    pub query_start: usize,
     /// The rows of the current scroll window, in ranked order, already
     /// scrolled and cut to the list width; the widget never re-windows. A
     /// `#:render` row is shared with the item it shows, and is `None`, which
@@ -143,6 +143,50 @@ pub fn panel_geometry(pane_area: Rect) -> Option<PanelGeometry> {
     })
 }
 
+/// The input row laid out inside the panel's frame: the prompt as it fits,
+/// the `matched/total` counter when it fits, and the cells the query gets
+/// between them.
+pub struct InputRow<'a> {
+    prompt: &'a str,
+    prompt_width: usize,
+    counts: Option<String>,
+    pub query_cells: usize,
+}
+
+/// Lays out `state`'s input row: the one layout the painter draws and the
+/// write side scrolls the query to.
+pub fn input_row(state: &PickerViewState) -> InputRow<'_> {
+    let inner_width = inner_area(state.rect).width as usize;
+    let counts = if state.pending {
+        format!("{}/{} …", state.matched, state.total)
+    } else {
+        format!("{}/{}", state.matched, state.total)
+    };
+    let counts_width = chrome_width(&counts);
+
+    // Clip the prompt itself only in the pathological case where it alone
+    // exceeds the inner width. The common case (empty or a short label)
+    // leaves this a no-op, so an empty prompt renders identically to no
+    // prompt at all. The readable prefix matters more than the tail for a
+    // fixed label, so this keeps the *head* (unlike the query, which keeps
+    // the text around its cursor).
+    let (prompt, prompt_width) = truncate_to_width(&state.prompt, inner_width);
+
+    let after_prompt_width = inner_width.saturating_sub(prompt_width);
+    // The counter needs 1 col for the cursor cell + 1 col of gap before it.
+    let show_counts = after_prompt_width >= counts_width + 2;
+    InputRow {
+        prompt,
+        prompt_width,
+        query_cells: if show_counts {
+            after_prompt_width - counts_width - 1
+        } else {
+            after_prompt_width
+        },
+        counts: show_counts.then_some(counts),
+    }
+}
+
 /// Resolved styles for the picker body. These are Helix's own picker scopes, not a
 /// HUME invention: `ui.background` (panel fill), `ui.text` (border/rows/
 /// query), `ui.text.focus` (the selected row, which Helix's docs call "the
@@ -203,69 +247,34 @@ pub(in crate::picker_panel) fn draw_picker_panel(
 
     let inner = inner_area(outer);
     let inner_x = inner.x;
-    let inner_width = inner.width as usize;
     // One bound for every text write below: the panel's inner right edge.
     // Each string is already truncated to fit, so this is a backstop that
     // keeps a mis-sized one inside the border instead of over it.
     let inner_right = inner.right();
     let input_y = inner.y;
 
-    let counts = if state.pending {
-        format!("{}/{} …", state.matched, state.total)
-    } else {
-        format!("{}/{}", state.matched, state.total)
-    };
-    let counts_width = chrome_width(&counts);
-
-    // Clip the prompt itself only in the pathological case where it alone
-    // exceeds the inner width. The common case (empty or a short label)
-    // leaves this a no-op, so an empty prompt renders identically to no
-    // prompt at all. The readable prefix matters more than the tail for a
-    // fixed label, so this keeps the *head* (unlike the query below, which
-    // keeps the text around its cursor).
-    let (prompt_shown, prompt_width) = truncate_to_width(&state.prompt, inner_width);
-    if prompt_width > 0 {
-        canvas.write_text_run(inner_x, input_y, prompt_shown, styles.text, inner_right);
+    let row = input_row(state);
+    if row.prompt_width > 0 {
+        canvas.write_text_run(inner_x, input_y, row.prompt, styles.text, inner_right);
     }
 
-    let after_prompt_width = inner_width.saturating_sub(prompt_width);
-    // The counter needs 1 col for the cursor cell + 1 col of gap before it.
-    let show_counts = after_prompt_width >= counts_width + 2;
-    let query_cells = if show_counts {
-        after_prompt_width - counts_width - 1
-    } else {
-        after_prompt_width
-    };
-    // The text before the cursor keeps its tail and leaves room for the
-    // whole cluster under the cursor (one cell at the end of the query); the
-    // text after it, which starts with that cluster, gets what is left.
-    let cursor_cluster = &state.query[state.cursor..next_str_boundary(&state.query, state.cursor)];
-    let cursor_width = if cursor_cluster.is_empty() {
-        1
-    } else {
-        chrome_cluster_width(cursor_cluster)
-    };
-    let (before, before_width) = truncate_suffix_to_width(
-        &state.query[..state.cursor],
-        query_cells.saturating_sub(cursor_width),
+    let window = window_around_cursor(
+        &state.query,
+        state.cursor,
+        row.query_cells,
+        state.query_start,
     );
-    let (after, _) = truncate_to_width(&state.query[state.cursor..], query_cells - before_width);
-
-    let query_x = inner_x + prompt_width as u16;
-    canvas.write_text_run(query_x, input_y, before, styles.text, inner_right);
-    let cursor_x = query_x + before_width as u16;
-    canvas.write_text_run(cursor_x, input_y, after, styles.text, inner_right);
+    let query_x = inner_x + row.prompt_width as u16;
+    canvas.write_text_run(query_x, input_y, window.before, styles.text, inner_right);
+    let cursor_x = query_x + window.before_width as u16;
     if cursor_x < inner_right {
-        let cell = if after.is_empty() {
-            " "
-        } else {
-            cursor_cluster
-        };
-        canvas.write_text_run(cursor_x, input_y, cell, styles.cursor, inner_right);
+        let cell = if window.at.is_empty() { " " } else { window.at };
+        let after_x = canvas.write_text_run(cursor_x, input_y, cell, styles.cursor, inner_right);
+        canvas.write_text_run(after_x, input_y, window.after, styles.text, inner_right);
     }
-    if show_counts {
-        let counts_x = inner.right() - counts_width as u16;
-        canvas.write_text_run(counts_x, input_y, &counts, styles.text, inner_right);
+    if let Some(counts) = &row.counts {
+        let counts_x = inner.right() - chrome_width(counts) as u16;
+        canvas.write_text_run(counts_x, input_y, counts, styles.text, inner_right);
     }
 
     for (i, row) in state.rows.iter().take(state.list_rows).enumerate() {

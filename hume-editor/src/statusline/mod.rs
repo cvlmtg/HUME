@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use hume_engine::render::Canvas;
 
-use crate::editor::EditorState;
+use crate::editor::{EditorState, MinibufView};
 use colors::EditorColors;
 use hume_core::BufferId;
 use hume_rope::width::chrome_width;
@@ -23,6 +23,18 @@ use elements::{
 
 /// Hardcoded left section for Command/Search modes.
 const MINIBUF_LEFT: &[StatusElement] = &[StatusElement::MiniBuf];
+
+/// The cells the `MiniBuf` text gets on the statusline row `statusline`:
+/// all of it after the left section's [`EDGE_PAD`], since [`MINIBUF_LEFT`]
+/// holds nothing before it.
+pub(crate) fn minibuf_input_area(statusline: Rect) -> Rect {
+    let pad = chrome_width(EDGE_PAD) as u16;
+    Rect {
+        x: statusline.x + pad,
+        width: statusline.width.saturating_sub(pad),
+        ..statusline
+    }
+}
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 
@@ -87,7 +99,7 @@ pub enum StatusElement {
     SearchMatches,
     /// The mini-buffer input field: prompt character followed by typed text.
     ///
-    /// Rendered only when `editor.state.minibuf()` is `Some`; empty otherwise.
+    /// Rendered only while a minibuffer is open; empty otherwise.
     MiniBuf,
     /// Macro recording indicator: `"[recording @q]"` while a macro is being
     /// recorded, empty otherwise.
@@ -260,6 +272,9 @@ impl Default for StatusLineConfig {
 
 // ── Edge padding ─────────────────────────────────────────────────────────────
 
+/// What [`pad_left`] and [`pad_right`] put at the row's edges.
+const EDGE_PAD: &str = " ";
+
 /// Prepend a 1-space padding span to the left section.
 ///
 /// This gives every left section a consistent left margin without requiring
@@ -269,7 +284,7 @@ fn pad_left<'a>(
     colors: &EditorColors,
 ) -> Vec<(Cow<'a, str>, ResolvedStyle)> {
     if !spans.is_empty() {
-        spans.insert(0, (Cow::Borrowed(" "), colors.statusline));
+        spans.insert(0, (Cow::Borrowed(EDGE_PAD), colors.statusline));
     }
     spans
 }
@@ -283,7 +298,7 @@ fn pad_right<'a>(
     colors: &EditorColors,
 ) -> Vec<(Cow<'a, str>, ResolvedStyle)> {
     if !spans.is_empty() {
-        spans.push((Cow::Borrowed(" "), colors.statusline));
+        spans.push((Cow::Borrowed(EDGE_PAD), colors.statusline));
     }
     spans
 }
@@ -334,6 +349,9 @@ pub(crate) struct HumeStatusline<'a> {
     pub(crate) focused_bid: BufferId,
     pub(crate) focused_view: hume_editing::selection::EditView<'a>,
     pub(crate) focused_search_cursor: &'a crate::editor::search::SearchCursor,
+    /// The minibuffer this frame shows, resolved in `prepare_frame`; `None`
+    /// while no minibuffer is open.
+    pub(crate) minibuf: Option<&'a MinibufView>,
 }
 
 impl HumeStatusline<'_> {
@@ -405,7 +423,7 @@ impl hume_engine::providers::ChromeProvider for HumeStatusline<'_> {
             return;
         }
 
-        if editor.state.minibuf().is_none() {
+        if editor.minibuf.is_none() {
             // A fresh status_msg (set this frame) takes priority. Falling back
             // to the log summary keeps unseen-message context visible between
             // keypresses, without adding a separate status row.
@@ -451,7 +469,7 @@ fn render_statusline(
         &[StatusElement],
         &[StatusElement],
         &[StatusElement],
-    ) = if editor.state.minibuf().is_some() {
+    ) = if editor.minibuf.is_some() {
         (MINIBUF_LEFT, &[], &config.right)
     } else {
         (&config.left, &config.center, &config.right)

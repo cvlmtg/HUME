@@ -174,8 +174,8 @@ fn sift_mode_paste_triggers_live_sift() {
     assert_eq!(ed.state.mode(), Mode::Sift);
     ed.feed_paste("ab");
     // Live sift-within already narrowed to the two "ab" matches within the
-    // original selection: the paste ran through the same `Edited` arm a
-    // typed pattern would.
+    // original selection: the paste ran the same follow-up a typed pattern's
+    // edit runs.
     assert_eq!(ed.current_view().len(), 2);
     assert_eq!(ed.state.minibuf().unwrap().line.text(), "ab");
 }

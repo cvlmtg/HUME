@@ -143,8 +143,8 @@ pub(in crate::editor) fn prompt_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     }
 }
 
-/// An edit has no follow-up here, as `handle_steel_prompt_event`'s `Edited`
-/// arm shows.
+/// A line edit has no follow-up here, as `handle_steel_prompt_event`'s
+/// `Line` arm shows.
 fn prompt_paste(
     state: &mut EditorState,
     _view: &EngineView,
@@ -168,11 +168,7 @@ fn handle_steel_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
         // Plain editing (char typed/deleted, cursor moved) is already
         // applied by `MiniBuffer::handle_key`; nothing further to do.
         // Up/Down are no-ops here (no history for a one-shot prompt).
-        MiniBufferEvent::Edited
-        | MiniBufferEvent::CursorMoved
-        | MiniBufferEvent::HistoryPrev
-        | MiniBufferEvent::HistoryNext
-        | MiniBufferEvent::Ignored => {}
+        MiniBufferEvent::Line(_) | MiniBufferEvent::HistoryPrev | MiniBufferEvent::HistoryNext => {}
     }
 }
 

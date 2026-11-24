@@ -8,20 +8,15 @@ use crate::statusline::colors::EditorColors;
 pub(in crate::statusline) struct MiniBufElement;
 
 impl StatuslineElement for MiniBufElement {
-    /// `(prompt, input)`, present only while the minibuffer is active.
-    type Data<'a> = Option<(&'a str, &'a str)>;
+    /// The text the minibuffer shows this frame, present only while one is
+    /// open.
+    type Data<'a> = Option<&'a str>;
 
     fn read<'a>(editor: &'a HumeStatusline<'_>) -> Self::Data<'a> {
-        editor
-            .state
-            .minibuf()
-            .map(|mb| (mb.prompt.as_str(), mb.line.text()))
+        editor.minibuf.map(|view| view.text())
     }
 
     fn format<'a>(data: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {
-        match data {
-            Some((prompt, input)) => (Cow::Owned(format!("{prompt}{input}")), colors.statusline),
-            None => (Cow::Borrowed(""), colors.statusline),
-        }
+        (Cow::Borrowed(data.unwrap_or_default()), colors.statusline)
     }
 }

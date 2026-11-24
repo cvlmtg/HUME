@@ -5,8 +5,9 @@ use hume_engine::types::EditorMode;
 
 use super::super::dispatch::unknown_command_text;
 use super::super::error::CommandError;
+use super::super::line_input::LineEdit;
 use super::super::minibuf::history::{HistoryDir, HistoryKind};
-use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, PromptCompletion};
+use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, MinibufView, PromptCompletion};
 use super::super::paste_plan::PlannedPaste;
 use super::super::registry::{ArgExpansion, Takes, TypedBody};
 use super::super::replay::WaitingInput;
@@ -64,9 +65,14 @@ impl Editor {
     /// [`Self::sync_completion_menu_view`] instead, into its own slot.
     ///
     /// Called from `prepare_frame`'s overlay-sync step with the frame's
-    /// layout. Needs only that layout, unlike its cursor-anchored siblings,
-    /// which need the current frame's scroll result too.
-    pub(in crate::editor) fn sync_minibuf_completion_view(&self, screen: &ScreenLayout) {
+    /// layout and the minibuffer view it resolved, unlike its
+    /// cursor-anchored siblings, which need the current frame's scroll
+    /// result.
+    pub(in crate::editor) fn sync_minibuf_completion_view(
+        &self,
+        screen: &ScreenLayout,
+        minibuf: Option<&MinibufView>,
+    ) {
         let is_open = self.state.input.minibuf_completion().is_some();
         // Skip the write-lock when both sides are already None: common case
         // while no popup is open.
@@ -78,12 +84,7 @@ impl Editor {
             let session = self.state.input.minibuf_completion()?;
             let anchor_byte = session.menu_anchor_byte()?;
             let selected = session.selected();
-            let anchor_x = self
-                .state
-                .input
-                .minibuf()
-                .map(|mb| mb.cursor_x_at(anchor_byte))
-                .unwrap_or(0);
+            let anchor_x = minibuf?.x_at(anchor_byte);
             let window = hume_ui::popup::menu_window(session.len(), selected, area);
             let rows = session.rows_in(window.range.clone());
             // Anchoring at the statusline row, one past `area`'s bottom, is
@@ -165,7 +166,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         // scratch. An edit that empties the line keeps the minibuffer open:
         // only a Backspace on an empty line dismisses it, so deleting a
         // one-char typo doesn't close the prompt.
-        MiniBufferEvent::Edited | MiniBufferEvent::CursorMoved => {
+        MiniBufferEvent::Line(LineEdit::Changed | LineEdit::Moved) => {
             command_line_edited(&mut ed.state);
         }
         MiniBufferEvent::HistoryPrev => {
@@ -174,7 +175,7 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         MiniBufferEvent::HistoryNext => {
             minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Next);
         }
-        MiniBufferEvent::Ignored => {}
+        MiniBufferEvent::Line(LineEdit::Ignored) => {}
     }
 }
 

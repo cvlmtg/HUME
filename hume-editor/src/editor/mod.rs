@@ -61,6 +61,7 @@ pub(crate) mod lsp;
 mod macros;
 mod message_log;
 mod minibuf;
+pub(crate) use minibuf::MinibufView;
 mod mouse;
 mod pane_state;
 mod paste_plan;
@@ -519,10 +520,9 @@ impl EditorState {
         self.input.mode()
     }
 
-    /// The minibuf that owns the statusline row and the hardware cursor now:
-    /// `Some` only when its layer is `top()`. A minibuf-mode layer buried
-    /// under a picker or menu no longer reads the keys, so painting it here
-    /// would show a dead prompt.
+    /// The minibuf the statusline row shows now: `Some` only when its layer
+    /// is `top()` (see `InputStack::top_minibuf_mut`).
+    #[cfg(test)]
     pub(crate) fn minibuf(&self) -> Option<&MiniBuffer> {
         self.input.top_minibuf()
     }
