@@ -15,12 +15,13 @@ use hume_rope::grapheme::common_str_prefix;
 use hume_scripting::SteelCall;
 use hume_scripting::host::EmittedWord;
 
+use super::super::super::line_input::LineInput;
 use super::super::item::{CandidateKey, CompletionItem};
 use super::super::registry::{MinibufSourceId, SourceRegistry};
 use super::slots::{Invocation, SlotSet, SlotTokens};
 use hume_core::{AnswerEnd, FirstTab, HostToken, MatchKind};
 
-/// Byte range in [`MinibufSession`]'s own `input` that a `Minibuf`
+/// Byte range in [`MinibufSession`]'s own line that a `Minibuf`
 /// invocation answered for. Never moves: nothing can edit the line while
 /// a session is open without dismissing it. `pub(in crate::editor)`:
 /// `orchestrate.rs` names `Invocation<MinibufSpan>` at every invoke call
@@ -55,10 +56,9 @@ impl Invocation<MinibufSpan> {
 /// `Minibuf` session invokes exactly one source, so there is never a
 /// second slot to dedup against.
 pub(in crate::editor) struct MinibufSession {
-    input: String,
-    cursor: usize,
+    line: LineInput,
     /// [`super::BufferSession`]'s `menu_anchor` counterpart, a byte offset
-    /// into `input`.
+    /// into `line`'s text.
     menu_anchor: Option<usize>,
     /// Whether the user (or the eager policy) has picked a row since the
     /// last [`Self::rank`]. Until then nothing is highlighted and Tab
@@ -72,11 +72,10 @@ pub(in crate::editor) struct MinibufSession {
 }
 
 impl MinibufSession {
-    /// A session over a minibuffer line's `input`, cursor at byte `cursor`.
-    pub(in crate::editor) fn open(input: String, cursor: usize) -> Self {
+    /// A session over a copy of a minibuffer line.
+    pub(in crate::editor) fn open(line: LineInput) -> Self {
         Self {
-            input,
-            cursor,
+            line,
             menu_anchor: None,
             picked: false,
             kept_pick: None,
@@ -84,8 +83,9 @@ impl MinibufSession {
         }
     }
 
-    pub(in crate::editor) fn input(&self) -> &str {
-        &self.input
+    /// The line every source saw.
+    pub(in crate::editor) fn line(&self) -> &LineInput {
+        &self.line
     }
 
     // ── Sources in and out ───────────────────────────────────────────────────
@@ -110,7 +110,7 @@ impl MinibufSession {
     }
 
     /// Lands a Steel source's answer for invocation `id`, completing the
-    /// word it names: `word.span`, a char range of [`Self::input`] (`None`
+    /// word it names: `word.span`, a char range of [`Self::line`] (`None`
     /// keeps the invocation's own), and `word.prefix`, what the first Tab
     /// puts over it. A [`FirstTab::Named`] text has a syntax the session
     /// cannot read, so it is applied as given: the typed text and the
@@ -173,10 +173,10 @@ impl MinibufSession {
         )
     }
 
-    /// Char range `chars` of [`Self::input`] as bytes, `Err` unless it
+    /// Char range `chars` of [`Self::line`] as bytes, `Err` unless it
     /// holds the cursor within the line.
     fn span_bytes(&self, chars: Range<usize>) -> Result<Range<usize>, String> {
-        let input = &self.input;
+        let input = self.line.text();
         let byte_at = |n: usize| {
             input
                 .char_indices()
@@ -184,7 +184,7 @@ impl MinibufSession {
                 .chain([input.len()])
                 .nth(n)
         };
-        let cursor = input[..self.cursor].chars().count();
+        let cursor = input[..self.line.cursor()].chars().count();
         match (byte_at(chars.start), byte_at(chars.end)) {
             (Some(start), Some(end)) if chars.start <= cursor && cursor <= chars.end => {
                 Ok(start..end)
@@ -220,14 +220,14 @@ impl MinibufSession {
 
     // ── Ranking ──────────────────────────────────────────────────────────────
 
-    /// Re-scores every shown item against `input[start..cursor]`; see
-    /// `SlotSet::rank_with`'s own doc for the shared rank key. No `dedup`
-    /// argument: this target has none. Nothing is picked afterwards except
-    /// a pick kept across the parts of an answer whose candidate still ranks.
+    /// Re-scores every shown item against the line's text from each span's
+    /// start to the cursor; see `SlotSet::rank_with`'s own doc for the
+    /// shared rank key. No `dedup` argument: this target has none. Nothing
+    /// is picked afterwards except a pick kept across the parts of an
+    /// answer whose candidate still ranks.
     pub(in crate::editor) fn rank(&mut self, sources: &SourceRegistry) {
         let Self {
-            input,
-            cursor,
+            line,
             menu_anchor,
             picked,
             kept_pick,
@@ -235,7 +235,10 @@ impl MinibufSession {
         } = self;
         *menu_anchor = core.rank_with(sources, None, |inv| {
             let start = inv.span.bytes.start;
-            Some(SlotTokens::single(input[start..*cursor].to_owned(), start))
+            Some(SlotTokens::single(
+                line.text()[start..line.cursor()].to_owned(),
+                start,
+            ))
         });
         *picked = kept_pick
             .take()
@@ -285,7 +288,7 @@ impl MinibufSession {
     }
 
     /// Where the menu anchors; see `BufferSession::menu_anchor`'s
-    /// own doc, a byte offset into [`Self::input`] here instead of a
+    /// own doc, a byte offset into [`Self::line`] here instead of a
     /// `CharOffset`.
     pub(in crate::editor) fn menu_anchor_byte(&self) -> Option<usize> {
         self.menu_anchor
@@ -310,10 +313,10 @@ impl MinibufSession {
         match &inv.span.prefix {
             FirstTab::Nothing => None,
             FirstTab::Named(prefix) => {
-                (self.cursor == span.end).then_some((span, Cow::Borrowed(prefix.as_str())))
+                (self.line.cursor() == span.end).then_some((span, Cow::Borrowed(prefix.as_str())))
             }
             FirstTab::Common => {
-                let typed = &self.input[span.clone()];
+                let typed = &self.line.text()[span.clone()];
                 let prefix = (1..self.core.len())
                     .filter_map(|i| self.core.selected_item(i))
                     .fold(first.insert_text(), |p, item| {

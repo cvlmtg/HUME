@@ -596,13 +596,12 @@ impl PickerSession {
         self.query_changed()
     }
 
-    /// Shared tail of every query mutator. A filter
-    /// session's rows answer the new query, so the rows `#:render` made are
-    /// forgotten. A live session's keep theirs until its requery delivers:
-    /// this returns its `on_query_change` callback and arms `requery_armed`
-    /// so `is_pending` reads "still arriving" for the whole
-    /// stop/debounce/respawn gap a requery opens, not just while a source
-    /// happens to be attached.
+    /// Shared tail of every query mutator. A filter session's rows answer
+    /// the new query, so the rows `#:render` made are forgotten. A live
+    /// session's keep theirs until its requery delivers: this returns its
+    /// `on_query_change` callback and arms `requery_armed` so `is_pending`
+    /// reads "still arriving" for the whole stop/debounce/respawn gap a
+    /// requery opens, not just while a source happens to be attached.
     fn query_changed(&mut self) -> Option<Callback> {
         let PickerMode::Live {
             on_query_change, ..

@@ -188,10 +188,6 @@ fn update_live_sift(state: &mut EditorState, r: LayerRef) {
     let Some(pattern) = state.input.minibuf().map(|mb| mb.line.text().to_owned()) else {
         return;
     };
-    if pattern.is_empty() {
-        restore_sift_snapshot(state, r);
-        return;
-    }
 
     let Some(sift) = state.input.at::<SiftLayer>(r) else {
         return;
@@ -221,7 +217,7 @@ fn update_live_sift(state: &mut EditorState, r: LayerRef) {
                 });
             }
         }
-        // Invalid regex in progress, or nothing matched: restore originals.
+        // An empty or invalid pattern, or nothing matched: restore originals.
         Err(SiftFailure::Invalid | SiftFailure::NoMatch) => restore_sift_snapshot(state, r),
     }
 }

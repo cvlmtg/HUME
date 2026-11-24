@@ -8,6 +8,8 @@
 
 use termina::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
 
+use crate::editor::input::LOCK_MODIFIERS;
+
 /// `KeyEvent`'s `PartialEq`/`Hash` impls perform no case normalization, so
 /// binding lookups normalize uppercase char ⇔ `SHIFT` explicitly at this
 /// boundary, and give `BackTab` the `SHIFT` terminals always report with it,
@@ -15,11 +17,11 @@ use termina::event::{KeyCode, KeyEvent, KeyEventKind, KeyEventState, Modifiers};
 /// participate in binding identity:
 /// `kind` (a kitty autorepeat is a `Repeat` event, not `Press`; held keys
 /// must keep matching the same binding under `REPORT_EVENT_TYPES`), protocol
-/// `state`, and the Caps/Num Lock modifier bits.
+/// `state`, and the [`LOCK_MODIFIERS`] bits.
 fn canonical(mut key: KeyEvent) -> KeyEvent {
     key.kind = KeyEventKind::Press;
     key.state = KeyEventState::NONE;
-    key.modifiers -= Modifiers::CAPS_LOCK | Modifiers::NUM_LOCK;
+    key.modifiers -= LOCK_MODIFIERS;
     if key.code == KeyCode::BackTab {
         key.modifiers |= Modifiers::SHIFT;
     }

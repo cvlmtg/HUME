@@ -300,11 +300,11 @@ pub trait UiHost {
     ///
     /// `keymap` is every key the picker answers besides typing: a bound key
     /// runs its binding, queued, and nothing else, so the picker stays open
-    /// until a binding calls `picker-close!`. An unbound plain character (no
-    /// Ctrl or Alt) types into the query, an unbound `Backspace` deletes a
-    /// grapheme from it, an unbound Ctrl-w deletes its last word, and any
-    /// other unbound key does nothing. `Err` when two specs name
-    /// the same key.
+    /// until a binding calls `picker-close!`. An unbound character with no
+    /// modifier but Shift types into the query, an unbound `Backspace`
+    /// deletes a grapheme from it, an unbound Ctrl-w deletes its last word,
+    /// and any other unbound key does nothing. `Err` when two specs name the
+    /// same key.
     ///
     /// `on_close` fires once, queued, however the picker closes:
     /// `picker-close!`, a second `picker!`/`live-picker!` replacing it, or

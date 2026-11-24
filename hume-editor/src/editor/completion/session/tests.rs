@@ -2,6 +2,7 @@
 //! (no editor, no Steel). The orchestration around it is covered by
 //! `editor/tests/completion/`.
 
+use super::super::super::line_input::LineInput;
 use super::super::item::CompletionItem;
 use super::super::registry::{
     BufferSourceEntry, BufferSourceId, MinibufBody, MinibufSourceEntry, MinibufSourceId,
@@ -792,7 +793,7 @@ fn a_later_invocation_starts_from_its_own_snapshot() {
 
 #[test]
 fn step_selection_on_an_empty_ranking_does_not_move() {
-    let mut session = MinibufSession::open(String::new(), 0);
+    let mut session = MinibufSession::open(LineInput::default());
     assert!(!session.step_selection(true));
     assert!(!session.step_selection(false));
     assert_eq!(session.selected(), None);
@@ -801,7 +802,7 @@ fn step_selection_on_an_empty_ranking_does_not_move() {
 #[test]
 fn step_selection_wraps_at_either_end() {
     let reg = minibuf_registry(&["s"]);
-    let mut session = MinibufSession::open("w".into(), 1);
+    let mut session = MinibufSession::open(LineInput::new("w".into()));
     let id = session.invoke(minibuf_id_of(&reg, "s"), Invocation::minibuf(0..1));
     assert!(session.contribute(id, items(&["wa", "wb"])));
     session.rank(&reg);
@@ -821,7 +822,7 @@ fn step_selection_wraps_at_either_end() {
 /// A `Minibuf` session over an empty line, invoked once; returns the
 /// invocation id.
 fn streaming_session(reg: &SourceRegistry) -> (MinibufSession, HostToken) {
-    let mut session = MinibufSession::open(String::new(), 0);
+    let mut session = MinibufSession::open(LineInput::default());
     let id = session.invoke(minibuf_id_of(reg, "s"), Invocation::minibuf(0..0));
     (session, id)
 }

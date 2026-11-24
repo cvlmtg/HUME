@@ -203,26 +203,26 @@ fn update_live_search(state: &mut EditorState, r: LayerRef) {
     let Some(search) = state.input.at::<SearchLayer>(r) else {
         return;
     };
+    let Some((bid, sels)) = search.snap.selections() else {
+        return;
+    };
+    if pattern.is_empty() {
+        restore_search_snapshot(state, r);
+        search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.entries, bid);
+        return;
+    }
     let direction = search.direction;
     let mode = if search.then.ctx.extend {
         MotionMode::Extend
     } else {
         MotionMode::Move
     };
-    let Some(origin) = search.snap.selections().map(|(bid, sels)| SearchOrigin {
+    let origin = SearchOrigin {
         pane: search.snap.pane(),
         bid,
         sels: sels.clone(),
-    }) else {
-        return;
     };
 
-    let bid = origin.bid;
-    if pattern.is_empty() {
-        restore_search_snapshot(state, r);
-        search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.entries, bid);
-        return;
-    }
     match preview_search(state, origin, direction, mode, &pattern) {
         Ok(true) => {}
         // No match: restore position to pre-search.

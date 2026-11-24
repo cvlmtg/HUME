@@ -7,12 +7,17 @@ use super::Editor;
 use super::event::EditorEvent;
 use super::input_stack::{InputEvent, PastedText};
 
+/// Caps Lock and Num Lock: states a terminal may report on a key, not
+/// modifiers held with it. Neither a binding nor [`is_plain`] reads them.
+pub(in crate::editor) const LOCK_MODIFIERS: Modifiers =
+    Modifiers::CAPS_LOCK.union(Modifiers::NUM_LOCK);
+
 /// Whether a key held with `modifiers` stands for its own character: no
-/// modifier but Shift is held. Caps Lock and Num Lock are states, not held
-/// modifiers, so they don't count. An unbound key types its character in
-/// Insert mode, a prompt or a picker only when this holds.
+/// modifier but Shift is held, [`LOCK_MODIFIERS`] aside. An unbound key
+/// types its character in Insert mode, a prompt or a picker only when this
+/// holds.
 pub(in crate::editor) fn is_plain(modifiers: Modifiers) -> bool {
-    (modifiers - (Modifiers::SHIFT | Modifiers::CAPS_LOCK | Modifiers::NUM_LOCK)).is_empty()
+    (modifiers - Modifiers::SHIFT - LOCK_MODIFIERS).is_empty()
 }
 
 impl Editor {

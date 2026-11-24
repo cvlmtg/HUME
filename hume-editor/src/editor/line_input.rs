@@ -112,24 +112,17 @@ fn word_boundary_back(s: &str, cursor: usize) -> usize {
             .chars()
             .all(|c| c.is_whitespace() || hume_platform::path::is_path_sep(c))
     };
-    let mut i = cursor;
-    while i > 0 {
-        let prev = prev_str_boundary(s, i);
-        if is_sep(&s[prev..i]) {
+    let back_over = |mut i: usize, sep: bool| {
+        while i > 0 {
+            let prev = prev_str_boundary(s, i);
+            if is_sep(&s[prev..i]) != sep {
+                break;
+            }
             i = prev;
-        } else {
-            break;
         }
-    }
-    while i > 0 {
-        let prev = prev_str_boundary(s, i);
-        if !is_sep(&s[prev..i]) {
-            i = prev;
-        } else {
-            break;
-        }
-    }
-    i
+        i
+    };
+    back_over(back_over(cursor, true), false)
 }
 
 #[cfg(test)]

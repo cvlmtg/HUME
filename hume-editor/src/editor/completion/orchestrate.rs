@@ -346,10 +346,13 @@ impl EditorState {
         let Some(completion) = mb.completion else {
             return;
         };
-        let (input, cursor) = (mb.line.text().to_owned(), mb.line.cursor());
-        let Some((name, arg)) =
-            resolve_minibuf_source(&self.config.registry, completion, &input, cursor)
-        else {
+        let line = &mb.line;
+        let Some((name, arg)) = resolve_minibuf_source(
+            &self.config.registry,
+            completion,
+            line.text(),
+            line.cursor(),
+        ) else {
             return;
         };
         let Some(id) = self.config.completion_sources.minibuf_id_of(&name) else {
@@ -365,7 +368,7 @@ impl EditorState {
             self.report(severity, format!("no completion source named {name:?}"));
             return;
         };
-        let mut session = MinibufSession::open(input.clone(), cursor);
+        let mut session = MinibufSession::open(line.clone());
         let ctx = CompletionCtx {
             registry: &self.config.registry,
             buffers: &self.buffers,
@@ -435,11 +438,11 @@ impl EditorState {
         let Some((span, text)) = layer.session.proposed_apply() else {
             return;
         };
-        let (input, text) = (layer.session.input().to_owned(), text.into_owned());
+        let (line, text) = (layer.session.line().clone(), text.into_owned());
         let Some(mb) = self.input.minibuf_mut() else {
             return;
         };
-        mb.line.set(input);
+        mb.line = line;
         mb.line.splice(span, &text);
     }
 
