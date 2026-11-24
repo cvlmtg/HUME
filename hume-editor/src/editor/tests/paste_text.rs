@@ -25,7 +25,7 @@ fn outcome(ed: &Editor) -> Outcome {
     Outcome {
         state: state(ed),
         mode: ed.state.mode(),
-        minibuf: ed.state.input.minibuf().map(|mb| mb.input.clone()),
+        minibuf: ed.state.input.minibuf().map(|mb| mb.line.text().to_owned()),
         picker_query: ed.state.input.picker().map(|p| p.query().to_string()),
         popup: ed.state.input.popup().is_some(),
         reading_char: reading_char(ed),

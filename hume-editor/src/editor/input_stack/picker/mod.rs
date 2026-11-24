@@ -9,8 +9,6 @@ mod session;
 
 use std::rc::Rc;
 
-use termina::event::{KeyCode, Modifiers};
-
 use hume_core::{HostToken, Severity};
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
@@ -455,18 +453,7 @@ pub(in crate::editor) fn picker_input(ed: &mut Editor, r: LayerRef, ev: InputEve
             .queue_picker_key(PickerKeyRun::new(token, canonical, selected), call);
         return;
     }
-    let cb = match key.code {
-        KeyCode::Backspace => session.pop_grapheme(),
-        KeyCode::Char('w') if key.modifiers.contains(Modifiers::CONTROL) => session.delete_word(),
-        KeyCode::Char(ch)
-            if !key
-                .modifiers
-                .intersects(Modifiers::CONTROL | Modifiers::ALT) =>
-        {
-            session.insert_char(ch)
-        }
-        _ => return,
-    };
+    let cb = session.edit_query(key);
     queue_query_change(&mut ed.state, r, cb);
 }
 

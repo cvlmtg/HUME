@@ -11,7 +11,7 @@ fn open_and_up(ed: &mut Editor) -> String {
     ed.handle_key(key_up());
     ed.state
         .minibuf()
-        .map(|m| m.input.clone())
+        .map(|m| m.line.text().to_owned())
         .unwrap_or_default()
 }
 
@@ -29,9 +29,9 @@ fn second_up_recalls_older() {
     submit(&mut ed, "q");
     ed.handle_key(key(':'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "q");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "q");
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "messages");
     // Cancel to leave normal mode.
     ed.handle_key(key_esc());
 }
@@ -45,7 +45,7 @@ fn down_walks_forward() {
     ed.handle_key(key_up()); // "q"
     ed.handle_key(key_up()); // "messages"
     ed.handle_key(key_down()); // back to "q"
-    assert_eq!(ed.state.minibuf().unwrap().input, "q");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "q");
     ed.handle_key(key_esc());
 }
 
@@ -59,8 +59,8 @@ fn down_past_newest_restores_scratch() {
     } // in-progress "foo"
     ed.handle_key(key_up()); // stash "foo", show "messages"
     ed.handle_key(key_down()); // past newest → restore "foo"
-    assert_eq!(ed.state.minibuf().unwrap().input, "foo");
-    assert_eq!(ed.state.minibuf().unwrap().cursor, 3);
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "foo");
+    assert_eq!(ed.state.minibuf().unwrap().line.cursor(), 3);
     ed.handle_key(key_esc());
 }
 
@@ -73,7 +73,7 @@ fn down_without_prior_up_is_noop() {
         ed.handle_key(key(ch));
     }
     ed.handle_key(key_down()); // not navigating: no-op
-    assert_eq!(ed.state.minibuf().unwrap().input, "foo");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "foo");
     ed.handle_key(key_esc());
 }
 
@@ -82,7 +82,7 @@ fn empty_history_up_is_noop() {
     let mut ed = editor_from("-[h]>ello\n");
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // empty history: input unchanged
-    assert_eq!(ed.state.minibuf().unwrap().input, "");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
     ed.handle_key(key_esc());
 }
 
@@ -93,7 +93,7 @@ fn at_oldest_up_is_noop() {
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // lands on "messages"
     ed.handle_key(key_up()); // already at oldest: no change
-    assert_eq!(ed.state.minibuf().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "messages");
     ed.handle_key(key_esc());
 }
 
@@ -104,9 +104,9 @@ fn consecutive_duplicate_not_recorded() {
     submit(&mut ed, "messages"); // duplicate: should be skipped
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // should land on "messages"
-    assert_eq!(ed.state.minibuf().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "messages");
     ed.handle_key(key_up()); // at oldest: no older entry
-    assert_eq!(ed.state.minibuf().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "messages");
     ed.handle_key(key_esc());
 }
 
@@ -126,7 +126,7 @@ fn empty_confirm_not_recorded() {
     ed.handle_key(key_enter()); // ConfirmEmpty
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // no entry to recall: input stays empty
-    assert_eq!(ed.state.minibuf().unwrap().input, "");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
     ed.handle_key(key_esc());
 }
 
@@ -140,17 +140,17 @@ fn edit_after_up_demotes_scratch() {
     submit(&mut ed, "messages");
     ed.handle_key(key(':'));
     ed.handle_key(key_up()); // empty prefix: recall newest: "messages"
-    assert_eq!(ed.state.minibuf().unwrap().input, "messages");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "messages");
     // Type a char: demotes history navigation back to scratch.
     ed.handle_key(key('x'));
-    assert_eq!(ed.state.minibuf().unwrap().input, "messagesx");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "messagesx");
     // Up should now re-stash "messagesx" and jump to the only entry that
     // starts with it: "messagesxtra".
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "messagesxtra");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "messagesxtra");
     // Down should restore the stashed "messagesx".
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf().unwrap().input, "messagesx");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "messagesx");
     ed.handle_key(key_esc());
 }
 
@@ -187,7 +187,7 @@ fn cursor_is_at_end_after_recall() {
     ed.handle_key(key(':'));
     ed.handle_key(key_up());
     let mb = ed.state.minibuf().unwrap();
-    assert_eq!(mb.cursor, mb.input.len());
+    assert_eq!(mb.line.cursor(), mb.line.text().len());
     ed.handle_key(key_esc());
 }
 

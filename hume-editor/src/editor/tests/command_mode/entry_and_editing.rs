@@ -12,7 +12,7 @@ fn colon_enters_command_mode() {
     assert_eq!(ed.state.mode(), Mode::Command);
     assert!(ed.state.minibuf().is_some());
     assert_eq!(ed.state.minibuf().unwrap().prompt, ":");
-    assert_eq!(ed.state.minibuf().unwrap().input, "");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
 }
 
 /// Truncate-before-execute: a `:cmd` body runs with the `Command` layer
@@ -188,7 +188,10 @@ fn backspace_clearing_last_char_keeps_minibuf_open() {
     ed.handle_key(key_backspace());
     // First Backspace clears the single char but leaves the minibuffer open.
     assert_eq!(ed.state.mode(), Mode::Command);
-    assert_eq!(ed.state.minibuf().expect("minibuf still open").input, "");
+    assert_eq!(
+        ed.state.minibuf().expect("minibuf still open").line.text(),
+        ""
+    );
     // Second Backspace (cursor already at 0) dismisses.
     ed.handle_key(key_backspace());
     assert_eq!(ed.state.mode(), Mode::Normal);
@@ -206,13 +209,13 @@ fn backspace_at_cursor_start_with_nonempty_input_is_noop() {
     for _ in 0..5 {
         ed.handle_key(key_left());
     }
-    assert_eq!(ed.state.minibuf().unwrap().cursor, 0);
+    assert_eq!(ed.state.minibuf().unwrap().line.cursor(), 0);
     // Backspace at start of non-empty input must be a no-op.
     ed.handle_key(key_backspace());
     assert_eq!(ed.state.mode(), Mode::Command, "minibuf must stay open");
     let mb = ed.state.minibuf().expect("minibuf must still be present");
-    assert_eq!(mb.input, "hello", "input must be unchanged");
-    assert_eq!(mb.cursor, 0, "cursor must remain at start");
+    assert_eq!(mb.line.text(), "hello", "input must be unchanged");
+    assert_eq!(mb.line.cursor(), 0, "cursor must remain at start");
 }
 
 #[test]
@@ -222,7 +225,16 @@ fn backspace_removes_last_char() {
     ed.handle_key(key('w'));
     ed.handle_key(key('q'));
     ed.handle_key(key_backspace());
-    assert_eq!(ed.state.minibuf().unwrap().input, "w");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "w");
+}
+
+#[test]
+fn an_unbound_alt_letter_types_nothing() {
+    let mut ed = editor_from("-[h]>ello\n");
+    ed.handle_key(key(':'));
+    ed.handle_key(key('w'));
+    ed.handle_key(KeyEvent::new(KeyCode::Char('x'), Modifiers::ALT));
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "w");
 }
 
 #[test]

@@ -188,7 +188,7 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 /// ([`sift_within`]). Called on every keystroke in Sift mode.
 fn update_live_sift(state: &mut EditorState, r: LayerRef) {
     let pattern = match state.input.minibuf() {
-        Some(mb) if !mb.input.is_empty() => mb.input.clone(),
+        Some(mb) if !mb.line.text().is_empty() => mb.line.text().to_owned(),
         _ => return,
     };
 

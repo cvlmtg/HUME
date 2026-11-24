@@ -2,6 +2,7 @@
 //! every other large module in `editor/` follows for its own `mod tests`.
 
 use super::*;
+use crate::editor::tests::{key, key_backspace, key_ctrl};
 use steel::rvals::SteelVal;
 
 fn items(displays: &[&str]) -> Vec<PickerItem> {
@@ -219,7 +220,7 @@ fn live_session_keeps_insertion_order_regardless_of_query() {
 }
 
 #[test]
-fn live_session_insert_char_keeps_insertion_order_and_still_resets_the_cursor() {
+fn live_session_query_edit_keeps_insertion_order_and_still_resets_the_cursor() {
     // A live session's `rebuild_filtered` always recomputes the same
     // identity permutation over `items` (see its doc). This proves the
     // recompute is invisible: the ranked order survives untouched, and
@@ -230,7 +231,7 @@ fn live_session_insert_char_keeps_insertion_order_and_still_resets_the_cursor() 
     s.move_selection(2, 3);
     assert_eq!(s.selected(), 2);
     let before: Vec<String> = window_vec(&s, 10).into_iter().map(str::to_string).collect();
-    let _ = s.insert_char('z');
+    let _ = s.edit_query(key('z'));
     assert_eq!(window_vec(&s, 10), before);
     assert_eq!(s.selected(), 0);
     assert_eq!(s.scroll(), 0);
@@ -246,7 +247,7 @@ fn live_session_query_change_is_pending_until_the_next_batch() {
     let mut s = open_live();
     assert!(!s.is_pending());
     assert!(
-        s.insert_char('a').is_some(),
+        s.edit_query(key('a')).is_some(),
         "a live session's query change must still fire its callback"
     );
     assert!(
@@ -269,7 +270,7 @@ fn live_session_batch_from_a_stale_source_does_not_end_the_pending_window() {
     // `Editor::settle`'s doc). Only the requery's own swap (`replace`)
     // may end the window; an ordinary append must leave it armed.
     let mut s = open_live();
-    assert!(s.insert_char('a').is_some());
+    assert!(s.edit_query(key('a')).is_some());
     assert!(s.is_pending());
 
     s.push(items(&["x"]));
@@ -284,7 +285,7 @@ fn live_session_batch_from_a_stale_source_does_not_end_the_pending_window() {
 fn non_live_session_query_change_never_sets_pending() {
     let mut s = open();
     assert!(
-        s.insert_char('a').is_none(),
+        s.edit_query(key('a')).is_none(),
         "a non-live session's query change has no callback to fire"
     );
     assert!(
@@ -305,37 +306,37 @@ fn non_live_session_with_the_same_query_still_filters() {
 }
 
 #[test]
-fn pop_grapheme_on_an_empty_query_is_a_no_op_even_for_a_live_session() {
-    // `pop_grapheme` returns `Option<SteelVal>`: a query-content check
+fn backspace_on_an_empty_query_is_a_no_op_even_for_a_live_session() {
+    // `edit_query` returns `Option<Callback>`: a query-content check
     // alone can't tell "returned `None`" apart from "returned the
     // callback", so this pins the return value directly on the one
     // session shape (`PickerMode::Live`) where mistaking those two
     // would matter.
     let mut s = open_live();
-    assert!(s.pop_grapheme().is_none());
+    assert!(s.edit_query(key_backspace()).is_none());
 }
 
 #[test]
-fn delete_word_on_an_empty_query_is_a_no_op_even_for_a_live_session() {
+fn ctrl_w_on_an_empty_query_is_a_no_op_even_for_a_live_session() {
     let mut s = open_live();
-    assert!(s.delete_word().is_none());
+    assert!(s.edit_query(key_ctrl('w')).is_none());
 }
 
 #[test]
-fn delete_word_on_a_live_session_returns_its_query_change_callback() {
+fn ctrl_w_on_a_live_session_returns_its_query_change_callback() {
     let mut s = open_live();
     let _ = s.insert_str("src/edit");
-    assert!(s.delete_word().is_some());
+    assert!(s.edit_query(key_ctrl('w')).is_some());
     assert_eq!(s.query(), "src/");
 }
 
 #[test]
-fn delete_word_widens_a_filter_sessions_matches() {
+fn ctrl_w_widens_a_filter_sessions_matches() {
     let mut s = open();
     s.push(items(&["foo", "bar"]));
     s.set_query("foo zz".to_string());
     assert_eq!(s.matched_len(), 0);
-    let _ = s.delete_word();
+    let _ = s.edit_query(key_ctrl('w'));
     assert_eq!(s.query(), "foo ");
     assert_eq!(s.matched_len(), 1);
 }
@@ -438,32 +439,32 @@ fn set_query_resets_selection_and_scroll() {
 fn widening_query_restores_matches() {
     let mut s = open();
     s.push(items(&["foo", "bar"]));
-    let _ = s.insert_char('z');
+    let _ = s.edit_query(key('z'));
     assert_eq!(s.matched_len(), 0);
-    let _ = s.pop_grapheme();
-    assert_eq!(s.query(), "", "pop_grapheme must have removed the 'z'");
+    let _ = s.edit_query(key_backspace());
+    assert_eq!(s.query(), "", "Backspace must have removed the 'z'");
     assert_eq!(s.matched_len(), 2);
-    let _ = s.pop_grapheme(); // query now empty; further pop is a no-op
+    let _ = s.edit_query(key_backspace()); // query now empty; a further Backspace is a no-op
     assert_eq!(s.query(), "");
 }
 
 #[test]
-fn pop_grapheme_removes_full_cluster() {
+fn backspace_removes_full_cluster() {
     let mut s = open();
     // "e" + combining acute accent (U+0301) forms one grapheme cluster.
-    let _ = s.insert_char('e');
-    let _ = s.insert_char('\u{0301}');
+    let _ = s.edit_query(key('e'));
+    let _ = s.edit_query(key('\u{0301}'));
     assert_eq!(s.query(), "e\u{0301}");
-    let _ = s.pop_grapheme();
+    let _ = s.edit_query(key_backspace());
     assert_eq!(s.query(), "");
     assert!(s.query().is_char_boundary(0));
 
     // ZWJ emoji sequence: family emoji built from 4 code points joined
-    // by ZWJ: one pop_grapheme must remove the whole cluster.
+    // by ZWJ: one Backspace must remove the whole cluster.
     for ch in "👨‍👩‍👧‍👦".chars() {
-        let _ = s.insert_char(ch);
+        let _ = s.edit_query(key(ch));
     }
-    let _ = s.pop_grapheme();
+    let _ = s.edit_query(key_backspace());
     assert_eq!(s.query(), "");
 }
 

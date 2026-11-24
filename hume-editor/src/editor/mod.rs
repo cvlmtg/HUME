@@ -56,6 +56,7 @@ mod folds;
 mod fuzzy;
 mod jump_list;
 mod keymap;
+mod line_input;
 pub(crate) mod lsp;
 mod macros;
 mod message_log;

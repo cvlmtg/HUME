@@ -31,7 +31,7 @@ fn newline_only_paste_flattens_to_empty_and_is_a_noop_in_command_mode() {
     ed.handle_key(key(':'));
     assert_eq!(ed.state.mode(), Mode::Command);
     ed.feed_paste("\n\n");
-    assert_eq!(ed.state.minibuf().unwrap().input, "");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
 }
 
 // ── Insert mode ───────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ fn command_mode_paste_flattens_trailing_and_interior_newlines() {
     ed.handle_key(key(':'));
     assert_eq!(ed.state.mode(), Mode::Command);
     ed.feed_paste("foo\nbar\n");
-    assert_eq!(ed.state.minibuf().unwrap().input, "foo bar");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "foo bar");
 }
 
 #[test]
@@ -177,7 +177,7 @@ fn sift_mode_paste_triggers_live_sift() {
     // original selection: the paste ran through the same `Edited` arm a
     // typed pattern would.
     assert_eq!(ed.current_view().len(), 2);
-    assert_eq!(ed.state.minibuf().unwrap().input, "ab");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "ab");
 }
 
 // ── Overlays ──────────────────────────────────────────────────────────────
@@ -197,6 +197,17 @@ fn picker_paste_lands_flattened_in_the_query_and_fires_one_query_change() {
     assert_eq!(pending_calls(&ed).len(), 1);
     // The buffer underneath never saw the paste.
     assert_eq!(ed.doc().text().to_string(), "hello\n");
+}
+
+#[test]
+fn newline_only_paste_into_a_live_picker_fires_no_query_change() {
+    let mut ed = editor_from("-[h]>ello\n");
+    open_live_test_picker(&mut ed);
+
+    ed.feed_paste("\n\n");
+
+    assert_eq!(ed.state.input.picker().unwrap().query(), "");
+    assert!(pending_calls(&ed).is_empty());
 }
 
 #[test]
@@ -300,12 +311,15 @@ fn minibuf_completion_paste_closes_the_candidate_list_and_pastes() {
     ed.handle_key(key('w'));
     ed.handle_key(key_tab());
     assert!(ed.state.input.minibuf_completion().is_some());
-    let before = ed.state.minibuf().unwrap().input.clone();
+    let before = ed.state.minibuf().unwrap().line.text().to_owned();
 
     ed.feed_paste("xyz");
 
     assert!(ed.state.input.minibuf_completion().is_none());
-    assert_eq!(ed.state.minibuf().unwrap().input, format!("{before}xyz"));
+    assert_eq!(
+        ed.state.minibuf().unwrap().line.text(),
+        format!("{before}xyz")
+    );
 }
 
 // ── Dot-repeat ────────────────────────────────────────────────────────────

@@ -83,7 +83,7 @@ fn a_lazily_activated_typed_commands_declared_completer_works_on_first_use() {
     assert_eq!(
         ed.state
             .minibuf()
-            .map(|mb| mb.input.clone())
+            .map(|mb| mb.line.text().to_owned())
             .unwrap_or_default(),
         format!("myfetch {}/hello.txt", files_dir.path().display()),
         "the lazy stub's real #:complete completer must resolve on the \
@@ -111,7 +111,7 @@ fn a_lazy_typed_commands_completer_works_under_a_differently_cased_name() {
     assert_eq!(
         ed.state
             .minibuf()
-            .map(|mb| mb.input.clone())
+            .map(|mb| mb.line.text().to_owned())
             .unwrap_or_default(),
         format!("MYFETCH {}/hello.txt", files_dir.path().display()),
         "`MYFETCH`'s Tab must activate `myfetch`'s plugin and use its completer"

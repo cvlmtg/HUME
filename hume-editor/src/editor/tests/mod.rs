@@ -596,7 +596,7 @@ fn assert_picker_styles(ed: &mut Editor, rows: &[ExpectedRow]) {
 
 /// The `:` line's current input, `""` when no minibuffer is open.
 fn minibuf_input(ed: &Editor) -> &str {
-    ed.state.minibuf().map(|mb| mb.input.as_str()).unwrap_or("")
+    ed.state.minibuf().map(|mb| mb.line.text()).unwrap_or("")
 }
 
 /// Every candidate's `insert_text` in the open minibuffer completion
@@ -855,7 +855,7 @@ fn type_chars(ed: &mut Editor, text: &str) {
 }
 
 /// A normal (no modifier) character key event.
-fn key(ch: char) -> KeyEvent {
+pub(in crate::editor) fn key(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE)
 }
 
@@ -863,7 +863,7 @@ fn key_esc() -> KeyEvent {
     KeyEvent::new(KeyCode::Escape, Modifiers::NONE)
 }
 
-fn key_ctrl(ch: char) -> KeyEvent {
+pub(in crate::editor) fn key_ctrl(ch: char) -> KeyEvent {
     KeyEvent::new(KeyCode::Char(ch), Modifiers::CONTROL)
 }
 
@@ -895,7 +895,7 @@ fn key_shift_tab() -> KeyEvent {
     KeyEvent::new(KeyCode::BackTab, Modifiers::SHIFT)
 }
 
-fn key_backspace() -> KeyEvent {
+pub(in crate::editor) fn key_backspace() -> KeyEvent {
     KeyEvent::new(KeyCode::Backspace, Modifiers::NONE)
 }
 

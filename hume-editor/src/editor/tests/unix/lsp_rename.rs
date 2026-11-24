@@ -45,7 +45,8 @@ fn prompt_prefill_shows_the_symbol_under_cursor() {
 
     let mb = ed.state.minibuf().expect("prompt must be open");
     assert_eq!(
-        mb.input, "helper",
+        mb.line.text(),
+        "helper",
         "prefill must be the word under the cursor"
     );
 }

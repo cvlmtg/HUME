@@ -5,6 +5,7 @@ use hume_rope::width::chrome_width;
 use self::history::{HistoryDir, HistoryKind};
 use super::input_stack::{InputEvent, LayerRef, PastedText};
 use super::keymap::WalkResult;
+use super::line_input::LineInput;
 use super::replay::dispatch_command_line_key;
 use super::{Editor, EditorState};
 use hume_core::BindMode;
@@ -18,10 +19,8 @@ pub(crate) struct MiniBuffer {
     /// `⫽` for sift, `|` for a shell command, or a Steel prompt's `label`
     /// (`(prompt! label …)`), of arbitrary length.
     pub prompt: String,
-    /// The text typed so far.
-    pub input: String,
-    /// Byte offset of the edit cursor within `input`. Always on a UTF-8 char boundary.
-    pub cursor: usize,
+    /// The text typed so far and its edit cursor.
+    pub line: LineInput,
     /// What Tab completes on this line, declared by whoever opened it;
     /// `None` for a line Tab does nothing on.
     pub completion: Option<PromptCompletion>,
@@ -77,8 +76,7 @@ impl MiniBuffer {
     ) -> Self {
         Self {
             prompt: prompt.into(),
-            input: String::new(),
-            cursor: 0,
+            line: LineInput::default(),
             completion,
         }
     }
@@ -87,40 +85,36 @@ impl MiniBuffer {
     /// at its end: `(prompt! label prefill …)`'s shape, which completes
     /// nothing.
     pub(in crate::editor) fn with_prefill(prompt: impl Into<String>, input: String) -> Self {
-        let mut mb = Self::new(prompt, None);
-        mb.set_input(input);
-        mb
+        Self {
+            line: LineInput::new(input),
+            ..Self::new(prompt, None)
+        }
     }
 
-    /// Installs `text` as `input` and parks the cursor at its end: the
-    /// "just replaced the whole input" invariant.
-    pub(in crate::editor) fn set_input(&mut self, text: String) {
-        self.cursor = text.len();
-        self.input = text;
-    }
-
-    /// Column offset of the cell at `byte_offset` into `input` within the
-    /// rendered statusline: the 1-column `pad_left` space the statusline
-    /// renderer prepends, plus the prompt's width, plus the display width of
-    /// `input` up to `byte_offset` (clamped to `input`'s length). Add
-    /// `area.x` to get the absolute screen column.
+    /// Column offset of the cell at `byte_offset` into the line's text
+    /// within the rendered statusline: the 1-column `pad_left` space the
+    /// statusline renderer prepends, plus the prompt's width, plus the
+    /// display width of the text up to `byte_offset` (clamped to its
+    /// length). Add `area.x` to get the absolute screen column.
     pub(in crate::editor) fn cursor_x_at(&self, byte_offset: usize) -> u16 {
         let pad: u16 = 1; // pad_left inserts one space before the MiniBuf span
         let prompt_w = chrome_width(&self.prompt) as u16;
-        let safe_offset = byte_offset.min(self.input.len());
-        let input_w = chrome_width(&self.input[..safe_offset]) as u16;
+        let input = self.line.text();
+        let safe_offset = byte_offset.min(input.len());
+        let input_w = chrome_width(&input[..safe_offset]) as u16;
         pad + prompt_w + input_w
     }
 
     /// Column offset of the edit cursor within the rendered statusline.
     pub(in crate::editor) fn statusline_cursor_x(&self) -> u16 {
-        self.cursor_x_at(self.cursor)
+        self.cursor_x_at(self.line.cursor())
     }
 
     /// Handle a single key event for standard mini-buffer editing.
     ///
-    /// Covers: cancel (Esc/Ctrl-c), confirm (Enter), char insertion, grapheme-aware
-    /// backspace, and left/right cursor movement. Returns a [`MiniBufferEvent`]
+    /// Covers the prompt's own keys: cancel (Esc/Ctrl-c), confirm (Enter),
+    /// history (Up/Down) and left/right cursor movement. Every other key
+    /// goes to [`LineInput::edit`]. Returns a [`MiniBufferEvent`]
     /// describing the outcome so the caller can apply mode-specific logic.
     pub(super) fn handle_key(&mut self, key: termina::event::KeyEvent) -> MiniBufferEvent {
         use termina::event::{KeyCode, Modifiers};
@@ -131,55 +125,19 @@ impl MiniBuffer {
                 MiniBufferEvent::Cancel
             }
             KeyCode::Enter => {
-                if self.input.is_empty() {
+                if self.line.text().is_empty() {
                     MiniBufferEvent::ConfirmEmpty
                 } else {
-                    MiniBufferEvent::Confirm(self.input.clone())
+                    MiniBufferEvent::Confirm(self.line.text().to_owned())
                 }
             }
-            KeyCode::Backspace => {
-                if self.cursor == 0 {
-                    if self.input.is_empty() {
-                        MiniBufferEvent::BackspaceOnEmpty
-                    } else {
-                        MiniBufferEvent::Ignored // cursor at start but input non-empty: no-op
-                    }
-                } else {
-                    let prev = hume_rope::grapheme::prev_str_boundary(&self.input, self.cursor);
-                    self.input.drain(prev..self.cursor);
-                    self.cursor = prev;
-                    if self.input.is_empty() {
-                        MiniBufferEvent::EmptiedByBackspace
-                    } else {
-                        MiniBufferEvent::Edited
-                    }
-                }
-            }
-            // Ctrl-w: readline-style delete-word-backward. Skip trailing
-            // whitespace first, then remove the word. Never closes the minibuf
-            // on empty (unlike Backspace). Emits `Ignored` when there's
-            // nothing to the left of the cursor.
-            KeyCode::Char('w') if key.modifiers.contains(Modifiers::CONTROL) => {
-                let new_cursor = word_boundary_back(&self.input, self.cursor);
-                if new_cursor == self.cursor {
-                    MiniBufferEvent::Ignored
-                } else {
-                    self.input.drain(new_cursor..self.cursor);
-                    self.cursor = new_cursor;
-                    MiniBufferEvent::Edited
-                }
-            }
-            KeyCode::Char(ch) if !key.modifiers.contains(Modifiers::CONTROL) => {
-                self.input.insert(self.cursor, ch);
-                self.cursor += ch.len_utf8();
-                MiniBufferEvent::Edited
-            }
+            KeyCode::Backspace if self.line.text().is_empty() => MiniBufferEvent::BackspaceOnEmpty,
             KeyCode::Left => {
-                self.cursor = hume_rope::grapheme::prev_str_boundary(&self.input, self.cursor);
+                self.line.move_left();
                 MiniBufferEvent::CursorMoved
             }
             KeyCode::Right => {
-                self.cursor = hume_rope::grapheme::next_str_boundary(&self.input, self.cursor);
+                self.line.move_right();
                 MiniBufferEvent::CursorMoved
             }
             // Up/Down are handled by the caller (mode-specific history ring).
@@ -187,70 +145,17 @@ impl MiniBuffer {
             // future completion-popup navigation.
             KeyCode::Up => MiniBufferEvent::HistoryPrev,
             KeyCode::Down => MiniBufferEvent::HistoryNext,
-            _ => MiniBufferEvent::Ignored,
+            _ => {
+                if !self.line.edit(key) {
+                    MiniBufferEvent::Ignored
+                } else if key.code == KeyCode::Backspace && self.line.text().is_empty() {
+                    MiniBufferEvent::EmptiedByBackspace
+                } else {
+                    MiniBufferEvent::Edited
+                }
+            }
         }
     }
-
-    /// Insert a whole string at the edit cursor: the paste counterpart of
-    /// the single-char branch in [`handle_key`](Self::handle_key). Whether
-    /// the input changed, `false` for an empty string.
-    fn insert_str(&mut self, s: &str) -> bool {
-        if s.is_empty() {
-            return false;
-        }
-        self.input.insert_str(self.cursor, s);
-        self.cursor += s.len();
-        true
-    }
-
-    /// Replaces `input[span]` with `text` and parks the cursor at the end
-    /// of the inserted text: the one minibuffer mutation a completion-apply
-    /// performs (`EditorState::apply_minibuf_candidate`, `completion/
-    /// orchestrate.rs`, whether cycling the popup or landing a sole
-    /// candidate silently). `span` is the *token's own* range, not
-    /// `span_start..self.cursor`. Replacing up to a mid-token cursor
-    /// instead would leave the token's uncompleted tail duplicated after
-    /// the applied candidate (see `MinibufSession`'s doc).
-    pub(in crate::editor) fn splice(&mut self, span: std::ops::Range<usize>, text: &str) {
-        let span_start = span.start;
-        self.input.replace_range(span, text);
-        self.cursor = span_start + text.len();
-    }
-}
-
-/// Walk back from `cursor` over trailing whitespace, then over one run of
-/// non-whitespace graphemes: the readline Ctrl-w "delete word" boundary.
-/// Returns the byte offset where the deletion should begin; equals `cursor`
-/// when there is nothing to delete.
-///
-/// `/` (and `\` on Windows) is treated as a separator so that path arguments
-/// delete one component at a time (`/tmp/alpha/one.txt` → `/tmp/alpha/` → …).
-pub(in crate::editor) fn word_boundary_back(s: &str, cursor: usize) -> usize {
-    let is_sep = |slice: &str| {
-        slice
-            .chars()
-            .all(|c| c.is_whitespace() || hume_platform::path::is_path_sep(c))
-    };
-    let mut i = cursor;
-    // Skip trailing separators (whitespace or '/').
-    while i > 0 {
-        let prev = hume_rope::grapheme::prev_str_boundary(s, i);
-        if is_sep(&s[prev..i]) {
-            i = prev;
-        } else {
-            break;
-        }
-    }
-    // Then consume the run of non-separator graphemes.
-    while i > 0 {
-        let prev = hume_rope::grapheme::prev_str_boundary(s, i);
-        if !is_sep(&s[prev..i]) {
-            i = prev;
-        } else {
-            break;
-        }
-    }
-    i
 }
 
 // ── Shared by every minibuf-backed layer ────────────────────────────────────
@@ -320,7 +225,7 @@ pub(in crate::editor) fn paste_into_minibuf(state: &mut EditorState, text: &Past
     state
         .input
         .minibuf_mut()
-        .is_some_and(|mb| mb.insert_str(&text.single_line()))
+        .is_some_and(|mb| mb.line.insert_str(&text.single_line()))
 }
 
 /// Recall the previous (`Prev`) or next (`Next`) entry from `kind`'s history
@@ -331,7 +236,7 @@ pub(in crate::editor) fn recall_history(ed: &mut Editor, kind: HistoryKind, dir:
         .state
         .input
         .minibuf()
-        .map(|m| m.input.as_str())
+        .map(|m| m.line.text())
         .unwrap_or("");
     let text = match dir {
         HistoryDir::Prev => ed.state.history.get_mut(kind).prev(current),
@@ -340,7 +245,7 @@ pub(in crate::editor) fn recall_history(ed: &mut Editor, kind: HistoryKind, dir:
     if let Some(text) = text
         && let Some(mb) = ed.state.input.minibuf_mut()
     {
-        mb.set_input(text);
+        mb.line.set(text);
     }
 }
 

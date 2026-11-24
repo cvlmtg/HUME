@@ -84,7 +84,7 @@ fn a_nul_inside_a_line_shows_as_a_colon_but_the_payload_keeps_it() {
 fn coalesced_push_reranks_against_the_live_query() {
     let mut ed = editor_from("-[a]>bc\n");
     open_test_picker(&mut ed, &[]);
-    let _ = ed.state.input.picker_mut().unwrap().insert_char('z');
+    let _ = ed.state.input.picker_mut().unwrap().edit_query(key('z'));
 
     attach_sh(&mut ed, "printf 'abc\\nxyz\\n'", vec![0]);
 
@@ -370,7 +370,7 @@ fn a_stale_sources_late_batch_keeps_the_query_its_rows_answer() {
     open_live_test_picker(&mut ed);
     let picker_total = |ed: &Editor| ed.state.input.picker().map_or(0, |p| p.total_len());
     let render_query = |ed: &Editor| ed.state.input.picker().unwrap().render_query().to_owned();
-    let _ = ed.state.input.picker_mut().unwrap().insert_char('a');
+    let _ = ed.state.input.picker_mut().unwrap().edit_query(key('a'));
     let dir = tempfile::tempdir().unwrap();
     let gate = ShellGate::new(dir.path().join("gate"));
 
@@ -382,7 +382,7 @@ fn a_stale_sources_late_batch_keeps_the_query_its_rows_answer() {
     drain_sources_until(&mut ed, |ed| picker_total(ed) == 1);
     assert_eq!(render_query(&ed), "a");
 
-    let _ = ed.state.input.picker_mut().unwrap().insert_char('b');
+    let _ = ed.state.input.picker_mut().unwrap().edit_query(key('b'));
     gate.open();
     drain_sources_until(&mut ed, |ed| picker_total(ed) == 2);
     assert_eq!(render_query(&ed), "a");

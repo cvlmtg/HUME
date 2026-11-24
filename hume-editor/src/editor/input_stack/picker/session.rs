@@ -19,7 +19,7 @@ use hume_ui::list_row::ListRow;
 
 use super::super::super::fuzzy::{FuzzyMatcher, FuzzyProfile};
 use super::super::super::keymap::CanonicalKey;
-use super::super::super::minibuf::word_boundary_back;
+use super::super::super::line_input::LineInput;
 use super::super::super::replay::{Choice, Picked};
 use super::super::list_row::{RenderCall, RenderedRows};
 
@@ -119,7 +119,8 @@ pub(in crate::editor) struct PickerSession {
     /// path; see its `take_supersede` exception, doc'd there rather than
     /// here.
     items: Vec<PickerItem>,
-    query: String,
+    /// The query, its cursor always at the end: no picker key moves it.
+    query: LineInput,
     /// Ranked indices into `items`, rebuilt on every rerank.
     filtered: Vec<u32>,
     /// Reused scoring buffer (`(score, item index)`), cleared, never
@@ -259,7 +260,7 @@ impl PickerSession {
         let token = HostToken::mint();
         Ok(Self {
             items: Vec::new(),
-            query,
+            query: LineInput::new(query),
             filtered: Vec::new(),
             rank_scratch: Vec::new(),
             matcher: FuzzyMatcher::new(FuzzyProfile::Picker),
@@ -328,7 +329,7 @@ impl PickerSession {
     pub(in crate::editor) fn push(&mut self, items: Vec<PickerItem>) {
         self.items_from_opener = false;
         self.append(items);
-        self.rows_answer(self.query.clone());
+        self.rows_answer(self.query.text().to_owned());
     }
 
     /// Appends `items` and reranks: the body of `push`, `new` and
@@ -361,7 +362,7 @@ impl PickerSession {
     /// the rows answer the current query.
     pub(in crate::editor) fn replace(&mut self, items: Vec<PickerItem>) {
         self.replace_items(items);
-        self.rows_answer(self.query.clone());
+        self.rows_answer(self.query.text().to_owned());
     }
 
     /// Replaces the item list wholesale and reranks, with the same
@@ -422,7 +423,7 @@ impl PickerSession {
     /// for.
     pub(in crate::editor) fn render_query(&self) -> &str {
         match &self.mode {
-            PickerMode::Filter => &self.query,
+            PickerMode::Filter => self.query.text(),
             PickerMode::Live { rows_query, .. } => rows_query,
         }
     }
@@ -472,7 +473,7 @@ impl PickerSession {
             source,
             ok_exit_codes,
             supersedes_rows,
-            query: self.query.clone(),
+            query: self.query.text().to_owned(),
         });
     }
 
@@ -556,9 +557,8 @@ impl PickerSession {
             .is_some_and(|attached| attached.source.has_exited())
     }
 
-    /// Appends one `char` to the query and requeries. Key events deliver
-    /// printable input one `char` at a time, including combining marks,
-    /// which simply extend the trailing grapheme cluster.
+    /// Applies one text-editing key to the query ([`LineInput::edit`]) and
+    /// requeries. `None` without effect when the key changed nothing.
     ///
     /// Returns the mode's `on_query_change` callback to fire (`None` for a
     /// non-live session). The caller, not this method, queues it via
@@ -571,52 +571,27 @@ impl PickerSession {
     /// `set_query`) a type error instead of a silent desync between the
     /// visible query and a live source.
     #[must_use = "queue this via queue_steel_call, or the query-change notification is skipped"]
-    pub(in crate::editor) fn insert_char(&mut self, ch: char) -> Option<Callback> {
-        self.query.push(ch);
-        self.rerank();
-        self.query_changed()
-    }
-
-    /// Bulk counterpart of [`insert_char`](Self::insert_char): a terminal
-    /// paste appends its whole (already flattened to one line) text in a
-    /// single mutation, one `rerank`, and at most one `on_query_change`
-    /// callback, rather than one of each per pasted character.
-    #[must_use = "queue this via queue_steel_call, or the query-change notification is skipped"]
-    pub(in crate::editor) fn insert_str(&mut self, s: &str) -> Option<Callback> {
-        self.query.push_str(s);
-        self.rerank();
-        self.query_changed()
-    }
-
-    /// Removes the trailing grapheme cluster (not merely the last `char`) so
-    /// that precomposed accents and ZWJ/modifier emoji sequences are deleted
-    /// as one unit, then requeries. Returns `None` without effect when the
-    /// query is already empty (in addition to a non-live session, same as
-    /// [`insert_char`](Self::insert_char)). The query didn't change, so
-    /// there is nothing to notify either way.
-    #[must_use = "queue this via queue_steel_call, or the query-change notification is skipped"]
-    pub(in crate::editor) fn pop_grapheme(&mut self) -> Option<Callback> {
-        self.truncate_query(hume_rope::grapheme::prev_str_boundary(
-            &self.query,
-            self.query.len(),
-        ))
-    }
-
-    /// Removes the query's last word ([`word_boundary_back`]), then
-    /// requeries. Returns `None` without effect when there is no word to
-    /// remove.
-    #[must_use = "queue this via queue_steel_call, or the query-change notification is skipped"]
-    pub(in crate::editor) fn delete_word(&mut self) -> Option<Callback> {
-        self.truncate_query(word_boundary_back(&self.query, self.query.len()))
-    }
-
-    /// Cuts the query back to `end` and requeries. `None` without effect
-    /// when `end` is the query's length: nothing was removed.
-    fn truncate_query(&mut self, end: usize) -> Option<Callback> {
-        if end == self.query.len() {
+    pub(in crate::editor) fn edit_query(
+        &mut self,
+        key: termina::event::KeyEvent,
+    ) -> Option<Callback> {
+        if !self.query.edit(key) {
             return None;
         }
-        self.query.truncate(end);
+        self.rerank();
+        self.query_changed()
+    }
+
+    /// Bulk counterpart of [`edit_query`](Self::edit_query) for a
+    /// terminal paste: its whole (already flattened to one line) text in a
+    /// single mutation, one `rerank`, and at most one `on_query_change`
+    /// callback, rather than one of each per pasted character. `None`
+    /// without effect for an empty paste.
+    #[must_use = "queue this via queue_steel_call, or the query-change notification is skipped"]
+    pub(in crate::editor) fn insert_str(&mut self, s: &str) -> Option<Callback> {
+        if !self.query.insert_str(s) {
+            return None;
+        }
         self.rerank();
         self.query_changed()
     }
@@ -647,7 +622,7 @@ impl PickerSession {
     /// wholesale.
     #[cfg(test)]
     fn set_query(&mut self, query: String) {
-        self.query = query;
+        self.query.set(query);
         self.rerank();
     }
 
@@ -672,7 +647,7 @@ impl PickerSession {
     }
 
     pub(in crate::editor) fn query(&self) -> &str {
-        &self.query
+        self.query.text()
     }
 
     pub(in crate::editor) fn selected(&self) -> usize {
@@ -819,11 +794,11 @@ impl PickerSession {
         // own regex match), so a second fuzzy pass over already-matched
         // rows would drop legitimate non-fuzzy hits, `foo.*bar`
         // fuzzy-matching almost nothing it just found.
-        if self.query.is_empty() || self.mode.is_live() {
+        if self.query.text().is_empty() || self.mode.is_live() {
             self.filtered.clear();
             self.filtered.extend(0..self.items.len() as u32);
         } else {
-            let pattern = self.matcher.parse(&self.query);
+            let pattern = self.matcher.parse(self.query.text());
             self.rank_scratch.clear();
             for (idx, item) in self.items.iter().enumerate() {
                 if let Some(score) = self.matcher.score(&pattern, &item.display) {

@@ -332,7 +332,7 @@ impl EditorState {
         if mb.completion != Some(PromptCompletion::CommandLine) {
             return None;
         }
-        let (name, _) = target_command_name(&mb.input, mb.cursor)?;
+        let (name, _) = target_command_name(mb.line.text(), mb.line.cursor())?;
         Some(name.to_owned())
     }
 
@@ -346,7 +346,7 @@ impl EditorState {
         let Some(completion) = mb.completion else {
             return;
         };
-        let (input, cursor) = (mb.input.clone(), mb.cursor);
+        let (input, cursor) = (mb.line.text().to_owned(), mb.line.cursor());
         let Some((name, arg)) =
             resolve_minibuf_source(&self.config.registry, completion, &input, cursor)
         else {
@@ -425,6 +425,9 @@ impl EditorState {
     /// its own source's token, restoring the input the sources saw first,
     /// so cycling from one candidate to the next never has to know what the
     /// previous one left behind. With no proposal the line is left as typed.
+    /// The span is the whole token, not its start up to the cursor: with
+    /// the cursor mid-token, the token's tail would otherwise stay after
+    /// the applied candidate (see `MinibufSession`'s doc).
     pub(in crate::editor) fn apply_minibuf_candidate(&mut self, r: LayerRef) {
         let Some(layer) = self.input.at::<MinibufCompletionLayer>(r) else {
             return;
@@ -436,8 +439,8 @@ impl EditorState {
         let Some(mb) = self.input.minibuf_mut() else {
             return;
         };
-        mb.input = input;
-        mb.splice(span, &text);
+        mb.line.set(input);
+        mb.line.splice(span, &text);
     }
 
     // ── Answers ──────────────────────────────────────────────────────────────

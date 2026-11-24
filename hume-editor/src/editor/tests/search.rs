@@ -1081,7 +1081,7 @@ fn search_up_recalls_previous_forward_pattern() {
     // Open forward search and press Up.
     ed.handle_key(key('/'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "foo");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "foo");
     ed.handle_key(key_esc());
 }
 
@@ -1097,7 +1097,7 @@ fn search_history_is_separate_from_command_history() {
     // Open forward search and press Up: history should be empty.
     ed.handle_key(key('/'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
     ed.handle_key(key_esc());
 }
 
@@ -1109,12 +1109,12 @@ fn forward_and_backward_search_histories_are_separate() {
     // Forward ring only has "alpha".
     ed.handle_key(key('/'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "alpha");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "alpha");
     ed.handle_key(key_esc());
     // Backward ring only has "beta".
     ed.handle_key(key('?'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "beta");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "beta");
     ed.handle_key(key_esc());
 }
 
@@ -1134,7 +1134,7 @@ fn search_recall_updates_live_preview() {
     assert_eq!(state(&ed), "-[h]>ello world\n");
     // Up recalls "hello" and updates live search to the full match.
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "hello");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "hello");
     assert_eq!(state(&ed), "-[hello]> world\n");
     ed.handle_key(key_esc());
 }
@@ -1151,25 +1151,25 @@ fn search_down_walks_forward_and_restores_scratch() {
     for ch in "al".chars() {
         ed.handle_key(key(ch));
     }
-    assert_eq!(ed.state.minibuf().unwrap().input, "al");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "al");
 
     // Up walks back: "alpine", then "alphabet".
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "alpine");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "alpine");
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "alphabet");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "alphabet");
 
     // Down walks forward: "alpine".
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf().unwrap().input, "alpine");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "alpine");
 
     // Down past newest restores original scratch text.
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf().unwrap().input, "al");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "al");
 
     // Another Down when not navigating is a no-op.
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf().unwrap().input, "al");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "al");
 
     ed.handle_key(key_esc());
 }
@@ -1186,20 +1186,20 @@ fn search_edit_after_recall_demotes_to_scratch() {
     // Open search, recall "hello" via Up (empty prefix matches newest).
     ed.handle_key(key('/'));
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "hello");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "hello");
 
     // Edit the recalled entry: demotes nav state so the next Up re-stashes
     // the current (now-edited) text as fresh scratch.
     ed.handle_key(key('x')); // input is now "hellox"
-    assert_eq!(ed.state.minibuf().unwrap().input, "hellox");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "hellox");
 
     // Up: stashes "hellox" as scratch, recalls the only match: "helloxyz".
     ed.handle_key(key_up());
-    assert_eq!(ed.state.minibuf().unwrap().input, "helloxyz");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "helloxyz");
 
     // Down past newest match: restores "hellox" (the edited scratch).
     ed.handle_key(key_down());
-    assert_eq!(ed.state.minibuf().unwrap().input, "hellox");
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "hellox");
 
     ed.handle_key(key_esc());
 }

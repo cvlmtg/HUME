@@ -15,7 +15,7 @@ impl StatuslineElement for MiniBufElement {
         editor
             .state
             .minibuf()
-            .map(|mb| (mb.prompt.as_str(), mb.input.as_str()))
+            .map(|mb| (mb.prompt.as_str(), mb.line.text()))
     }
 
     fn format<'a>(data: Self::Data<'a>, colors: &EditorColors) -> (Cow<'a, str>, ResolvedStyle) {

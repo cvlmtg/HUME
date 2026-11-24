@@ -213,7 +213,7 @@ fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
 /// [`PaneSnapshot`]'s own doc).
 fn update_live_search(state: &mut EditorState, r: LayerRef) {
     let pattern = match state.input.minibuf() {
-        Some(mb) if !mb.input.is_empty() => mb.input.clone(),
+        Some(mb) if !mb.line.text().is_empty() => mb.line.text().to_owned(),
         _ => return,
     };
     let Some(search) = state.input.at::<SearchLayer>(r) else {
