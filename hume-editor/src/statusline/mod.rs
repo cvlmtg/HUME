@@ -95,10 +95,6 @@ pub enum StatusElement {
     /// cursor head. Shows `0` when the cursor is between matches (e.g. the live
     /// search has no hit yet).
     SearchMatches,
-    /// The mini-buffer input field: prompt character followed by typed text.
-    ///
-    /// Rendered only while a minibuffer is open; empty otherwise.
-    MiniBuf,
     /// Macro recording indicator: `"[recording @q]"` while a macro is being
     /// recorded, empty otherwise.
     MacroRecording,
@@ -149,7 +145,6 @@ const ELEMENT_NAMES: &[(&str, StatusElement)] = &[
     ("DirtyIndicator", StatusElement::DirtyIndicator),
     ("LineEnding", StatusElement::LineEnding),
     ("SearchMatches", StatusElement::SearchMatches),
-    ("MiniBuf", StatusElement::MiniBuf),
     ("MacroRecording", StatusElement::MacroRecording),
     ("Pipe", StatusElement::Pipe),
     ("Language", StatusElement::Language),
@@ -586,7 +581,6 @@ pub(crate) fn render_element<'a>(
         StatusElement::LineEnding => LineEndingElement::render(editor, colors),
         StatusElement::Cwd => CwdElement::render(editor, colors),
         StatusElement::SearchMatches => SearchMatchesElement::render(editor, colors),
-        StatusElement::MiniBuf => MiniBufElement::render(editor, colors),
         StatusElement::MacroRecording => MacroRecordingElement::render(editor, colors),
         StatusElement::Pipe => PipeElement::render(editor, colors),
         StatusElement::Language => LanguageElement::render(editor, colors),

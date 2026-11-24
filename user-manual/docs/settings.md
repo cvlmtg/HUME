@@ -185,7 +185,6 @@ Available elements:
 | `"DirtyIndicator"` | `[+]` when buffer has unsaved changes |
 | `"LineEnding"` | Line ending type (LF/CRLF) |
 | `"SearchMatches"` | Current search match count, hidden once you type in Insert mode until you leave it |
-| `"MiniBuf"` | The open prompt and the text typed into it |
 | `"MacroRecording"` | Macro recording indicator |
 | `"Pipe"` | The shell command running after `\|`, and how many of its processes have finished |
 | `"Language"` | Buffer language |

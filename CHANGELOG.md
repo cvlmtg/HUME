@@ -3,6 +3,7 @@
 ## Unreleased
 
 ### Breaking changes
+- The `"MiniBuf"` statusline element is gone: remove it from `configure-statusline!`. An open prompt always takes the left of the statusline.
 - `syntax-captures` and `parsed-text-captures` return one list per match, holding the nodes it captures. For one flat list, write `(call! "stdlib/concat" (syntax-captures ...))`; with a pattern that captures several nodes, that list repeats the enclosing node once per match and is not in text order.
 
 ### Editing
