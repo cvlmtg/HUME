@@ -137,7 +137,7 @@ impl MiniBuffer {
             x: area.x,
             prompt_len: prompt.len(),
             prompt_width,
-            start: cursor - window.before.len(),
+            start: window.start,
             cursor,
         }
     }

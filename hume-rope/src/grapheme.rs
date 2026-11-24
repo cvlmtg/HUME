@@ -370,6 +370,21 @@ pub fn next_str_boundary(s: &str, byte_pos: usize) -> usize {
         .unwrap_or(s.len())
 }
 
+/// Byte offset where the grapheme cluster holding `byte_pos` starts:
+/// `byte_pos` itself on a cluster start, the start of the cluster it splits
+/// otherwise. `s.len()` at the end. For an offset an edit beside it may
+/// have moved inside a cluster, such as a combining mark typed after it.
+pub fn str_cluster_start(s: &str, byte_pos: usize) -> usize {
+    if byte_pos == s.len() {
+        return byte_pos;
+    }
+    s.grapheme_indices(true)
+        .map(|(i, _)| i)
+        .take_while(|&i| i <= byte_pos)
+        .last()
+        .unwrap_or(0)
+}
+
 /// The longest run of whole grapheme clusters `a` and `b` both start with,
 /// borrowed from `a`.
 pub fn common_str_prefix<'a>(a: &'a str, b: &str) -> &'a str {

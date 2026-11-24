@@ -334,6 +334,9 @@ pub fn truncate_suffix_to_width(s: &str, max_display_width: usize) -> (&str, usi
 /// is whole clusters of the input.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CursorWindow<'a> {
+    /// Byte offset in the input where the window starts: where
+    /// [`Self::before`] begins.
+    pub start: usize,
     /// The visible tail of the text before the cursor.
     pub before: &'a str,
     /// The width of [`Self::before`]: the cursor's cell within the window.
@@ -376,6 +379,7 @@ pub fn window_around_cursor(s: &str, cursor: usize, cells: usize, from: usize) -
     let at_len = rest.graphemes(true).next().map_or(0, str::len);
     let (at, after) = rest.split_at(at_len);
     CursorWindow {
+        start: cursor - before.len(),
         before,
         before_width,
         at,

@@ -406,12 +406,14 @@ fn truncate_suffix_to_width_zero_budget_is_empty() {
 // ── window_around_cursor ─────────────────────────────────────────────────
 
 fn window<'a>(
+    start: usize,
     before: &'a str,
     at: &'a str,
     after: &'a str,
     before_width: usize,
 ) -> CursorWindow<'a> {
     CursorWindow {
+        start,
         before,
         at,
         after,
@@ -423,7 +425,7 @@ fn window<'a>(
 fn window_around_cursor_keeps_text_that_fits_whole() {
     assert_eq!(
         window_around_cursor("abc", 1, 10, 0),
-        window("a", "b", "c", 1)
+        window(0, "a", "b", "c", 1)
     );
 }
 
@@ -431,7 +433,7 @@ fn window_around_cursor_keeps_text_that_fits_whole() {
 fn window_around_cursor_at_the_end_keeps_the_tail_and_a_cell_for_the_cursor() {
     assert_eq!(
         window_around_cursor("abcdef", 6, 4, 0),
-        window("def", "", "", 3)
+        window(3, "def", "", "", 3)
     );
 }
 
@@ -439,7 +441,7 @@ fn window_around_cursor_at_the_end_keeps_the_tail_and_a_cell_for_the_cursor() {
 fn window_around_cursor_at_the_start_keeps_the_head() {
     assert_eq!(
         window_around_cursor("abcdef", 0, 4, 0),
-        window("", "a", "bcd", 0)
+        window(0, "", "a", "bcd", 0)
     );
 }
 
@@ -447,7 +449,7 @@ fn window_around_cursor_at_the_start_keeps_the_head() {
 fn window_around_cursor_in_the_middle_keeps_the_text_before_it() {
     assert_eq!(
         window_around_cursor("abcdef", 3, 4, 0),
-        window("abc", "d", "", 3)
+        window(0, "abc", "d", "", 3)
     );
 }
 
@@ -455,7 +457,7 @@ fn window_around_cursor_in_the_middle_keeps_the_text_before_it() {
 fn window_around_cursor_leaves_room_for_a_wide_cluster_under_the_cursor() {
     assert_eq!(
         window_around_cursor("ab\u{65E5}c", 2, 3, 0),
-        window("b", "\u{65E5}", "", 1)
+        window(1, "b", "\u{65E5}", "", 1)
     );
 }
 
@@ -463,20 +465,23 @@ fn window_around_cursor_leaves_room_for_a_wide_cluster_under_the_cursor() {
 fn window_around_cursor_drops_a_wide_cluster_wider_than_the_window() {
     assert_eq!(
         window_around_cursor("a\u{65E5}", 1, 1, 0),
-        window("", "", "", 0)
+        window(1, "", "", "", 0)
     );
 }
 
 #[test]
 fn window_around_cursor_with_no_cells_is_empty() {
-    assert_eq!(window_around_cursor("abc", 1, 0, 0), window("", "", "", 0));
+    assert_eq!(
+        window_around_cursor("abc", 1, 0, 0),
+        window(1, "", "", "", 0)
+    );
 }
 
 #[test]
 fn window_around_cursor_keeps_its_start_while_the_cursor_moves_inside_it() {
     assert_eq!(
         window_around_cursor("abcdefghij", 6, 4, 4),
-        window("ef", "g", "h", 2)
+        window(4, "ef", "g", "h", 2)
     );
 }
 
@@ -484,7 +489,7 @@ fn window_around_cursor_keeps_its_start_while_the_cursor_moves_inside_it() {
 fn window_around_cursor_starts_at_a_cursor_moved_before_its_start() {
     assert_eq!(
         window_around_cursor("abcdefghij", 3, 4, 4),
-        window("", "d", "efg", 0)
+        window(3, "", "d", "efg", 0)
     );
 }
 
@@ -492,7 +497,7 @@ fn window_around_cursor_starts_at_a_cursor_moved_before_its_start() {
 fn window_around_cursor_typing_past_the_right_edge_keeps_the_cursor_on_it() {
     assert_eq!(
         window_around_cursor("abcdefg", 7, 4, 2),
-        window("efg", "", "", 3)
+        window(4, "efg", "", "", 3)
     );
 }
 
@@ -500,7 +505,7 @@ fn window_around_cursor_typing_past_the_right_edge_keeps_the_cursor_on_it() {
 fn window_around_cursor_moving_off_the_end_keeps_the_start() {
     assert_eq!(
         window_around_cursor("abcdefg", 6, 4, 4),
-        window("ef", "g", "", 2)
+        window(4, "ef", "g", "", 2)
     );
 }
 
@@ -508,7 +513,7 @@ fn window_around_cursor_moving_off_the_end_keeps_the_start() {
 fn window_around_cursor_pulls_text_back_in_when_the_text_after_its_start_is_short() {
     assert_eq!(
         window_around_cursor("abcdef", 6, 5, 4),
-        window("cdef", "", "", 4)
+        window(2, "cdef", "", "", 4)
     );
 }
 
@@ -516,7 +521,7 @@ fn window_around_cursor_pulls_text_back_in_when_the_text_after_its_start_is_shor
 fn window_around_cursor_pulls_back_no_wide_cluster_wider_than_the_free_cells() {
     assert_eq!(
         window_around_cursor("\u{65E5}ab", 5, 4, 3),
-        window("ab", "", "", 2)
+        window(3, "ab", "", "", 2)
     );
 }
 
@@ -615,7 +620,8 @@ fn window_around_cursor_shows_whole_clusters_around_the_cursor_over_the_corpus()
             {
                 let w = window_around_cursor(&text, cursor, cells, from);
                 let ctx = format!("{text:?} cursor {cursor} from {from} cells {cells}");
-                let start = cursor - w.before.len();
+                let start = w.start;
+                assert_eq!(start + w.before.len(), cursor, "{ctx}");
                 let end = cursor + w.at.len() + w.after.len();
                 assert_eq!(&text[start..cursor], w.before, "{ctx}");
                 assert_eq!(&text[cursor..end], format!("{}{}", w.at, w.after), "{ctx}");

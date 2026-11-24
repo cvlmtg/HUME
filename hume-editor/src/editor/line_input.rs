@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use hume_rope::grapheme::{next_str_boundary, prev_str_boundary};
+use hume_rope::grapheme::{next_str_boundary, prev_str_boundary, str_cluster_start};
 use hume_rope::width::{CursorWindow, window_around_cursor};
 use termina::event::{KeyCode, KeyEvent, Modifiers};
 
@@ -28,8 +28,10 @@ pub(crate) struct LineInput {
     /// char boundary.
     cursor: usize,
     /// Byte offset where the last [`scroll_window`](Self::scroll_window)
-    /// started. At or before `cursor`, and a position the cursor or an edit
-    /// start held, so a boundary whatever keys arrive between two frames.
+    /// started. At or before `cursor`, and a cluster start: an edit moves it
+    /// back to the edit's start when the edit begins before it, then to the
+    /// start of the cluster holding it, since text typed at it can join the
+    /// cluster before it.
     scroll: usize,
 }
 
@@ -69,8 +71,7 @@ impl LineInput {
                 self.delete_back_to(word_boundary_back(&self.text, self.cursor))
             }
             KeyCode::Char(ch) if is_plain(key.modifiers) => {
-                self.text.insert(self.cursor, ch);
-                self.cursor += ch.len_utf8();
+                self.splice(self.cursor..self.cursor, ch.encode_utf8(&mut [0; 4]));
                 LineEdit::Changed
             }
             KeyCode::Left => self.move_to(prev_str_boundary(&self.text, self.cursor)),
@@ -85,8 +86,7 @@ impl LineInput {
         if s.is_empty() {
             return false;
         }
-        self.text.insert_str(self.cursor, s);
-        self.cursor += s.len();
+        self.splice(self.cursor..self.cursor, s);
         true
     }
 
@@ -96,7 +96,7 @@ impl LineInput {
         let start = span.start;
         self.text.replace_range(span, replacement);
         self.cursor = start + replacement.len();
-        self.scroll = self.scroll.min(start);
+        self.scroll = str_cluster_start(&self.text, self.scroll.min(start));
     }
 
     /// The window of `cells` cells over the text that shows the cursor,
@@ -104,7 +104,7 @@ impl LineInput {
     /// window's start is kept for the next call.
     pub(in crate::editor) fn scroll_window(&mut self, cells: usize) -> CursorWindow<'_> {
         let window = window_around_cursor(&self.text, self.cursor, cells, self.scroll);
-        self.scroll = self.cursor - window.before.len();
+        self.scroll = window.start;
         window
     }
 
@@ -122,9 +122,7 @@ impl LineInput {
         if start == self.cursor {
             return LineEdit::Ignored;
         }
-        self.text.drain(start..self.cursor);
-        self.cursor = start;
-        self.scroll = self.scroll.min(start);
+        self.splice(start..self.cursor, "");
         LineEdit::Changed
     }
 }

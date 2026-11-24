@@ -121,12 +121,14 @@ fn a_move_past_either_end_stays_put() {
 }
 
 fn window<'a>(
+    start: usize,
     before: &'a str,
     at: &'a str,
     after: &'a str,
     before_width: usize,
 ) -> CursorWindow<'a> {
     CursorWindow {
+        start,
         before,
         before_width,
         at,
@@ -137,10 +139,10 @@ fn window<'a>(
 #[test]
 fn the_window_keeps_its_start_while_the_cursor_moves_inside_it() {
     let mut l = line("abcdefgh", 0);
-    assert_eq!(l.scroll_window(4), window("fgh", "", "", 3));
+    assert_eq!(l.scroll_window(4), window(5, "fgh", "", "", 3));
     l.edit(key_left());
     l.edit(key_left());
-    assert_eq!(l.scroll_window(4), window("f", "g", "h", 1));
+    assert_eq!(l.scroll_window(4), window(5, "f", "g", "h", 1));
 }
 
 #[test]
@@ -151,7 +153,7 @@ fn typing_after_moving_before_the_window_starts_it_at_the_cursor() {
         l.edit(key_left());
     }
     l.edit(key('é'));
-    assert_eq!(l.scroll_window(4), window("é", "e", "fg", 1));
+    assert_eq!(l.scroll_window(4), window(4, "é", "e", "fg", 1));
 }
 
 #[test]
@@ -159,5 +161,30 @@ fn a_splice_over_the_window_start_starts_it_at_the_splice() {
     let mut l = line("ab cdefgh", 0);
     l.scroll_window(4);
     l.splice(3..9, "é\u{65E5}");
-    assert_eq!(l.scroll_window(4), window("é\u{65E5}", "", "", 3));
+    assert_eq!(l.scroll_window(4), window(3, "é\u{65E5}", "", "", 3));
+}
+
+/// `abcde` scrolled until the cursor, on `d`, is the window's first cell.
+fn cursor_on_the_window_start() -> LineInput {
+    let mut l = line("abcde", 0);
+    l.scroll_window(3);
+    for _ in 0..2 {
+        l.edit(key_left());
+        l.scroll_window(3);
+    }
+    l
+}
+
+#[test]
+fn a_mark_typed_at_the_window_start_keeps_the_cluster_it_joins_in_view() {
+    let mut l = cursor_on_the_window_start();
+    l.edit(key('\u{301}'));
+    assert_eq!(l.scroll_window(3), window(2, "c\u{301}", "d", "e", 1));
+}
+
+#[test]
+fn a_mark_pasted_at_the_window_start_keeps_the_cluster_it_joins_in_view() {
+    let mut l = cursor_on_the_window_start();
+    l.insert_str("\u{301}");
+    assert_eq!(l.scroll_window(3), window(2, "c\u{301}", "d", "e", 1));
 }

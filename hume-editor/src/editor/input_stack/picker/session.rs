@@ -657,8 +657,7 @@ impl PickerSession {
     /// Scrolls the query's window to `cells` cells around its cursor
     /// ([`LineInput::scroll_window`]) and returns the byte where it starts.
     pub(in crate::editor) fn scroll_query(&mut self, cells: usize) -> usize {
-        let cursor = self.query.cursor();
-        cursor - self.query.scroll_window(cells).before.len()
+        self.query.scroll_window(cells).start
     }
 
     pub(in crate::editor) fn selected(&self) -> usize {

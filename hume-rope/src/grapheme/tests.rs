@@ -747,6 +747,28 @@ fn str_boundaries_walk_every_corpus_cluster_both_ways() {
 }
 
 #[test]
+fn str_cluster_start_finds_the_start_of_the_cluster_holding_a_byte() {
+    use test_fixtures::unicode::{COMBINING, ZWJ_FAMILY};
+    let text = format!("a{COMBINING}{ZWJ_FAMILY}");
+    let mark = 1 + "e".len();
+    let zwj = 1 + COMBINING.len() + "\u{1f468}".len();
+    for (byte_pos, expected) in [
+        (0, 0),
+        (1, 1),
+        (mark, 1),
+        (1 + COMBINING.len(), 1 + COMBINING.len()),
+        (zwj, 1 + COMBINING.len()),
+        (text.len(), text.len()),
+    ] {
+        assert_eq!(
+            str_cluster_start(&text, byte_pos),
+            expected,
+            "byte {byte_pos}"
+        );
+    }
+}
+
+#[test]
 fn common_str_prefix_ends_where_two_strings_differ() {
     for (a, b, expected) in [
         ("", "", ""),
