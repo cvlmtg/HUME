@@ -322,19 +322,16 @@ fn draw_picker_panel_marks_the_cluster_under_a_mid_query_cursor() {
     };
     let mut s = state("abc", &[], None, &geo);
     s.cursor = 1;
-    let cursor_fg = Some(Rgb(1, 2, 3));
+    let cursor_fg = Rgb(1, 2, 3);
     let styles = PickerStyles {
-        cursor: ResolvedStyle {
-            fg: cursor_fg,
-            ..Default::default()
-        },
+        cursor: resolved(cursor_fg),
         ..styles()
     };
     draw_picker_panel(&mut canvas, &s, styles, &theme);
 
     let inner_x = geo.rect.x + 1;
     let cursor_cells: Vec<bool> = (inner_x..inner_x + 4)
-        .map(|x| buf[(x, 1)].style().fg == cursor_fg)
+        .map(|x| buf[(x, 1)].style().fg == Some(cursor_fg))
         .collect();
     assert_eq!(cursor_cells, vec![false, true, false, false]);
     insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 20, 1)), @"│abc            0/0│");
@@ -351,19 +348,16 @@ fn draw_picker_panel_shows_a_wide_cluster_under_the_cursor() {
     };
     let mut s = state("日本語", &[], None, &geo);
     s.cursor = "日本".len();
-    let cursor_fg = Some(Rgb(1, 2, 3));
+    let cursor_fg = Rgb(1, 2, 3);
     let styles = PickerStyles {
-        cursor: ResolvedStyle {
-            fg: cursor_fg,
-            ..Default::default()
-        },
+        cursor: resolved(cursor_fg),
         ..styles()
     };
     draw_picker_panel(&mut canvas, &s, styles, &theme);
 
     let inner_x = geo.rect.x + 1;
     let cursor_cells: Vec<bool> = (inner_x..inner_x + 5)
-        .map(|x| buf[(x, 1)].style().fg == cursor_fg)
+        .map(|x| buf[(x, 1)].style().fg == Some(cursor_fg))
         .collect();
     assert_eq!(cursor_cells, vec![false, false, true, true, false]);
     insta::assert_snapshot!(symbols_in(&buf, Rect::new(0, 1, 11, 1)), @"│本語  0/0│");

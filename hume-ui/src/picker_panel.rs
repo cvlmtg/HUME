@@ -229,18 +229,16 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     }
 
     let after_prompt_width = inner_width.saturating_sub(prompt_width);
-    // Reserve 1 col for the cursor cell + 1 col of gap before the counter.
+    // The counter needs 1 col for the cursor cell + 1 col of gap before it.
     let show_counts = after_prompt_width >= counts_width + 2;
-    let query_budget = if show_counts {
-        after_prompt_width - counts_width - 2
+    let query_cells = if show_counts {
+        after_prompt_width - counts_width - 1
     } else {
-        after_prompt_width.saturating_sub(1)
+        after_prompt_width
     };
-    // The query gets the budget plus the reserved cursor cell. The text
-    // before the cursor keeps its tail and leaves room for the whole
-    // cluster under the cursor (one cell at the end of the query); the text
-    // after it, which starts with that cluster, gets what is left.
-    let query_cells = query_budget + 1;
+    // The text before the cursor keeps its tail and leaves room for the
+    // whole cluster under the cursor (one cell at the end of the query); the
+    // text after it, which starts with that cluster, gets what is left.
     let cursor_cluster = &state.query[state.cursor..next_str_boundary(&state.query, state.cursor)];
     let cursor_width = if cursor_cluster.is_empty() {
         1
@@ -258,11 +256,10 @@ pub(in crate::picker_panel) fn draw_picker_panel(
     let cursor_x = query_x + before_width as u16;
     canvas.write_text_run(cursor_x, input_y, after, styles.text, inner_right);
     if cursor_x < inner_right {
-        let under_cursor = &after[..next_str_boundary(after, 0)];
-        let cell = if under_cursor.is_empty() {
+        let cell = if after.is_empty() {
             " "
         } else {
-            under_cursor
+            cursor_cluster
         };
         canvas.write_text_run(cursor_x, input_y, cell, styles.cursor, inner_right);
     }

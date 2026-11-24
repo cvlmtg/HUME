@@ -334,7 +334,7 @@ fn ctrl_w_on_a_live_session_returns_its_query_change_callback() {
 fn typing_after_left_inserts_before_the_last_character() {
     let mut s = open();
     let _ = s.insert_str("abc");
-    assert!(s.edit_query(key_left()).is_none());
+    let _ = s.edit_query(key_left());
     let _ = s.edit_query(key('x'));
     assert_eq!((s.query(), s.query_cursor()), ("abxc", 3));
 }

@@ -69,18 +69,16 @@ fn a_letter_with_a_modifier_other_than_shift_types_nothing() {
 #[test]
 fn a_letter_with_shift_or_a_lock_types() {
     let mut l = line("", 0);
-    assert_eq!(
-        l.edit(KeyEvent::new(KeyCode::Char('X'), Modifiers::SHIFT)),
-        LineEdit::Changed
-    );
-    assert_eq!(
-        l.edit(KeyEvent::new(KeyCode::Char('Y'), Modifiers::CAPS_LOCK)),
-        LineEdit::Changed
-    );
-    assert_eq!(
-        l.edit(KeyEvent::new(KeyCode::Char('1'), Modifiers::NUM_LOCK)),
-        LineEdit::Changed
-    );
+    for (ch, modifiers) in [
+        ('X', Modifiers::SHIFT),
+        ('Y', Modifiers::CAPS_LOCK),
+        ('1', Modifiers::NUM_LOCK),
+    ] {
+        assert_eq!(
+            l.edit(KeyEvent::new(KeyCode::Char(ch), modifiers)),
+            LineEdit::Changed
+        );
+    }
     assert_eq!((l.text(), l.cursor()), ("XY1", 3));
 }
 

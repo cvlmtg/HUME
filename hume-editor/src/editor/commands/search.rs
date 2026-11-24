@@ -130,10 +130,7 @@ fn ensure_search_pattern<'a>(
     let sp = match slot.take() {
         Some(sp) => sp,
         None => {
-            let pattern = state
-                .registers
-                .search_register()
-                .ok_or_else(|| CommandError::transient("no search pattern"))?;
+            let pattern = state.registers.search_register().unwrap_or("");
             SearchPattern::compile(pattern).map_err(|e| match e {
                 PatternError::Empty => CommandError::transient("no search pattern"),
                 PatternError::Invalid => CommandError::transient("invalid search pattern"),
