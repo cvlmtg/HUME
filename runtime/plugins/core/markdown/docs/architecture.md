@@ -18,6 +18,10 @@
   `on-syntax-changed`, and for popups `format-text/<lang>` and `parsed-text-captures`.
   There is no query handle. Link paste rests on `on-paste`, which sees a paste before it
   lands, and renumbering after an edit on `on-text-changed`'s hunks.
+- **Inline styles** are `surround-add` once per marker character. Between the two
+  characters of `**` or `~~`, `undo-selection-change` gets the wrapped selection back.
+  Selection undo never stops on a single cursor, so a lone cursor steps back onto the
+  character it wrapped with `move-left` instead.
 
 ## Limitations
 
@@ -37,6 +41,7 @@
   cursor.
 - Lines scrolled into view draw raw until the next render, `hook-viewport-debounce-ms`
   after scrolling stops.
+- `M B` and `M S` are two edits, so undoing one takes two `u`.
 - A table or fenced block is fetched and drawn whole by every render that reaches one of
   its rows, so a block longer than the viewport costs its full length each time.
 

@@ -2231,6 +2231,7 @@ mod follow_link;
 mod link_paste;
 mod link_paths;
 mod lists;
+mod styles;
 mod table_moves;
 mod tables;
 mod tasks;

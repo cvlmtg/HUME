@@ -212,6 +212,48 @@
 
 (bind-key! 'normal "G X" "markdown/toggle-task" #:keymap md-preview/keymap)
 
+;; ── Inline styles ─────────────────────────────────────────────────────────────
+
+(define (md-styles/single-cursor? pane)
+  (let ([sels (buffer-selections pane)])
+    (and (null? (cdr sels))
+         (= (selection-anchor (car sels)) (selection-head (car sels))))))
+
+;; See docs/architecture.md, "Inline styles".
+(define (md-styles/wrapper marker)
+  (lambda (pane)
+    (let ([back (if (md-styles/single-cursor? pane) "move-left" "undo-selection-change")])
+      (let loop ([chars (string->list marker)])
+        (call! "surround-add" pane (car chars))
+        (unless (null? (cdr chars))
+          (call! back pane)
+          (loop (cdr chars)))))))
+
+(define-command! "markdown/bold"
+  "Make each selection bold by wrapping it in `**`."
+  (md-styles/wrapper "**")
+  #:repeatable #t)
+
+(define-command! "markdown/italic"
+  "Make each selection italic by wrapping it in `*`."
+  (md-styles/wrapper "*")
+  #:repeatable #t)
+
+(define-command! "markdown/code"
+  "Make each selection inline code by wrapping it in backticks."
+  (md-styles/wrapper "`")
+  #:repeatable #t)
+
+(define-command! "markdown/strikethrough"
+  "Strike each selection through by wrapping it in `~~`."
+  (md-styles/wrapper "~~")
+  #:repeatable #t)
+
+(bind-key! 'normal "M B" "markdown/bold" #:keymap md-preview/keymap)
+(bind-key! 'normal "M I" "markdown/italic" #:keymap md-preview/keymap)
+(bind-key! 'normal "M C" "markdown/code" #:keymap md-preview/keymap)
+(bind-key! 'normal "M S" "markdown/strikethrough" #:keymap md-preview/keymap)
+
 ;; ── Tables ────────────────────────────────────────────────────────────────────
 
 ;;; A reader of the lines of `pane`'s text: `(info line)` is `(start-char . text)`, and `(row-at line)` the line's

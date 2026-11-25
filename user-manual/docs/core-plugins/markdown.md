@@ -84,6 +84,10 @@ A list numbered `1.`, `1.`, `1.`, or with any one number on every item, keeps it
 
 `G X` checks the task boxes on the lines your selections touch, or unchecks them all when the first box on the main selection's lines is checked. When the main selection's lines have no box, the first box of all decides. Lines without a box don't change.
 
+## Inline styles
+
+`M B` makes each selection bold, `M I` italic, `M C` inline code and `M S` struck through, by wrapping it in `**`, `*`, a backtick or `~~`. With a bare cursor, the character under it gets the style. `.` styles the selection you're on. Undoing bold or strikethrough takes two `u`.
+
 ## Tables
 
 Lines count as a table only below a header with a `---` row. Cells follow the text: `\|` is a `|` inside a cell, and `||` holds an empty cell.
@@ -121,6 +125,8 @@ With a Markdown [language server](../lsp.md#install-a-server) installed (`:lsp-i
 | `markdown/enter` | What `Enter` does in a Markdown buffer |
 | `markdown/open-below`, `markdown/open-above` | What `o` and `O` do in a Markdown buffer |
 | `markdown/toggle-task` | What `G X` does in a Markdown buffer |
+| `markdown/bold`, `markdown/italic` | What `M B` and `M I` do in a Markdown buffer |
+| `markdown/code`, `markdown/strikethrough` | What `M C` and `M S` do in a Markdown buffer |
 | `markdown/follow-link` | What `g d` does in a Markdown buffer. Called with `call!`, it returns `#f`, doing nothing, when the cursor is on no link, or on a wiki or reference link with no `lsp/goto-definition` command, so a key can run another command after it |
 | `markdown/select-cell` | What `m i \|` does in a Markdown buffer |
 | `markdown/select-around-cell` | What `m a \|` does in a Markdown buffer |

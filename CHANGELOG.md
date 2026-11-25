@@ -19,6 +19,7 @@
 - `core:markdown` turns a URL or a file's path pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
 - `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and keeps a numbered list in order as you add, renumber or delete items.
 - `core:markdown` checks or unchecks a list's task boxes with `G X`.
+- `core:markdown` makes the selection bold, italic, code or struck through with `M B`, `M I`, `M C` and `M S`.
 - `core:markdown` follows the link under the cursor with `g d`.
 - `core:markdown` selects a table cell with `m i |` or `m a |`, and a table column with `m |`.
 - `core:markdown` moves table rows with `G T j`/`G T k` and columns with `G T h`/`G T l`.
