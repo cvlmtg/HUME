@@ -9,6 +9,7 @@
 (require "lib/lists.scm")
 (require "lib/cells.scm")
 (require "lib/moves.scm")
+(require "lib/styles.scm")
 
 ;; ── Config ────────────────────────────────────────────────────────────────────
 
@@ -220,33 +221,39 @@
          (= (selection-anchor (car sels)) (selection-head (car sels))))))
 
 ;; See docs/architecture.md, "Inline styles".
-(define (md-styles/wrapper marker)
+(define (md-styles/wrap! pane marker)
+  (let ([back (if (md-styles/single-cursor? pane) "move-left" "undo-selection-change")])
+    (let loop ([chars (string->list marker)])
+      (call! "surround-add" pane (car chars))
+      (unless (null? (cdr chars))
+        (call! back pane)
+        (loop (cdr chars))))))
+
+(define (md-styles/toggler style marker)
   (lambda (pane)
-    (let ([back (if (md-styles/single-cursor? pane) "move-left" "undo-selection-change")])
-      (let loop ([chars (string->list marker)])
-        (call! "surround-add" pane (car chars))
-        (unless (null? (cdr chars))
-          (call! back pane)
-          (loop (cdr chars)))))))
+    (let ([marks (md-styles/marks pane style)])
+      (if marks
+          (edit-text! pane (map (lambda (m) (hash 'start-char (car m) 'end-char (cdr m) 'text "")) marks))
+          (md-styles/wrap! pane marker)))))
 
 (define-command! "markdown/bold"
-  "Make each selection bold by wrapping it in `**`."
-  (md-styles/wrapper "**")
+  "Toggle bold: when the primary selection is inside bold text, remove the `**` around every selection inside bold text, and otherwise wrap each selection in `**`."
+  (md-styles/toggler "bold" "**")
   #:repeatable #t)
 
 (define-command! "markdown/italic"
-  "Make each selection italic by wrapping it in `*`."
-  (md-styles/wrapper "*")
+  "Toggle italic: when the primary selection is inside italic text, remove the `*` around every selection inside italic text, and otherwise wrap each selection in `*`."
+  (md-styles/toggler "italic" "*")
   #:repeatable #t)
 
 (define-command! "markdown/code"
-  "Make each selection inline code by wrapping it in backticks."
-  (md-styles/wrapper "`")
+  "Toggle inline code: when the primary selection is inside inline code, remove the backticks around every selection inside inline code, and otherwise wrap each selection in backticks."
+  (md-styles/toggler "code" "`")
   #:repeatable #t)
 
 (define-command! "markdown/strikethrough"
-  "Strike each selection through by wrapping it in `~~`."
-  (md-styles/wrapper "~~")
+  "Toggle strikethrough: when the primary selection is inside struck-through text, remove the `~~` around every selection inside struck-through text, and otherwise wrap each selection in `~~`."
+  (md-styles/toggler "strikethrough" "~~")
   #:repeatable #t)
 
 (bind-key! 'normal "M B" "markdown/bold" #:keymap md-preview/keymap)

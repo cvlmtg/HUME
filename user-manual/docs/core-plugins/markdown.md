@@ -86,7 +86,7 @@ A list numbered `1.`, `1.`, `1.`, or with any one number on every item, keeps it
 
 ## Inline styles
 
-`M B` makes each selection bold, `M I` italic, `M C` inline code and `M S` struck through, by wrapping it in `**`, `*`, a backtick or `~~`. With a bare cursor, the character under it gets the style. `.` styles the selection you're on. Undoing bold or strikethrough takes two `u`.
+`M B` toggles bold, `M I` italic, `M C` inline code and `M S` strikethrough. When the main selection is inside text with that style, the key removes the style around every selection inside it, and leaves the other selections alone. Otherwise it wraps each selection in `**`, `*`, a backtick or `~~`, and with a bare cursor the character under it gets the style. In `***word***`, `M B` leaves `*word*` and `M I` leaves `**word**`. `.` toggles the style where you are. Adding bold or strikethrough takes two `u` to undo.
 
 ## Tables
 

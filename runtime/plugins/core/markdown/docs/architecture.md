@@ -18,10 +18,15 @@
   `on-syntax-changed`, and for popups `format-text/<lang>` and `parsed-text-captures`.
   There is no query handle. Link paste rests on `on-paste`, which sees a paste before it
   lands, and renumbering after an edit on `on-text-changed`'s hunks.
-- **Inline styles** are `surround-add` once per marker character. Between the two
-  characters of `**` or `~~`, `undo-selection-change` gets the wrapped selection back.
-  Selection undo never stops on a single cursor, so a lone cursor steps back onto the
-  character it wrapped with `move-left` instead.
+- **Inline styles** toggle by the `markdown.inline` tree. When the primary selection is
+  inside a span of the style (the innermost one that contains it), one `edit-text!`
+  deletes the delimiters of the span around every selection inside one. The grammar
+  parses `~~a~~` as a strikethrough inside a strikethrough, so a strikethrough also takes
+  each one wrapping it one character wider on each side. Otherwise the style is added
+  with `surround-add`, once per marker character. Between the two characters of `**` or
+  `~~`, `undo-selection-change` gets the wrapped selection back. Selection undo never
+  stops on a single cursor, so a lone cursor steps back onto the character it wrapped
+  with `move-left` instead.
 
 ## Limitations
 
@@ -41,7 +46,7 @@
   cursor.
 - Lines scrolled into view draw raw until the next render, `hook-viewport-debounce-ms`
   after scrolling stops.
-- `M B` and `M S` are two edits, so undoing one takes two `u`.
+- Adding bold or strikethrough is two edits, so undoing it takes two `u`.
 - A table or fenced block is fetched and drawn whole by every render that reaches one of
   its rows, so a block longer than the viewport costs its full length each time.
 
@@ -60,6 +65,7 @@
 | `lib/text.scm` | `md-preview/elements` over a popup's text |
 | `lib/destinations.scm`, `lib/links.scm`, `lib/paths.scm` | Link destinations, link paste, link-path completion and following links: [`links.md`](links.md) |
 | `lib/lists.scm` | List prefixes, ending a list, renumbering, task boxes: [`lists.md`](lists.md) |
+| `lib/styles.scm` | The inline-style query and the delimiters a toggle deletes |
 | `lib/cells.scm`, `lib/moves.scm` | Reading table rows, and the edits that move rows and columns: [`tables.md`](tables.md) |
 
 `blocks.scm`, `table.scm`, `inline.scm`, `lists.scm`, `cells.scm` and `moves.scm` read no

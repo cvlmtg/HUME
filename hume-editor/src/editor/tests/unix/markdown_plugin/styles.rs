@@ -1,5 +1,5 @@
-//! `M B`, `M I`, `M C` and `M S` wrap each selection in a Markdown inline
-//! style.
+//! `M B`, `M I`, `M C` and `M S` toggle a Markdown inline style: they
+//! remove it around the selections inside it, or else wrap each selection.
 
 use super::*;
 
@@ -46,6 +46,61 @@ fn every_cursor_gets_the_style() {
 #[test]
 fn dot_repeats_the_style_on_a_cursor() {
     assert_eq!(after("-[a]>\nb\n", "MBjgh."), "**a**\n**b-[*]>*\n");
+}
+
+#[test]
+fn m_b_inside_bold_removes_it() {
+    assert_eq!(after("**b-[o]>ld**\n", "MB"), "b-[o]>ld\n");
+}
+
+#[test]
+fn m_i_inside_italic_removes_it() {
+    assert_eq!(after("*i-[t]>*\n", "MI"), "i-[t]>\n");
+}
+
+#[test]
+fn m_c_inside_code_removes_it() {
+    assert_eq!(after("`-[x]>`\n", "MC"), "-[x]>\n");
+}
+
+#[test]
+fn m_s_inside_strikethrough_removes_both_tildes() {
+    assert_eq!(after("~~go-[n]>e~~\n", "MS"), "go-[n]>e\n");
+}
+
+#[test]
+fn m_b_inside_bold_italic_keeps_the_italic() {
+    assert_eq!(after("***-[a]>***\n", "MB"), "*-[a]>*\n");
+}
+
+#[test]
+fn m_i_inside_bold_italic_keeps_the_bold() {
+    assert_eq!(after("***-[a]>***\n", "MI"), "**-[a]>**\n");
+}
+
+#[test]
+fn m_b_twice_gives_the_text_back() {
+    let mut p = editing("-[bold]>\n");
+    p.ed.feed_keys("MBMB".chars().map(key));
+    assert_eq!(text(&p.ed), "bold\n");
+}
+
+#[test]
+fn a_primary_inside_bold_removes_only_the_bold_around_selections() {
+    assert_eq!(after("**-{a}>** -[b]>\n", "MB"), "-{a}> -[b]>\n");
+}
+
+#[test]
+fn a_primary_outside_bold_wraps_every_selection() {
+    assert_eq!(
+        after("**-[a]>** -{b}>\n", "MB"),
+        "****a-[*]>*** **b-{*}>*\n"
+    );
+}
+
+#[test]
+fn one_undo_puts_a_removed_style_back() {
+    assert_eq!(after("**b-[o]>ld**\n", "MBu"), "**b-[o]>ld**\n");
 }
 
 #[test]
