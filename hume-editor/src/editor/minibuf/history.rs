@@ -4,10 +4,13 @@
 //! Each prompt gets its own [`History`] ring (oldest-first [`VecDeque`]) with
 //! per-session navigation state (cursor + scratch). The rings are grouped
 //! in [`HistoryStore`], which lives on `Editor` and is keyed by [`HistoryKind`].
+//! A `MiniBuffer` names its ring as it opens and records, recalls and walks
+//! it itself, so a ring holds only what was typed and confirmed at its
+//! prompt.
 //!
 use std::collections::VecDeque;
 
-// ── HistoryKind / HistoryDir ──────────────────────────────────────────────────
+// ── HistoryKind ───────────────────────────────────────────────────────────────
 
 /// Which minibuffer prompt a history ring belongs to.
 ///
@@ -49,13 +52,6 @@ impl HistoryKind {
     };
 }
 
-/// Direction for [`crate::editor::minibuf::recall_history`].
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::editor) enum HistoryDir {
-    Prev,
-    Next,
-}
-
 /// A single bounded history ring with per-session navigation state.
 ///
 /// Entries are stored oldest-first; `back()` is always the most recent.
@@ -92,7 +88,7 @@ impl History {
         }
     }
 
-    /// Record a submitted entry. Skips empty strings and consecutive
+    /// Record a submitted entry. Skips blank strings and consecutive
     /// duplicates. Always resets nav state: a confirm ends the session.
     /// Caps the ring at `self.capacity` with a `while`, not an `if`, so a
     /// `set_capacity` shrink of any size converges to the new cap in this
@@ -100,7 +96,7 @@ impl History {
     pub(in crate::editor) fn push(&mut self, entry: String) {
         self.begin_session();
         let is_duplicate = self.entries.back().is_some_and(|last| *last == entry);
-        if !entry.is_empty() && !is_duplicate {
+        if !entry.trim().is_empty() && !is_duplicate {
             self.entries.push_back(entry);
         }
         while self.entries.len() > self.capacity {
@@ -225,17 +221,6 @@ impl HistoryStore {
             HistoryKind::SearchBackward => &mut self.search_b,
             HistoryKind::Pipe => &mut self.pipe,
             HistoryKind::Sift => &mut self.sift,
-        }
-    }
-
-    /// Map a minibuffer prompt character to its history kind.
-    /// Returns `None` for prompts that have no associated history (e.g. `⫽`).
-    pub(in crate::editor) fn kind_for_prompt(prompt: &str) -> Option<HistoryKind> {
-        match prompt {
-            ":" => Some(HistoryKind::Command),
-            "/" => Some(HistoryKind::SearchForward),
-            "?" => Some(HistoryKind::SearchBackward),
-            _ => None,
         }
     }
 

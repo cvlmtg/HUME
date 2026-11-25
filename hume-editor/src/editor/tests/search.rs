@@ -1220,16 +1220,6 @@ fn search_edit_after_recall_demotes_to_scratch() {
     ed.handle_key(key_esc());
 }
 
-fn history(ed: &Editor, kind: HistoryKind) -> Vec<String> {
-    ed.state
-        .history
-        .get(kind)
-        .entries()
-        .iter()
-        .cloned()
-        .collect()
-}
-
 #[test]
 fn sift_confirm_records_the_pattern_in_its_own_ring() {
     let mut ed = editor_from("-[ab cd ab]>\n");
@@ -1256,13 +1246,27 @@ fn sift_up_recalls_the_previous_pattern_and_previews_it() {
     ed.handle_key(key('s'));
     ed.handle_key(key_up());
     assert_eq!(ed.state.minibuf().unwrap().line.text(), "ab");
-    assert_eq!(ed.current_view().len(), 2);
-    assert_eq!(ed.current_view().primary().anchor().offset(), co(0));
-    assert_eq!(ed.current_view().primary().head().offset(), co(1));
+    assert_eq!(state(&ed), "-{ab}> cd -[ab]>\n");
 
     ed.handle_key(key_down());
     assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
     assert_eq!(state(&ed), original);
+}
+
+/// Up with nothing to recall leaves the pattern as typed, so the preview is
+/// not recomputed.
+#[test]
+fn sift_up_with_nothing_to_recall_keeps_the_preview() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    ed.handle_key(key('s'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    let scans = ed.state.sift_scans;
+    ed.handle_key(key_up());
+    ed.handle_key(key_down());
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "ab");
+    assert_eq!(ed.state.sift_scans, scans);
+    ed.handle_key(key_esc());
 }
 
 #[test]

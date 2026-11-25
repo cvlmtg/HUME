@@ -5,8 +5,7 @@ use hume_engine::types::EditorMode;
 
 use super::super::dispatch::unknown_command_text;
 use super::super::error::CommandError;
-use super::super::line_input::LineEdit;
-use super::super::minibuf::history::{HistoryDir, HistoryKind};
+use super::super::minibuf::history::HistoryKind;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, MinibufView, PromptCompletion};
 use super::super::paste_plan::PlannedPaste;
 use super::super::registry::{ArgExpansion, Takes, TypedBody};
@@ -24,7 +23,11 @@ pub(in crate::editor) struct CommandLayer {
 impl CommandLayer {
     pub(in crate::editor) fn new(input: WaitingInput) -> Self {
         Self {
-            minibuf: MiniBuffer::new(":", Some(PromptCompletion::CommandLine)),
+            minibuf: MiniBuffer::new(
+                ":",
+                Some(PromptCompletion::CommandLine),
+                Some(HistoryKind::Command),
+            ),
             _input: input,
         }
     }
@@ -120,19 +123,8 @@ fn command_paste(
     _r: LayerRef,
     text: PastedText,
 ) -> Result<PlannedPaste, CommandError> {
-    if minibuf::paste_into_minibuf(state, &text) {
-        command_line_edited(state);
-    }
+    minibuf::paste_into_minibuf(state, &text);
     Ok(PlannedPaste::NONE)
-}
-
-/// Demotes any active history recall back to scratch: what an edit or a
-/// cursor move on the `:` line does beyond changing it.
-fn command_line_edited(state: &mut EditorState) {
-    state
-        .history
-        .get_mut(HistoryKind::Command)
-        .demote_to_scratch();
 }
 
 fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
@@ -155,27 +147,13 @@ fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             // stays in Insert instead of being stomped back to Normal, and a
             // body calling `(prompt! …)` pushes `Prompt` on a clean stack
             // with no special case needed.
-            ed.state
-                .history
-                .get_mut(HistoryKind::Command)
-                .push(raw.clone());
             ed.state.truncate_layers(&ed.view, r);
             let _ = execute_command_line(ed, &raw);
         }
-        // An edit or cursor move demotes any active history recall back to
-        // scratch. An edit that empties the line keeps the minibuffer open:
-        // only a Backspace on an empty line dismisses it, so deleting a
-        // one-char typo doesn't close the prompt.
-        MiniBufferEvent::Line(LineEdit::Changed | LineEdit::Moved) => {
-            command_line_edited(&mut ed.state);
-        }
-        MiniBufferEvent::HistoryPrev => {
-            minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Prev);
-        }
-        MiniBufferEvent::HistoryNext => {
-            minibuf::recall_history(ed, HistoryKind::Command, HistoryDir::Next);
-        }
-        MiniBufferEvent::Line(LineEdit::Ignored) => {}
+        // An edit that empties the line keeps the minibuffer open: only a
+        // Backspace on an empty line dismisses it, so deleting a one-char
+        // typo doesn't close the prompt.
+        MiniBufferEvent::Line(_) => {}
     }
 }
 

@@ -12,6 +12,8 @@
 - `f`, `t`, `=`, `-`, `#`, `{`, `}`, the surround and text-object keys and the structural jumps show "no match" when they find nothing, and leave the selections as they were; `.` then stops instead of editing the selection.
 - `Left` and `Right` move the cursor in a picker's query, so you can type or delete in the middle of it.
 - `Up` and `Down` recall earlier patterns in the `s` prompt.
+- After you move the cursor in the `:` or `|` prompt, `Up` keeps walking the same history matches, as in `/`, `?` and `s`.
+- A `/` or `?` pattern you confirm goes into the history even when it is invalid, so `Up` brings it back to fix.
 
 ### Plugins & scripting
 - `core:markdown` turns a URL or a file's path pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
@@ -22,6 +24,7 @@
 - `core:markdown` moves table rows with `G T j`/`G T k` and columns with `G T h`/`G T l`.
 - The `on-paste` hook lets a plugin change the text a paste puts in a buffer.
 - `fold-start?` tells a script whether a fold starts on a line.
+- A search or sift a script runs with `call!` stays out of the prompt history. It still sets the search register and the jump list.
 
 ### Fixes
 - `Ctrl-w` deletes the word before the cursor in pickers.

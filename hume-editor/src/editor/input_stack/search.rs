@@ -11,7 +11,6 @@ use hume_ops::search::{MatchScan, MatchSeed, PatternError, SearchDirection};
 use super::super::error::CommandError;
 use super::super::jump_list::JumpEntry;
 use super::super::line_input::LineEdit;
-use super::super::minibuf::history::{HistoryDir, HistoryKind, HistoryStore};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::paste_plan::PlannedPaste;
 use super::super::replay::WaitingInput;
@@ -126,22 +125,9 @@ fn search_paste(
     text: PastedText,
 ) -> Result<PlannedPaste, CommandError> {
     if minibuf::paste_into_minibuf(state, &text) {
-        search_edited(state, r);
+        update_live_search(state, r);
     }
     Ok(PlannedPaste::NONE)
-}
-
-/// What an edit to the pattern does beyond changing it: demotes any active
-/// history recall back to scratch and refreshes the live preview.
-fn search_edited(state: &mut EditorState, r: LayerRef) {
-    if let Some(k) = state
-        .input
-        .minibuf()
-        .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt))
-    {
-        state.history.get_mut(k).demote_to_scratch();
-    }
-    update_live_search(state, r);
 }
 
 fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
@@ -167,27 +153,9 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
             // begins a fresh history session.
             ed.state.truncate_layers(&ed.view, r);
         }
-        MiniBufferEvent::Line(LineEdit::Changed) => search_edited(&mut ed.state, r),
-        MiniBufferEvent::HistoryPrev => recall_search_history(ed, r, HistoryDir::Prev),
-        MiniBufferEvent::HistoryNext => recall_search_history(ed, r, HistoryDir::Next),
+        MiniBufferEvent::Line(LineEdit::Changed) => update_live_search(&mut ed.state, r),
         MiniBufferEvent::Line(LineEdit::Moved | LineEdit::Ignored) => {}
     }
-}
-
-/// Recalls the previous/next entry from whichever ring `dir` names (shared
-/// by the `HistoryPrev`/`HistoryNext` arms above, which differ only in
-/// `dir`), then refreshes the live preview against the recalled pattern.
-fn recall_search_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
-    let Some(kind) = ed
-        .state
-        .input
-        .minibuf()
-        .and_then(|m| HistoryStore::kind_for_prompt(&m.prompt))
-    else {
-        return;
-    };
-    minibuf::recall_history(ed, kind, dir);
-    update_live_search(&mut ed.state, r);
 }
 
 /// Recompile the regex from the current mini-buffer input and preview it
@@ -305,22 +273,16 @@ pub(in crate::editor) fn preview_search(
     Ok(true)
 }
 
-/// Accept `raw` as the confirmed search: record it in `direction`'s history
-/// ring and the `s` register (for `n`/`N`), and record `pre`, the pane's
-/// selections before the search, in its jump list unless the search left
-/// them where they were (`record_if_moved`).
+/// Accept `raw` as the confirmed search: record it in the `s` register (for
+/// `n`/`N`), and record `pre`, the pane's selections before the search, in
+/// its jump list unless the search left them where they were
+/// (`record_if_moved`).
 pub(in crate::editor) fn commit_search(
     state: &mut EditorState,
     view: &EngineView,
     raw: String,
-    direction: SearchDirection,
     pre: SearchOrigin,
 ) {
-    let kind = match direction {
-        SearchDirection::Forward => HistoryKind::SearchForward,
-        SearchDirection::Backward => HistoryKind::SearchBackward,
-    };
-    state.history.get_mut(kind).push(raw.clone());
     state.registers.set_search_register(raw);
     let SearchOrigin { pane, bid, sels } = pre;
     if let Some(t) = commands::CommandPane::existing(view, pane) {

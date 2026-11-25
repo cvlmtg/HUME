@@ -426,7 +426,7 @@ use pane::close_focused_pane;
 pub(in crate::editor) use pane::split_pane_onto;
 pub(in crate::editor) use pane::{open_pane_as_new_tab, open_pane_in_layout};
 pub(in crate::editor) use paste::land_register_paste;
-pub(in crate::editor) use pipe::{apply_pipe_output, cmd_cancel_pipe, cmd_pipe, is_blank_command};
+pub(in crate::editor) use pipe::{apply_pipe_output, cmd_cancel_pipe, cmd_pipe};
 use pipeline::MissingOperand;
 pub(in crate::editor) use pipeline::{
     BoundCommand, CommandOutcome, FocusedBindError, Missing, NativeBody, PendingDispatch,

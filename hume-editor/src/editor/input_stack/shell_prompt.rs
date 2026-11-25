@@ -6,8 +6,7 @@ use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
 use super::super::error::CommandError;
-use super::super::line_input::LineEdit;
-use super::super::minibuf::history::{HistoryDir, HistoryKind};
+use super::super::minibuf::history::HistoryKind;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, PromptCompletion};
 use super::super::paste_plan::PlannedPaste;
 use super::super::replay::WaitingInput;
@@ -39,7 +38,11 @@ pub(in crate::editor) fn open_shell_prompt(
     state.push_layer(
         view,
         ShellPromptLayer {
-            minibuf: MiniBuffer::new("|", Some(PromptCompletion::Source(SHELL_SOURCE))),
+            minibuf: MiniBuffer::new(
+                "|",
+                Some(PromptCompletion::Source(SHELL_SOURCE)),
+                Some(HistoryKind::Pipe),
+            ),
             then,
             input,
         },
@@ -82,16 +85,8 @@ fn shell_prompt_paste(
     _r: LayerRef,
     text: PastedText,
 ) -> Result<PlannedPaste, CommandError> {
-    if minibuf::paste_into_minibuf(state, &text) {
-        shell_line_edited(state);
-    }
+    minibuf::paste_into_minibuf(state, &text);
     Ok(PlannedPaste::NONE)
-}
-
-/// Demotes any active history recall back to scratch: what an edit or a
-/// cursor move on the `|` line does beyond changing it.
-fn shell_line_edited(state: &mut EditorState) {
-    state.history.get_mut(HistoryKind::Pipe).demote_to_scratch();
 }
 
 fn handle_shell_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
@@ -99,25 +94,8 @@ fn handle_shell_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
         MiniBufferEvent::Cancel
         | MiniBufferEvent::ConfirmEmpty
         | MiniBufferEvent::BackspaceOnEmpty => finish_shell_prompt(ed, r, None),
-        MiniBufferEvent::Confirm(command) => {
-            if !commands::is_blank_command(&command) {
-                ed.state
-                    .history
-                    .get_mut(HistoryKind::Pipe)
-                    .push(command.clone());
-            }
-            finish_shell_prompt(ed, r, Some(command));
-        }
-        MiniBufferEvent::Line(LineEdit::Changed | LineEdit::Moved) => {
-            shell_line_edited(&mut ed.state);
-        }
-        MiniBufferEvent::HistoryPrev => {
-            minibuf::recall_history(ed, HistoryKind::Pipe, HistoryDir::Prev);
-        }
-        MiniBufferEvent::HistoryNext => {
-            minibuf::recall_history(ed, HistoryKind::Pipe, HistoryDir::Next);
-        }
-        MiniBufferEvent::Line(LineEdit::Ignored) => {}
+        MiniBufferEvent::Confirm(command) => finish_shell_prompt(ed, r, Some(command)),
+        MiniBufferEvent::Line(_) => {}
     }
 }
 

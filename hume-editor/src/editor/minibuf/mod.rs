@@ -3,7 +3,7 @@ pub(in crate::editor) mod history;
 use hume_grid::Rect;
 use hume_rope::width::{chrome_width, fit_prompt};
 
-use self::history::{HistoryDir, HistoryKind};
+use self::history::{HistoryKind, HistoryStore};
 use super::input_stack::{InputEvent, LayerRef, PastedText};
 use super::keymap::WalkResult;
 use super::line_input::{LineEdit, LineInput};
@@ -25,6 +25,9 @@ pub(in crate::editor) struct MiniBuffer {
     /// What Tab completes on this line, declared by whoever opened it;
     /// `None` for a line Tab does nothing on.
     pub completion: Option<PromptCompletion>,
+    /// The ring Enter records the line in and Up/Down recall from; `None`
+    /// for a prompt with no history.
+    history: Option<HistoryKind>,
 }
 
 /// The completion a minibuffer line offers, which decides the source Tab
@@ -85,21 +88,20 @@ impl MinibufView {
 /// Outcome of feeding one key to [`MiniBuffer::handle_key`].
 ///
 /// Callers match on this to perform the mode-specific follow-up action
-/// (e.g. search confirmation vs. command execution on `Confirm`).
+/// (e.g. search confirmation vs. command execution on `Confirm`). History
+/// is already handled by then.
 pub(super) enum MiniBufferEvent {
     /// Esc or Ctrl-c: caller should cancel/close the mini-buffer.
     Cancel,
-    /// Enter with non-empty input: `String` is the confirmed text.
+    /// Enter with non-empty input: `String` is the confirmed text, already
+    /// recorded in the prompt's history.
     Confirm(String),
     /// Enter with empty input: treat as cancel.
     ConfirmEmpty,
     /// Backspace on an empty line, which has nothing to delete.
     BackspaceOnEmpty,
-    /// Up pressed: caller should recall the previous history entry for this prompt.
-    HistoryPrev,
-    /// Down pressed: caller should recall the next history entry (or restore scratch).
-    HistoryNext,
-    /// Any other key, and what it did to the line.
+    /// Any other key, and what it did to the line. A history recall that
+    /// replaced the text is `Changed`.
     Line(LineEdit),
 }
 
@@ -109,11 +111,13 @@ impl MiniBuffer {
     pub(in crate::editor) fn new(
         prompt: impl Into<String>,
         completion: Option<PromptCompletion>,
+        history: Option<HistoryKind>,
     ) -> Self {
         Self {
             prompt: prompt.into(),
             line: LineInput::default(),
             completion,
+            history,
         }
     }
 
@@ -123,7 +127,7 @@ impl MiniBuffer {
     pub(in crate::editor) fn with_prefill(prompt: impl Into<String>, input: String) -> Self {
         Self {
             line: LineInput::new(input),
-            ..Self::new(prompt, None)
+            ..Self::new(prompt, None, None)
         }
     }
 
@@ -150,9 +154,16 @@ impl MiniBuffer {
     ///
     /// Covers the prompt's own keys: cancel (Esc/Ctrl-c), confirm (Enter),
     /// Backspace on an empty line and history (Up/Down). Every
-    /// other key goes to [`LineInput::edit`]. Returns a [`MiniBufferEvent`]
-    /// describing the outcome so the caller can apply mode-specific logic.
-    pub(super) fn handle_key(&mut self, key: termina::event::KeyEvent) -> MiniBufferEvent {
+    /// other key goes to [`LineInput::edit`]. Enter records the line in
+    /// the prompt's history ring, and an edit ends a walk through it; a
+    /// cursor move does not, as the walk filters by text. Returns a
+    /// [`MiniBufferEvent`] describing the outcome so the caller can apply
+    /// mode-specific logic.
+    pub(super) fn handle_key(
+        &mut self,
+        key: termina::event::KeyEvent,
+        history: &mut HistoryStore,
+    ) -> MiniBufferEvent {
         use termina::event::{KeyCode, Modifiers};
 
         match key.code {
@@ -161,16 +172,48 @@ impl MiniBuffer {
                 MiniBufferEvent::Cancel
             }
             KeyCode::Enter => {
-                if self.line.text().is_empty() {
-                    MiniBufferEvent::ConfirmEmpty
-                } else {
-                    MiniBufferEvent::Confirm(self.line.text().to_owned())
+                let text = self.line.text();
+                if text.is_empty() {
+                    return MiniBufferEvent::ConfirmEmpty;
                 }
+                if let Some(kind) = self.history {
+                    history.get_mut(kind).push(text.to_owned());
+                }
+                MiniBufferEvent::Confirm(text.to_owned())
             }
             KeyCode::Backspace if self.line.text().is_empty() => MiniBufferEvent::BackspaceOnEmpty,
-            KeyCode::Up => MiniBufferEvent::HistoryPrev,
-            KeyCode::Down => MiniBufferEvent::HistoryNext,
-            _ => MiniBufferEvent::Line(self.line.edit(key)),
+            KeyCode::Up | KeyCode::Down => {
+                let recalled = self.history.and_then(|kind| {
+                    let ring = history.get_mut(kind);
+                    if key.code == KeyCode::Up {
+                        ring.prev(self.line.text())
+                    } else {
+                        ring.next()
+                    }
+                });
+                match recalled {
+                    Some(text) if text != self.line.text() => {
+                        self.line.set(text);
+                        MiniBufferEvent::Line(LineEdit::Changed)
+                    }
+                    _ => MiniBufferEvent::Line(LineEdit::Ignored),
+                }
+            }
+            _ => {
+                let edit = self.line.edit(key);
+                if edit == LineEdit::Changed {
+                    self.end_history_walk(history);
+                }
+                MiniBufferEvent::Line(edit)
+            }
+        }
+    }
+
+    /// Ends any walk through this prompt's history: the user edited the
+    /// line, so the next Up starts a fresh walk from what it now holds.
+    fn end_history_walk(&self, history: &mut HistoryStore) {
+        if let Some(kind) = self.history {
+            history.get_mut(kind).demote_to_scratch();
         }
     }
 }
@@ -208,7 +251,12 @@ pub(in crate::editor) fn minibuf_input(
             ed.start_minibuf_completion();
             None
         }
-        InputEvent::Key(key) => Some(ed.state.input.minibuf_mut()?.handle_key(key)),
+        InputEvent::Key(key) => Some(
+            ed.state
+                .input
+                .minibuf_mut()?
+                .handle_key(key, &mut ed.state.history),
+        ),
     }
 }
 
@@ -234,36 +282,20 @@ pub(in crate::editor) fn command_line_input(
 }
 
 /// Insert `text` as one line ([`PastedText::single_line`]) at the
-/// minibuffer's cursor: the paste half every minibuf-mode layer's paste
-/// handler shares, each then running the follow-up its own key handler
-/// runs for a changed line. Whether the input changed: `false` when no
-/// minibuffer is live or `text` flattens to nothing.
+/// minibuffer's cursor, ending any history walk as a typed edit does: the
+/// paste half every minibuf-mode layer's paste handler shares, each then
+/// running the follow-up its own key handler runs for a changed line.
+/// Whether the input changed: `false` when no minibuffer is live or `text`
+/// flattens to nothing.
 pub(in crate::editor) fn paste_into_minibuf(state: &mut EditorState, text: &PastedText) -> bool {
-    state
-        .input
-        .minibuf_mut()
-        .is_some_and(|mb| mb.line.insert_str(&text.single_line()))
-}
-
-/// Recall the previous (`Prev`) or next (`Next`) entry from `kind`'s history
-/// ring and install it in the minibuffer. No-op when there is no active
-/// minibuffer or when the ring has nowhere to go.
-pub(in crate::editor) fn recall_history(ed: &mut Editor, kind: HistoryKind, dir: HistoryDir) {
-    let current = ed
-        .state
-        .input
-        .minibuf()
-        .map(|m| m.line.text())
-        .unwrap_or("");
-    let text = match dir {
-        HistoryDir::Prev => ed.state.history.get_mut(kind).prev(current),
-        HistoryDir::Next => ed.state.history.get_mut(kind).next(),
+    let Some(mb) = state.input.minibuf_mut() else {
+        return false;
     };
-    if let Some(text) = text
-        && let Some(mb) = ed.state.input.minibuf_mut()
-    {
-        mb.line.set(text);
+    let changed = mb.line.insert_str(&text.single_line());
+    if changed {
+        mb.end_history_walk(&mut state.history);
     }
+    changed
 }
 
 /// Flatten already-newline-normalized text for a single-line input field

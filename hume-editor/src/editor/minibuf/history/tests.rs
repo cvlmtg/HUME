@@ -129,6 +129,13 @@ fn empty_push_is_ignored() {
 }
 
 #[test]
+fn blank_push_is_ignored() {
+    let mut h = h(10);
+    h.push(" \t ".into());
+    assert_eq!(h.entries.len(), 0);
+}
+
+#[test]
 fn begin_session_resets_nav_but_keeps_entries() {
     let mut h = h(10);
     h.push("a".into());
@@ -178,24 +185,6 @@ fn prev_first_step_miss_leaves_state_untouched() {
 }
 
 // ── HistoryStore ──────────────────────────────────────────────────────────
-
-#[test]
-fn kind_for_prompt_maps_colon_slash_question() {
-    assert_eq!(
-        HistoryStore::kind_for_prompt(":"),
-        Some(HistoryKind::Command)
-    );
-    assert_eq!(
-        HistoryStore::kind_for_prompt("/"),
-        Some(HistoryKind::SearchForward)
-    );
-    assert_eq!(
-        HistoryStore::kind_for_prompt("?"),
-        Some(HistoryKind::SearchBackward)
-    );
-    assert_eq!(HistoryStore::kind_for_prompt("⫽"), None);
-    assert_eq!(HistoryStore::kind_for_prompt("x"), None);
-}
 
 #[test]
 fn set_capacity_defers_trim_to_next_push() {

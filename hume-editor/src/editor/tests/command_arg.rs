@@ -246,16 +246,6 @@ fn a_read_made_under_a_popup_queues_behind_the_pending_one() {
 
 // ── Search with a pattern from a script ─────────────────────────────────────
 
-fn search_history(ed: &Editor, kind: HistoryKind) -> Vec<String> {
-    ed.state
-        .history
-        .get(kind)
-        .entries()
-        .iter()
-        .cloned()
-        .collect()
-}
-
 fn jump_count(ed: &Editor) -> usize {
     ed.state.panes.entries[ed.view.focused_pane()].jumps.len()
 }
@@ -271,11 +261,10 @@ fn call_search_forward_with_a_pattern_acts_as_typed_and_confirmed() {
     assert_eq!(state(&ed), "hello -[world]>\n");
     assert_eq!(ed.state.mode(), Mode::Normal);
     assert_eq!(reg(&ed, 's'), vec!["world"]);
-    assert_eq!(
-        search_history(&ed, HistoryKind::SearchForward),
-        vec!["world"]
+    assert!(
+        history(&ed, HistoryKind::SearchForward).is_empty(),
+        "a script's search is not prompt history"
     );
-    assert!(search_history(&ed, HistoryKind::SearchBackward).is_empty());
     assert_eq!(
         jump_count(&ed),
         jumps_before + 1,
@@ -288,10 +277,6 @@ fn call_search_backward_with_a_pattern_selects_the_previous_match() {
     let mut ed = editor_from("hello -[w]>orld\n");
     probe(&mut ed, r#"(call! "search-backward" (focused-pane) "hel")"#);
     assert_eq!(state(&ed), "-[hel]>lo world\n");
-    assert_eq!(
-        search_history(&ed, HistoryKind::SearchBackward),
-        vec!["hel"]
-    );
 }
 
 #[test]
@@ -386,7 +371,7 @@ fn call_search_forward_with_an_invalid_pattern_writes_nothing() {
     assert_eq!(state(&ed), "-[h]>ello\n");
     assert!(has_error(&ed, "invalid pattern"));
     assert!(reg(&ed, 's').is_empty());
-    assert!(search_history(&ed, HistoryKind::SearchForward).is_empty());
+    assert!(history(&ed, HistoryKind::SearchForward).is_empty());
     assert!(
         ed.state
             .buffers
@@ -413,11 +398,6 @@ fn call_search_forward_with_an_empty_pattern_keeps_the_last_search() {
         assert!(has_error(&ed, "empty pattern"), "pattern {empty:?}");
         assert_eq!(reg(&ed, 's'), vec!["lo"], "pattern {empty:?}");
         assert_eq!(
-            search_history(&ed, HistoryKind::SearchForward),
-            vec!["lo"],
-            "pattern {empty:?}"
-        );
-        assert_eq!(
             ed.state
                 .buffers
                 .get(ed.focused_buffer_id())
@@ -430,8 +410,8 @@ fn call_search_forward_with_an_empty_pattern_keeps_the_last_search() {
     }
 }
 
-/// Like Enter on a pattern with no match: the pattern, register, and history
-/// are written and the selection stays; `call!` answers `#f`, which the probe
+/// Like Enter on a pattern with no match: the pattern and register are
+/// written and the selection stays; `call!` answers `#f`, which the probe
 /// turns into a visible move.
 #[test]
 fn call_search_forward_with_no_match_records_it_and_returns_false() {
@@ -444,7 +424,6 @@ fn call_search_forward_with_no_match_records_it_and_returns_false() {
     );
     assert_eq!(state(&ed), "h-[e]>llo\n", "call! must return #f");
     assert_eq!(reg(&ed, 's'), vec!["zzz"]);
-    assert_eq!(search_history(&ed, HistoryKind::SearchForward), vec!["zzz"]);
     assert!(
         ed.state
             .buffers
@@ -468,18 +447,10 @@ fn call_sift_within_with_a_pattern_keeps_each_match() {
 }
 
 #[test]
-fn call_sift_within_records_the_pattern() {
+fn a_script_sift_is_not_prompt_history() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     probe(&mut ed, r#"(call! "sift-within" (focused-pane) "ab")"#);
-    assert_eq!(search_history(&ed, HistoryKind::Sift), vec!["ab"]);
-}
-
-#[test]
-fn call_sift_within_with_an_invalid_pattern_records_nothing() {
-    let mut ed = editor_from("-[ab cd ab]>\n");
-    probe(&mut ed, r#"(call! "sift-within" (focused-pane) "(")"#);
-    assert!(has_error(&ed, "invalid pattern"));
-    assert!(search_history(&ed, HistoryKind::Sift).is_empty());
+    assert!(history(&ed, HistoryKind::Sift).is_empty());
 }
 
 #[test]
@@ -604,14 +575,14 @@ fn type_keys(ed: &mut Editor, keys: &str) {
 }
 
 #[test]
-fn enter_on_an_invalid_search_pattern_reports_and_records_nothing() {
+fn enter_on_an_invalid_search_pattern_reports_and_records_it_for_recall() {
     let mut ed = editor_from("-[h]>ello\n");
     type_keys(&mut ed, "/(");
     ed.feed_key(key_enter());
     assert_eq!(state(&ed), "-[h]>ello\n");
     assert!(has_error(&ed, "invalid pattern"));
     assert!(reg(&ed, 's').is_empty());
-    assert!(search_history(&ed, HistoryKind::SearchForward).is_empty());
+    assert_eq!(history(&ed, HistoryKind::SearchForward), vec!["("]);
 }
 
 #[test]

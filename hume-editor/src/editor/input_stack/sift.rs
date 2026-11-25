@@ -11,7 +11,6 @@ use hume_ops::selection_cmd::sift_matches_within;
 
 use super::super::error::CommandError;
 use super::super::line_input::LineEdit;
-use super::super::minibuf::history::{HistoryDir, HistoryKind};
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
 use super::super::paste_plan::PlannedPaste;
 use super::super::replay::WaitingInput;
@@ -153,16 +152,9 @@ fn sift_paste(
     text: PastedText,
 ) -> Result<PlannedPaste, CommandError> {
     if minibuf::paste_into_minibuf(state, &text) {
-        sift_edited(state, r);
+        update_live_sift(state, r);
     }
     Ok(PlannedPaste::NONE)
-}
-
-/// What an edit to the pattern does beyond changing it: demotes any active
-/// history recall back to scratch and refreshes the live preview.
-fn sift_edited(state: &mut EditorState, r: LayerRef) {
-    state.history.get_mut(HistoryKind::Sift).demote_to_scratch();
-    update_live_sift(state, r);
 }
 
 fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
@@ -180,17 +172,9 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         // Sift stays open here. The restore undoes a click made under the
         // empty prompt; an edit that empties the line has restored already.
         MiniBufferEvent::BackspaceOnEmpty => restore_sift_snapshot(&mut ed.state, r),
-        MiniBufferEvent::Line(LineEdit::Changed) => sift_edited(&mut ed.state, r),
-        MiniBufferEvent::HistoryPrev => recall_sift_history(ed, r, HistoryDir::Prev),
-        MiniBufferEvent::HistoryNext => recall_sift_history(ed, r, HistoryDir::Next),
+        MiniBufferEvent::Line(LineEdit::Changed) => update_live_sift(&mut ed.state, r),
         MiniBufferEvent::Line(LineEdit::Moved | LineEdit::Ignored) => {}
     }
-}
-
-/// Recalls the previous/next sift pattern, then previews it.
-fn recall_sift_history(ed: &mut Editor, r: LayerRef, dir: HistoryDir) {
-    minibuf::recall_history(ed, HistoryKind::Sift, dir);
-    update_live_sift(&mut ed.state, r);
 }
 
 /// Replace selections with the matches within the original selections

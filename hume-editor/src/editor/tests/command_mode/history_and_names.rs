@@ -155,6 +155,19 @@ fn edit_after_up_demotes_scratch() {
 }
 
 #[test]
+fn a_cursor_move_after_up_keeps_walking_history() {
+    let mut ed = editor_from("-[h]>ello\n");
+    submit(&mut ed, "aaa");
+    submit(&mut ed, "bbb");
+    ed.handle_key(key(':'));
+    ed.handle_key(key_up());
+    ed.handle_key(key_left());
+    ed.handle_key(key_up());
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "aaa");
+    ed.handle_key(key_esc());
+}
+
+#[test]
 fn history_survives_minibuf_close_and_reopen() {
     let mut ed = editor_from("-[h]>ello\n");
     submit(&mut ed, "messages");

@@ -14,6 +14,7 @@ use crate::editor::buffer::ReplaceSource;
 use crate::editor::buffer::store::BufferStore;
 use crate::editor::buffer::{NewBuffer, ViewLabel};
 use crate::editor::commands::FocusedPane;
+use crate::editor::minibuf::history::HistoryKind;
 use crate::editor::pane_state::PaneView;
 use crate::editor::search::SearchPattern;
 use crate::editor::settings::EditorSettings;
@@ -442,6 +443,17 @@ fn has_layer_of(ed: &Editor, bid: BufferId, name: &str) -> bool {
 /// Serialize the editor's current buffer + selection state.
 fn state(ed: &Editor) -> String {
     serialize_state(ed.doc().text(), ed.current_selections())
+}
+
+/// `kind`'s prompt-history ring, oldest first.
+fn history(ed: &Editor, kind: HistoryKind) -> Vec<String> {
+    ed.state
+        .history
+        .get(kind)
+        .entries()
+        .iter()
+        .cloned()
+        .collect()
 }
 
 /// The events queued so far, in order.

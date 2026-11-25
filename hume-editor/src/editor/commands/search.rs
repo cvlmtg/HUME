@@ -41,16 +41,16 @@ pub(super) fn open_search_prompt(
     then: PendingDispatch,
     input: WaitingInput,
 ) {
-    let prompt = match direction {
-        SearchDirection::Forward => "/",
-        SearchDirection::Backward => "?",
+    let (prompt, history) = match direction {
+        SearchDirection::Forward => ("/", HistoryKind::SearchForward),
+        SearchDirection::Backward => ("?", HistoryKind::SearchBackward),
     };
     state.history.begin_session_all();
     state.push_mode_layer(
         view,
         SearchLayer::new(
             input,
-            MiniBuffer::new(prompt, None),
+            MiniBuffer::new(prompt, None, Some(history)),
             PaneSnapshot::new(fp.pid()),
             direction,
             then,
@@ -79,7 +79,7 @@ fn search_with_pattern(
     };
     let matched = preview_search(state, origin(sels.clone()), direction, mode, raw)
         .map_err(|e| pattern_error(raw, e))?;
-    commit_search(state, view, raw.to_string(), direction, origin(sels));
+    commit_search(state, view, raw.to_string(), origin(sels));
     state.history.begin_session_all();
     if matched {
         Ok(())
@@ -263,8 +263,7 @@ pub(in crate::editor) fn cmd_select_all_matches(
 // ── Sift within (s) ──────────────────────────────────────────────────────────
 
 /// Sift each selection in `t` down to `pattern`'s matches. Selections that
-/// are all bare cursors have nothing to sift, and are refused. A pattern
-/// that compiles joins the sift history, even when it matches nothing.
+/// are all bare cursors have nothing to sift, and are refused.
 pub(in crate::editor) fn cmd_sift_within(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -287,24 +286,16 @@ pub(in crate::editor) fn cmd_sift_within(
             pattern,
         )
     });
-    let outcome = match reused {
-        Some(sifted) => Ok(sifted),
-        None => {
-            let sels = pane_selections(state, view, t).clone();
-            #[cfg(test)]
-            {
-                state.sift_scans += 1;
-            }
-            sift_within(doc(state, view, t).text(), sels, pattern)
-        }
-    };
-    if !matches!(outcome, Err(SiftFailure::Pattern(_))) {
-        state
-            .history
-            .get_mut(HistoryKind::Sift)
-            .push(pattern.to_owned());
+    if let Some(sifted) = reused {
+        set_pane_selections(state, view, t, sifted);
+        return Ok(());
     }
-    let sifted = outcome.map_err(|e| match e {
+    let sels = pane_selections(state, view, t).clone();
+    #[cfg(test)]
+    {
+        state.sift_scans += 1;
+    }
+    let sifted = sift_within(doc(state, view, t).text(), sels, pattern).map_err(|e| match e {
         SiftFailure::Pattern(e) => pattern_error(pattern, e),
         SiftFailure::NoMatch => CommandError::transient("no match"),
     })?;
@@ -328,7 +319,7 @@ pub(super) fn open_sift_prompt(
         view,
         SiftLayer::new(
             input,
-            MiniBuffer::new("⫽", None),
+            MiniBuffer::new("⫽", None, Some(HistoryKind::Sift)),
             PaneSnapshot::new(fp.pid()),
             then,
         ),
