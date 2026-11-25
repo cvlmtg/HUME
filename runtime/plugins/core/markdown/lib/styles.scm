@@ -2,7 +2,7 @@
 
 (require "queries.scm")
 
-(provide md-styles/removal)
+(provide md-styles/toggler)
 
 (define md-styles/query
   (string-append
@@ -82,3 +82,26 @@
                       (call! "stdlib/concat" (map cdr (hash-values->list found))))
                  (md-preview/all? (lambda (pair) (md-styles/on-closer? (car pair) (selection-head (cdr pair))))
                                   (map cons arounds sels)))))))
+
+(define (md-styles/single-cursor? pane)
+  (let ([sels (buffer-selections pane)])
+    (and (null? (cdr sels))
+         (= (selection-anchor (car sels)) (selection-head (car sels))))))
+
+(define (md-styles/wrap! pane marker)
+  (let ([back (if (md-styles/single-cursor? pane) "move-left" "undo-selection-change")])
+    (let loop ([chars (string->list marker)])
+      (call! "surround-add" pane (car chars))
+      (unless (null? (cdr chars))
+        (call! back pane)
+        (loop (cdr chars))))))
+
+(define (md-styles/toggler style marker)
+  (lambda (pane)
+    (let ([removal (md-styles/removal pane style)])
+      (if removal
+          (begin
+            (edit-text! pane (map (lambda (m) (hash 'start-char (car m) 'end-char (cdr m) 'text ""))
+                                  (car removal)))
+            (when (cdr removal) (call! "move-left" pane)))
+          (md-styles/wrap! pane marker)))))

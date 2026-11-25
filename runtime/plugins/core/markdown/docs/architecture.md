@@ -58,7 +58,7 @@
 | File | Role |
 |---|---|
 | `manifest.scm` | Lazy activation on the language and the commands |
-| `plugin.scm` | Config, hooks, commands, keymap, the `on-paste` handler and the `markdown:paths` completion source |
+| `plugin.scm` | Config, hooks, command definitions, keymap and the `markdown:paths` completion source |
 | `lib/state.scm` | Per-buffer state (preview on or off, the generation of the last parsed tree), the grammars warned about, `md-preview/box-insert!` |
 | `lib/queries.scm` | The block, inline and list queries, capture accessors, [match grouping](#matches), the task-box rule, conceal order |
 | `lib/blocks.scm`, `lib/inline.scm` | Block and inline captures to conceals, line backgrounds and highlights |
@@ -68,8 +68,10 @@
 | `lib/text.scm` | `md-preview/elements` over a popup's text |
 | `lib/destinations.scm`, `lib/links.scm`, `lib/paths.scm` | Link destinations, link paste, link-path completion and following links: [`links.md`](links.md) |
 | `lib/lists.scm` | List prefixes, ending a list, renumbering, task boxes: [`lists.md`](lists.md) |
-| `lib/styles.scm` | The inline-style query and the delimiters a toggle deletes |
+| `lib/list-commands.scm` | Enter, `o`, `O`, task toggles and the renumbering pass, applied to a buffer |
+| `lib/styles.scm` | The inline-style query, the delimiters a toggle deletes, and the toggle |
 | `lib/cells.scm`, `lib/moves.scm` | Reading table rows, and the edits that move rows and columns: [`tables.md`](tables.md) |
+| `lib/table-commands.scm` | Selecting cells and columns, and moving rows and columns, applied to a buffer |
 
 `blocks.scm`, `table.scm`, `inline.scm`, `lists.scm`, `cells.scm` and `moves.scm` read no
 buffer: lines come in as procedures.
