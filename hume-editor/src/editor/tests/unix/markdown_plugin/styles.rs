@@ -79,10 +79,23 @@ fn m_i_inside_bold_italic_keeps_the_bold() {
 }
 
 #[test]
-fn m_b_twice_gives_the_text_back() {
-    let mut p = editing("-[bold]>\n");
-    p.ed.feed_keys("MBMB".chars().map(key));
-    assert_eq!(text(&p.ed), "bold\n");
+fn m_b_twice_lands_on_the_last_character() {
+    assert_eq!(after("-[bold]>\n", "MBMB"), "bol-[d]>\n");
+}
+
+#[test]
+fn m_b_twice_on_cursors_gives_them_back() {
+    assert_eq!(after("-[a]> -{b}>\n", "MBMB"), "-[a]> -{b}>\n");
+}
+
+#[test]
+fn m_s_twice_lands_on_the_struck_character() {
+    assert_eq!(after("-[s]>\n", "MSMS"), "-[s]>\n");
+}
+
+#[test]
+fn a_cursor_inside_the_text_keeps_the_others_where_they_land() {
+    assert_eq!(after("**a-{*}>* **x-[y]>z**\n", "MB"), "a-{ }>x-[y]>z\n");
 }
 
 #[test]

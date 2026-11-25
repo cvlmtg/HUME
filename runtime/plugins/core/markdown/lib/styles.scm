@@ -2,7 +2,7 @@
 
 (require "queries.scm")
 
-(provide md-styles/marks)
+(provide md-styles/removal)
 
 (define md-styles/query
   (string-append
@@ -45,9 +45,22 @@
                        spans)])
     (if outer (cons span (md-styles/with-outer spans outer)) (list span))))
 
-;;; The `style` delimiters to delete, as `(start . end)` pairs: those of the span around every
-;;; selection inside one, or `#f` when the primary selection is inside none.
-(define (md-styles/marks pane style)
+;;; Whether `head` is on one of `spans`' closing delimiters, those in a span's second half.
+(define (md-styles/on-closer? spans head)
+  (findf (lambda (span)
+           (let ([node (car span)])
+             (findf (lambda (d)
+                      (and (>= (* 2 (md-preview/capture-start d))
+                               (+ (md-preview/capture-start node) (md-preview/capture-end node)))
+                           (<= (md-preview/capture-start d) head)
+                           (< head (md-preview/capture-end d))))
+                    (cdr span))))
+         spans))
+
+;;; `#f` when the primary selection is inside no `style` span. Otherwise `(marks . step-left?)`:
+;;; the delimiters to delete, as `(start . end)` pairs, of the span around every selection inside
+;;; one, and whether every selection's head is on a closing delimiter.
+(define (md-styles/removal pane style)
   (let* ([sels (buffer-selections pane)]
          [spans (md-styles/spans pane style sels)]
          [around (lambda (sel)
@@ -55,11 +68,14 @@
                      (cond
                        [(not span) '()]
                        [(equal? style "strikethrough") (md-styles/with-outer spans span)]
-                       [else (list span)])))])
+                       [else (list span)])))]
+         [arounds (map around sels)])
     (and (pair? (around (call! "stdlib/primary-selection" sels)))
          (let ([found (foldl (lambda (span found)
                                (hash-insert found (md-preview/capture-start (car span)) span))
                              (hash)
-                             (call! "stdlib/concat" (map around sels)))])
-           (map (lambda (d) (cons (md-preview/capture-start d) (md-preview/capture-end d)))
-                (call! "stdlib/concat" (map cdr (hash-values->list found))))))))
+                             (call! "stdlib/concat" arounds))])
+           (cons (map (lambda (d) (cons (md-preview/capture-start d) (md-preview/capture-end d)))
+                      (call! "stdlib/concat" (map cdr (hash-values->list found))))
+                 (md-preview/all? (lambda (pair) (md-styles/on-closer? (car pair) (selection-head (cdr pair))))
+                                  (map cons arounds sels)))))))

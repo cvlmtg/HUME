@@ -231,9 +231,12 @@
 
 (define (md-styles/toggler style marker)
   (lambda (pane)
-    (let ([marks (md-styles/marks pane style)])
-      (if marks
-          (edit-text! pane (map (lambda (m) (hash 'start-char (car m) 'end-char (cdr m) 'text "")) marks))
+    (let ([removal (md-styles/removal pane style)])
+      (if removal
+          (begin
+            (edit-text! pane (map (lambda (m) (hash 'start-char (car m) 'end-char (cdr m) 'text ""))
+                                  (car removal)))
+            (when (cdr removal) (call! "move-left" pane)))
           (md-styles/wrap! pane marker)))))
 
 (define-command! "markdown/bold"
