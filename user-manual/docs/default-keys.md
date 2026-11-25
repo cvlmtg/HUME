@@ -343,9 +343,10 @@ Open it with `s` from Normal mode; at least one selection must be wider than a s
 | `Backspace` (input non-empty) | Delete char and re-preview |
 | `Backspace` (empties input or on empty) | Restore original selections, stay in Sift mode |
 | `Ctrl-w` | Delete word before cursor |
+| `Up` / `Down` | Recall previous / next pattern starting with the typed prefix |
 | `Left` / `Right` | Move the cursor |
 | Any other character | Insert and re-preview |
-| `Tab` / `Shift-Tab` / `Up` / `Down` | No-op (Sift mode has no pattern history) |
+| `Tab` / `Shift-Tab` | No-op |
 
 ## Other screens
 

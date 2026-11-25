@@ -670,6 +670,10 @@ fn prompt_history_and_the_last_search_come_back() {
         .history
         .get_mut(crate::editor::minibuf::history::HistoryKind::Pipe)
         .push("sort".to_owned());
+    ed.state
+        .history
+        .get_mut(crate::editor::minibuf::history::HistoryKind::Sift)
+        .push("o".to_owned());
     quit(&mut ed).expect("the session saves");
     let saved = histories(&ed);
     assert!(

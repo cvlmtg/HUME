@@ -38,7 +38,7 @@ The `lsp-` options apply to every language server. `core:lsp` takes its own opti
 | `mouse-select` | bool | `false` | Mouse drag creates selections |
 | `pane-dividers` | bool | `true` | Draw a 1-cell divider between sibling panes |
 | `popup-border` | bool | `true` | Show borders on popups, menus, pickers and the bottom drawer |
-| `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?`/`\|` prompt history |
+| `prompt-history-levels` | integer ≥ 1 | `100` | Max entries per `:`/`/`/`?`/`\|`/`s` prompt history |
 | `scroll-jump-align` | `top` \| `center` \| `off` | `center` | Where the view lands after jumping forward to a paragraph or structural object (`}`, `g f`, …). `top` still respects `scroll-margin` |
 | `scroll-margin` | integer | `3` | Minimum lines kept above/below cursor. Above the cursor, scope header rows at the top of a pane count on top of it |
 | `session-directory` | path | `""` | Where saved sessions are kept (see [Saved sessions](files-and-buffers.md#saved-sessions)). Empty means `sessions` in HUME's state directory. Otherwise an absolute path, which may start with `~` |

@@ -1,8 +1,8 @@
-//! Minibuffer history: bounded, in-memory recall for the `:`, `/`, `?` and
-//! `|` prompts.
+//! Minibuffer history: bounded, in-memory recall for the `:`, `/`, `?`, `|`
+//! and `⫽` prompts.
 //!
 //! Each prompt gets its own [`History`] ring (oldest-first [`VecDeque`]) with
-//! per-session navigation state (cursor + scratch). The four rings are grouped
+//! per-session navigation state (cursor + scratch). The rings are grouped
 //! in [`HistoryStore`], which lives on `Editor` and is keyed by [`HistoryKind`].
 //!
 use std::collections::VecDeque;
@@ -24,20 +24,27 @@ pub(in crate::editor) enum HistoryKind {
     SearchBackward,
     /// `|` shell-command prompt.
     Pipe,
+    /// `⫽` sift-within prompt.
+    Sift,
 }
 
 impl HistoryKind {
     /// Every kind. A new kind fails to compile in the match below; it then
     /// joins the list, whose length `entries_by_kind`'s array repeats.
-    pub(in crate::editor) const ALL: [Self; 4] = {
+    pub(in crate::editor) const ALL: [Self; 5] = {
         let all = [
             Self::Command,
             Self::SearchForward,
             Self::SearchBackward,
             Self::Pipe,
+            Self::Sift,
         ];
         match all[0] {
-            Self::Command | Self::SearchForward | Self::SearchBackward | Self::Pipe => all,
+            Self::Command
+            | Self::SearchForward
+            | Self::SearchBackward
+            | Self::Pipe
+            | Self::Sift => all,
         }
     };
 }
@@ -187,6 +194,7 @@ pub(crate) struct HistoryStore {
     search_f: History,
     search_b: History,
     pipe: History,
+    sift: History,
 }
 
 impl HistoryStore {
@@ -196,6 +204,7 @@ impl HistoryStore {
             search_f: History::new(capacity),
             search_b: History::new(capacity),
             pipe: History::new(capacity),
+            sift: History::new(capacity),
         }
     }
 
@@ -205,6 +214,7 @@ impl HistoryStore {
             HistoryKind::SearchForward => &self.search_f,
             HistoryKind::SearchBackward => &self.search_b,
             HistoryKind::Pipe => &self.pipe,
+            HistoryKind::Sift => &self.sift,
         }
     }
 
@@ -214,6 +224,7 @@ impl HistoryStore {
             HistoryKind::SearchForward => &mut self.search_f,
             HistoryKind::SearchBackward => &mut self.search_b,
             HistoryKind::Pipe => &mut self.pipe,
+            HistoryKind::Sift => &mut self.sift,
         }
     }
 
@@ -230,18 +241,19 @@ impl HistoryStore {
 
     /// Every ring. The pattern names each field, so a new ring is a compile
     /// error here until it is listed.
-    fn rings_mut(&mut self) -> [&mut History; 4] {
+    fn rings_mut(&mut self) -> [&mut History; 5] {
         let Self {
             command,
             search_f,
             search_b,
             pipe,
+            sift,
         } = self;
-        [command, search_f, search_b, pipe]
+        [command, search_f, search_b, pipe, sift]
     }
 
     /// Every ring's entries, oldest first, with the kind it belongs to.
-    pub(in crate::editor) fn entries_by_kind(&self) -> [(HistoryKind, &VecDeque<String>); 4] {
+    pub(in crate::editor) fn entries_by_kind(&self) -> [(HistoryKind, &VecDeque<String>); 5] {
         HistoryKind::ALL.map(|kind| (kind, &self.get(kind).entries))
     }
 

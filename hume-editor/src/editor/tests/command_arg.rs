@@ -468,6 +468,21 @@ fn call_sift_within_with_a_pattern_keeps_each_match() {
 }
 
 #[test]
+fn call_sift_within_records_the_pattern() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    probe(&mut ed, r#"(call! "sift-within" (focused-pane) "ab")"#);
+    assert_eq!(search_history(&ed, HistoryKind::Sift), vec!["ab"]);
+}
+
+#[test]
+fn call_sift_within_with_an_invalid_pattern_records_nothing() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    probe(&mut ed, r#"(call! "sift-within" (focused-pane) "(")"#);
+    assert!(has_error(&ed, "invalid pattern"));
+    assert!(search_history(&ed, HistoryKind::Sift).is_empty());
+}
+
+#[test]
 fn enter_on_a_sift_reuses_the_selections_the_preview_found() {
     let mut ed = editor_from("-[ab cd ab]>\n");
     type_keys(&mut ed, "sab");

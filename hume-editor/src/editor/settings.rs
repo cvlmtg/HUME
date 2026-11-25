@@ -797,7 +797,7 @@ define_settings! {
             resync: true;
         "jump-list-min-lines" => jump_list_min_lines: usize = 5,
             parser: Usize;
-        // Resizes the command/search prompt-history ring cap. Like
+        // Resizes every prompt's history ring cap. Like
         // undo-levels below, takes effect on the next push, not
         // retroactively. See `editor::settings::ops::resync_derived_state`
         // and `History::set_capacity`.

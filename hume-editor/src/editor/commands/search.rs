@@ -17,6 +17,7 @@ use super::super::input_stack::{
     PaneSnapshot, SearchLayer, SearchOrigin, SiftFailure, SiftLayer, commit_search, preview_search,
     sift_within,
 };
+use super::super::minibuf::history::HistoryKind;
 use super::super::replay::WaitingInput;
 use super::super::{EditorState, MiniBuffer};
 use super::{
@@ -262,7 +263,8 @@ pub(in crate::editor) fn cmd_select_all_matches(
 // ── Sift within (s) ──────────────────────────────────────────────────────────
 
 /// Sift each selection in `t` down to `pattern`'s matches. Selections that
-/// are all bare cursors have nothing to sift, and are refused.
+/// are all bare cursors have nothing to sift, and are refused. A pattern
+/// that compiles joins the sift history, even when it matches nothing.
 pub(in crate::editor) fn cmd_sift_within(
     state: &mut EditorState,
     view: &mut EngineView,
@@ -285,16 +287,24 @@ pub(in crate::editor) fn cmd_sift_within(
             pattern,
         )
     });
-    if let Some(sifted) = reused {
-        set_pane_selections(state, view, t, sifted);
-        return Ok(());
+    let outcome = match reused {
+        Some(sifted) => Ok(sifted),
+        None => {
+            let sels = pane_selections(state, view, t).clone();
+            #[cfg(test)]
+            {
+                state.sift_scans += 1;
+            }
+            sift_within(doc(state, view, t).text(), sels, pattern)
+        }
+    };
+    if !matches!(outcome, Err(SiftFailure::Pattern(_))) {
+        state
+            .history
+            .get_mut(HistoryKind::Sift)
+            .push(pattern.to_owned());
     }
-    let sels = pane_selections(state, view, t).clone();
-    #[cfg(test)]
-    {
-        state.sift_scans += 1;
-    }
-    let sifted = sift_within(doc(state, view, t).text(), sels, pattern).map_err(|e| match e {
+    let sifted = outcome.map_err(|e| match e {
         SiftFailure::Pattern(e) => pattern_error(pattern, e),
         SiftFailure::NoMatch => CommandError::transient("no match"),
     })?;
@@ -313,6 +323,7 @@ pub(super) fn open_sift_prompt(
     then: PendingDispatch,
     input: WaitingInput,
 ) {
+    state.history.begin_session_all();
     state.push_mode_layer(
         view,
         SiftLayer::new(

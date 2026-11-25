@@ -1220,6 +1220,75 @@ fn search_edit_after_recall_demotes_to_scratch() {
     ed.handle_key(key_esc());
 }
 
+fn history(ed: &Editor, kind: HistoryKind) -> Vec<String> {
+    ed.state
+        .history
+        .get(kind)
+        .entries()
+        .iter()
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn sift_confirm_records_the_pattern_in_its_own_ring() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    ed.handle_key(key('s'));
+    ed.handle_key(key('a'));
+    ed.handle_key(key('b'));
+    ed.handle_key(key_enter());
+    assert_eq!(history(&ed, HistoryKind::Sift), vec!["ab"]);
+    assert!(history(&ed, HistoryKind::SearchForward).is_empty());
+    assert!(history(&ed, HistoryKind::SearchBackward).is_empty());
+}
+
+/// Up previews the recalled pattern; Down back to an empty line restores the
+/// selections the prompt opened over.
+#[test]
+fn sift_up_recalls_the_previous_pattern_and_previews_it() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    let original = state(&ed);
+    ed.state
+        .history
+        .get_mut(HistoryKind::Sift)
+        .push("ab".to_owned());
+
+    ed.handle_key(key('s'));
+    ed.handle_key(key_up());
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "ab");
+    assert_eq!(ed.current_view().len(), 2);
+    assert_eq!(ed.current_view().primary().anchor().offset(), co(0));
+    assert_eq!(ed.current_view().primary().head().offset(), co(1));
+
+    ed.handle_key(key_down());
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
+    assert_eq!(state(&ed), original);
+}
+
+#[test]
+fn sift_edit_after_recall_demotes_to_scratch() {
+    let mut ed = editor_from("-[ab cd ab]>\n");
+    for pattern in ["abc", "ax", "a"] {
+        ed.state
+            .history
+            .get_mut(HistoryKind::Sift)
+            .push(pattern.to_owned());
+    }
+
+    ed.handle_key(key('s'));
+    ed.handle_key(key_up());
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "a");
+
+    // "ab" becomes the prefix of a fresh walk, which only "abc" matches.
+    ed.handle_key(key('b'));
+    ed.handle_key(key_up());
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "abc");
+
+    ed.handle_key(key_down());
+    assert_eq!(ed.state.minibuf().unwrap().line.text(), "ab");
+    ed.handle_key(key_esc());
+}
+
 /// Backspace on an empty search input (second Backspace in the sequence
 /// `/f` → Backspace → Backspace) must dismiss and return to Normal.
 ///
