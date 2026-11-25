@@ -608,7 +608,7 @@ fn assert_picker_styles(ed: &mut Editor, rows: &[ExpectedRow]) {
 
 /// The `:` line's current input, `""` when no minibuffer is open.
 fn minibuf_input(ed: &Editor) -> &str {
-    ed.state.minibuf().map(|mb| mb.line.text()).unwrap_or("")
+    ed.state.minibuf().map(|mb| mb.line().text()).unwrap_or("")
 }
 
 /// Every candidate's `insert_text` in the open minibuffer completion

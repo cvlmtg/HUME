@@ -165,7 +165,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 /// previews nothing: the selections go back to the snapshot and the
 /// buffer's search is cleared.
 fn update_live_search(state: &mut EditorState, r: LayerRef) {
-    let Some(pattern) = state.input.minibuf().map(|mb| mb.line.text().to_owned()) else {
+    let Some(pattern) = state.input.minibuf().map(|mb| mb.line().text().to_owned()) else {
         return;
     };
     let Some(search) = state.input.at::<SearchLayer>(r) else {

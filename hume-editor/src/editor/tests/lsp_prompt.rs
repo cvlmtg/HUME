@@ -61,9 +61,9 @@ fn prompt_prefill_is_visible_and_editable() {
     type_cmd(&mut ed, ":go");
 
     let mb = ed.state.minibuf().unwrap();
-    assert_eq!(mb.line.text(), "old");
+    assert_eq!(mb.line().text(), "old");
     assert_eq!(
-        mb.line.cursor(),
+        mb.line().cursor(),
         "old".len(),
         "cursor must start at the end of the prefill"
     );

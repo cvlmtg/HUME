@@ -31,7 +31,7 @@ fn newline_only_paste_flattens_to_empty_and_is_a_noop_in_command_mode() {
     ed.handle_key(key(':'));
     assert_eq!(ed.state.mode(), Mode::Command);
     ed.feed_paste("\n\n");
-    assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
+    assert_eq!(ed.state.minibuf().unwrap().line().text(), "");
 }
 
 // ── Insert mode ───────────────────────────────────────────────────────────
@@ -154,7 +154,7 @@ fn command_mode_paste_flattens_trailing_and_interior_newlines() {
     ed.handle_key(key(':'));
     assert_eq!(ed.state.mode(), Mode::Command);
     ed.feed_paste("foo\nbar\n");
-    assert_eq!(ed.state.minibuf().unwrap().line.text(), "foo bar");
+    assert_eq!(ed.state.minibuf().unwrap().line().text(), "foo bar");
 }
 
 #[test]
@@ -177,7 +177,7 @@ fn sift_mode_paste_triggers_live_sift() {
     // original selection: the paste ran the same follow-up a typed pattern's
     // edit runs.
     assert_eq!(ed.current_view().len(), 2);
-    assert_eq!(ed.state.minibuf().unwrap().line.text(), "ab");
+    assert_eq!(ed.state.minibuf().unwrap().line().text(), "ab");
 }
 
 // ── Overlays ──────────────────────────────────────────────────────────────
@@ -311,13 +311,13 @@ fn minibuf_completion_paste_closes_the_candidate_list_and_pastes() {
     ed.handle_key(key('w'));
     ed.handle_key(key_tab());
     assert!(ed.state.input.minibuf_completion().is_some());
-    let before = ed.state.minibuf().unwrap().line.text().to_owned();
+    let before = ed.state.minibuf().unwrap().line().text().to_owned();
 
     ed.feed_paste("xyz");
 
     assert!(ed.state.input.minibuf_completion().is_none());
     assert_eq!(
-        ed.state.minibuf().unwrap().line.text(),
+        ed.state.minibuf().unwrap().line().text(),
         format!("{before}xyz")
     );
 }

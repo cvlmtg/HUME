@@ -180,7 +180,7 @@ fn handle_sift_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
 /// ([`sift_within`]). Called on every keystroke in Sift mode. An empty
 /// pattern restores the original selections.
 fn update_live_sift(state: &mut EditorState, r: LayerRef) {
-    let Some(pattern) = state.input.minibuf().map(|mb| mb.line.text().to_owned()) else {
+    let Some(pattern) = state.input.minibuf().map(|mb| mb.line().text().to_owned()) else {
         return;
     };
 

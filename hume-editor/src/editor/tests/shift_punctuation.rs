@@ -29,7 +29,7 @@ fn colon_enters_command_mode_when_shift_set() {
     assert_eq!(ed.state.mode(), Mode::Command);
     assert!(ed.state.minibuf().is_some());
     assert_eq!(ed.state.minibuf().unwrap().prompt, ":");
-    assert_eq!(ed.state.minibuf().unwrap().line.text(), "");
+    assert_eq!(ed.state.minibuf().unwrap().line().text(), "");
 }
 
 /// Broadening the SHIFT strip to all chars must not break the alphabetic

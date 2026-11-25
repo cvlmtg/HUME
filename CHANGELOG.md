@@ -34,6 +34,7 @@
 - `(` and `)` take a count.
 - A `:`, `/` or other prompt line wider than the statusline scrolls to keep the cursor in view.
 - A picker whose prompt is wider than its panel still shows the cursor.
+- After `Tab` completes a prompt line, `Up` recalls only history entries that start with the completed text.
 
 ## [0.22.2] - 2026-11-19
 

@@ -332,7 +332,7 @@ impl EditorState {
         if mb.completion != Some(PromptCompletion::CommandLine) {
             return None;
         }
-        let (name, _) = target_command_name(mb.line.text(), mb.line.cursor())?;
+        let (name, _) = target_command_name(mb.line().text(), mb.line().cursor())?;
         Some(name.to_owned())
     }
 
@@ -346,7 +346,7 @@ impl EditorState {
         let Some(completion) = mb.completion else {
             return;
         };
-        let line = &mb.line;
+        let line = mb.line();
         let Some((name, arg)) = resolve_minibuf_source(
             &self.config.registry,
             completion,
@@ -442,8 +442,7 @@ impl EditorState {
         let Some(mb) = self.input.minibuf_mut() else {
             return;
         };
-        mb.line = line;
-        mb.line.splice(span, &text);
+        mb.apply_completion(line, span, &text);
     }
 
     // ── Answers ──────────────────────────────────────────────────────────────

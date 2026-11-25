@@ -1,5 +1,7 @@
 pub(in crate::editor) mod history;
 
+use std::ops::Range;
+
 use hume_grid::Rect;
 use hume_rope::width::{chrome_width, fit_prompt};
 
@@ -24,8 +26,9 @@ pub(in crate::editor) struct MiniBuffer {
     /// `⫽` for sift, `|` for a shell command, or a Steel prompt's `label`
     /// (`(prompt! label …)`), of arbitrary length.
     pub prompt: String,
-    /// The text typed so far and its edit cursor.
-    pub line: LineInput,
+    /// The text typed so far and its edit cursor. Private so that every
+    /// change to it ends `walk`.
+    line: LineInput,
     /// What Tab completes on this line, declared by whoever opened it;
     /// `None` for a line Tab does nothing on.
     pub completion: Option<PromptCompletion>,
@@ -141,6 +144,24 @@ impl MiniBuffer {
             history: None,
             walk: None,
         }
+    }
+
+    /// The text typed so far and its edit cursor.
+    pub(in crate::editor) fn line(&self) -> &LineInput {
+        &self.line
+    }
+
+    /// Installs a completion candidate: `base`, the line its session
+    /// completes, with `text` over `span`.
+    pub(in crate::editor) fn apply_completion(
+        &mut self,
+        base: LineInput,
+        span: Range<usize>,
+        text: &str,
+    ) {
+        self.line = base;
+        self.line.splice(span, text);
+        self.walk = None;
     }
 
     /// What `area`, the statusline's cells for the minibuffer, shows of
