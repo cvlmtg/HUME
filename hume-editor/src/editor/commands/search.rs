@@ -45,12 +45,11 @@ pub(super) fn open_search_prompt(
         SearchDirection::Forward => ("/", HistoryKind::SearchForward),
         SearchDirection::Backward => ("?", HistoryKind::SearchBackward),
     };
-    state.history.begin_session_all();
     state.push_mode_layer(
         view,
         SearchLayer::new(
             input,
-            MiniBuffer::new(prompt, None, Some(history)),
+            MiniBuffer::new(prompt, None, history),
             PaneSnapshot::new(fp.pid()),
             direction,
             then,
@@ -80,7 +79,6 @@ fn search_with_pattern(
     let matched = preview_search(state, origin(sels.clone()), direction, mode, raw)
         .map_err(|e| pattern_error(raw, e))?;
     commit_search(state, view, raw.to_string(), origin(sels));
-    state.history.begin_session_all();
     if matched {
         Ok(())
     } else {
@@ -314,12 +312,11 @@ pub(super) fn open_sift_prompt(
     then: PendingDispatch,
     input: WaitingInput,
 ) {
-    state.history.begin_session_all();
     state.push_mode_layer(
         view,
         SiftLayer::new(
             input,
-            MiniBuffer::new("⫽", None, Some(HistoryKind::Sift)),
+            MiniBuffer::new("⫽", None, HistoryKind::Sift),
             PaneSnapshot::new(fp.pid()),
             then,
         ),

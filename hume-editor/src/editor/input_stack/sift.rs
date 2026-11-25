@@ -135,7 +135,6 @@ impl SiftLayer {
                 preview,
             });
         }
-        state.history.begin_session_all();
     }
 }
 

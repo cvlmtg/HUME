@@ -128,15 +128,7 @@ fn a_blank_command_is_not_recorded_in_history() {
     ed.handle_key(key('|'));
     keys(&mut ed, "   ");
     ed.handle_key(key_enter());
-    let entries: Vec<_> = ed
-        .state
-        .history
-        .get(HistoryKind::Pipe)
-        .entries()
-        .iter()
-        .cloned()
-        .collect();
-    assert_eq!(entries, ["sort"]);
+    assert_eq!(history(&ed, HistoryKind::Pipe), ["sort"]);
 }
 
 #[test]

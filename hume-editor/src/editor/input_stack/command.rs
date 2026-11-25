@@ -1,18 +1,16 @@
 //! The `Command` layer: the `:`-prompt minibuffer mode.
 
-use hume_engine::pipeline::{EngineView, ScreenLayout};
+use hume_engine::pipeline::ScreenLayout;
 use hume_engine::types::EditorMode;
 
 use super::super::dispatch::unknown_command_text;
 use super::super::error::CommandError;
 use super::super::minibuf::history::HistoryKind;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, MinibufView, PromptCompletion};
-use super::super::paste_plan::PlannedPaste;
 use super::super::registry::{ArgExpansion, Takes, TypedBody};
 use super::super::replay::WaitingInput;
-use super::super::{Editor, EditorState, commands};
-use super::paste::PastedText;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
+use super::super::{Editor, commands};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler};
 
 pub(in crate::editor) struct CommandLayer {
     pub(in crate::editor) minibuf: MiniBuffer,
@@ -26,7 +24,7 @@ impl CommandLayer {
             minibuf: MiniBuffer::new(
                 ":",
                 Some(PromptCompletion::CommandLine),
-                Some(HistoryKind::Command),
+                HistoryKind::Command,
             ),
             _input: input,
         }
@@ -42,13 +40,10 @@ impl Layer for CommandLayer {
         command_input
     }
     fn paste_handler(&self) -> PasteHandler {
-        command_paste
+        minibuf::paste_line
     }
     fn mode(&self) -> Option<EditorMode> {
         Some(EditorMode::Command)
-    }
-    fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        state.history.begin_session_all();
     }
     fn minibuf(&self) -> Option<&MiniBuffer> {
         Some(&self.minibuf)
@@ -115,16 +110,6 @@ pub(in crate::editor) fn command_input(ed: &mut Editor, r: LayerRef, ev: InputEv
     if let Some(event) = minibuf::command_line_input(ed, r, ev) {
         handle_command_event(ed, r, event);
     }
-}
-
-fn command_paste(
-    state: &mut EditorState,
-    _view: &EngineView,
-    _r: LayerRef,
-    text: PastedText,
-) -> Result<PlannedPaste, CommandError> {
-    minibuf::paste_into_minibuf(state, &text);
-    Ok(PlannedPaste::NONE)
 }
 
 fn handle_command_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {

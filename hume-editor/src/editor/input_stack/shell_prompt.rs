@@ -5,14 +5,11 @@
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
-use super::super::error::CommandError;
 use super::super::minibuf::history::HistoryKind;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent, PromptCompletion};
-use super::super::paste_plan::PlannedPaste;
 use super::super::replay::WaitingInput;
 use super::super::{Editor, EditorState, commands};
-use super::paste::PastedText;
-use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
+use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler};
 
 /// The completion source `runtime/scheme/shells.scm` registers for the
 /// `|` line.
@@ -34,14 +31,13 @@ pub(in crate::editor) fn open_shell_prompt(
     then: commands::PendingDispatch,
     input: WaitingInput,
 ) {
-    state.history.begin_session_all();
     state.push_layer(
         view,
         ShellPromptLayer {
             minibuf: MiniBuffer::new(
                 "|",
                 Some(PromptCompletion::Source(SHELL_SOURCE)),
-                Some(HistoryKind::Pipe),
+                HistoryKind::Pipe,
             ),
             then,
             input,
@@ -54,13 +50,10 @@ impl Layer for ShellPromptLayer {
         shell_prompt_input
     }
     fn paste_handler(&self) -> PasteHandler {
-        shell_prompt_paste
+        minibuf::paste_line
     }
     fn mode(&self) -> Option<EditorMode> {
         None
-    }
-    fn tear_down(self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        state.history.begin_session_all();
     }
     fn snapshot_mut(&mut self) -> Option<&mut super::PaneSnapshot> {
         None
@@ -79,16 +72,6 @@ fn shell_prompt_input(ed: &mut Editor, r: LayerRef, ev: InputEvent) {
     }
 }
 
-fn shell_prompt_paste(
-    state: &mut EditorState,
-    _view: &EngineView,
-    _r: LayerRef,
-    text: PastedText,
-) -> Result<PlannedPaste, CommandError> {
-    minibuf::paste_into_minibuf(state, &text);
-    Ok(PlannedPaste::NONE)
-}
-
 fn handle_shell_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
     match event {
         MiniBufferEvent::Cancel
@@ -105,6 +88,5 @@ fn finish_shell_prompt(ed: &mut Editor, r: LayerRef, command: Option<String>) {
     let ShellPromptLayer {
         then, mut input, ..
     } = *ed.state.take_layer::<ShellPromptLayer>(&ed.view, r);
-    ed.state.history.begin_session_all();
     commands::finish_text_operand(ed, then, input.take_answer(), command);
 }

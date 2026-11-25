@@ -3,10 +3,14 @@ pub(in crate::editor) mod history;
 use hume_grid::Rect;
 use hume_rope::width::{chrome_width, fit_prompt};
 
-use self::history::{HistoryKind, HistoryStore};
+use hume_engine::pipeline::EngineView;
+
+use self::history::{HistoryKind, HistoryStore, HistoryWalk};
+use super::error::CommandError;
 use super::input_stack::{InputEvent, LayerRef, PastedText};
 use super::keymap::WalkResult;
 use super::line_input::{LineEdit, LineInput};
+use super::paste_plan::PlannedPaste;
 use super::replay::dispatch_command_line_key;
 use super::{Editor, EditorState};
 use hume_core::BindMode;
@@ -28,6 +32,9 @@ pub(in crate::editor) struct MiniBuffer {
     /// The ring Enter records the line in and Up/Down recall from; `None`
     /// for a prompt with no history.
     history: Option<HistoryKind>,
+    /// The walk through `history` Up started, until an edit or confirm
+    /// ends it.
+    walk: Option<HistoryWalk>,
 }
 
 /// The completion a minibuffer line offers, which decides the source Tab
@@ -107,27 +114,32 @@ pub(super) enum MiniBufferEvent {
 
 impl MiniBuffer {
     /// A fresh minibuffer for `prompt`, with empty input and the cursor at
-    /// its start: the shape every opener but `prompt!` needs.
+    /// its start, recording in and recalling from `history`: the shape
+    /// every opener but `prompt!` needs.
     pub(in crate::editor) fn new(
         prompt: impl Into<String>,
         completion: Option<PromptCompletion>,
-        history: Option<HistoryKind>,
+        history: HistoryKind,
     ) -> Self {
         Self {
             prompt: prompt.into(),
             line: LineInput::default(),
             completion,
-            history,
+            history: Some(history),
+            walk: None,
         }
     }
 
     /// A minibuffer for `prompt` pre-populated with `input`, cursor parked
     /// at its end: `(prompt! label prefill …)`'s shape, which completes
-    /// nothing.
+    /// nothing and has no history.
     pub(in crate::editor) fn with_prefill(prompt: impl Into<String>, input: String) -> Self {
         Self {
+            prompt: prompt.into(),
             line: LineInput::new(input),
-            ..Self::new(prompt, None, None)
+            completion: None,
+            history: None,
+            walk: None,
         }
     }
 
@@ -179,16 +191,17 @@ impl MiniBuffer {
                 if let Some(kind) = self.history {
                     history.get_mut(kind).push(text.to_owned());
                 }
+                self.walk = None;
                 MiniBufferEvent::Confirm(text.to_owned())
             }
             KeyCode::Backspace if self.line.text().is_empty() => MiniBufferEvent::BackspaceOnEmpty,
             KeyCode::Up | KeyCode::Down => {
                 let recalled = self.history.and_then(|kind| {
-                    let ring = history.get_mut(kind);
+                    let ring = history.get(kind);
                     if key.code == KeyCode::Up {
-                        ring.prev(self.line.text())
+                        ring.prev(&mut self.walk, self.line.text())
                     } else {
-                        ring.next()
+                        ring.next(&mut self.walk)
                     }
                 });
                 match recalled {
@@ -202,18 +215,10 @@ impl MiniBuffer {
             _ => {
                 let edit = self.line.edit(key);
                 if edit == LineEdit::Changed {
-                    self.end_history_walk(history);
+                    self.walk = None;
                 }
                 MiniBufferEvent::Line(edit)
             }
-        }
-    }
-
-    /// Ends any walk through this prompt's history: the user edited the
-    /// line, so the next Up starts a fresh walk from what it now holds.
-    fn end_history_walk(&self, history: &mut HistoryStore) {
-        if let Some(kind) = self.history {
-            history.get_mut(kind).demote_to_scratch();
         }
     }
 }
@@ -283,19 +288,30 @@ pub(in crate::editor) fn command_line_input(
 
 /// Insert `text` as one line ([`PastedText::single_line`]) at the
 /// minibuffer's cursor, ending any history walk as a typed edit does: the
-/// paste half every minibuf-mode layer's paste handler shares, each then
-/// running the follow-up its own key handler runs for a changed line.
-/// Whether the input changed: `false` when no minibuffer is live or `text`
-/// flattens to nothing.
+/// paste half every minibuf-mode layer's paste handler shares. Whether the
+/// input changed, for a layer that refreshes a live preview on a changed
+/// line: `false` when no minibuffer is live or `text` flattens to nothing.
 pub(in crate::editor) fn paste_into_minibuf(state: &mut EditorState, text: &PastedText) -> bool {
     let Some(mb) = state.input.minibuf_mut() else {
         return false;
     };
     let changed = mb.line.insert_str(&text.single_line());
     if changed {
-        mb.end_history_walk(&mut state.history);
+        mb.walk = None;
     }
     changed
+}
+
+/// The paste handler of a minibuf-mode layer with no follow-up to a
+/// changed line (`:`, `|`, `prompt!`).
+pub(in crate::editor) fn paste_line(
+    state: &mut EditorState,
+    _view: &EngineView,
+    _r: LayerRef,
+    text: PastedText,
+) -> Result<PlannedPaste, CommandError> {
+    paste_into_minibuf(state, &text);
+    Ok(PlannedPaste::NONE)
 }
 
 /// Flatten already-newline-normalized text for a single-line input field

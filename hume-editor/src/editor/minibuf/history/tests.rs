@@ -13,49 +13,53 @@ fn store(capacity: usize) -> HistoryStore {
 #[test]
 fn push_and_prev_walks_back() {
     let mut h = h(10);
+    let mut w = None;
     h.push("a".into());
     h.push("b".into());
     h.push("c".into());
-    assert_eq!(h.prev(""), Some("c".into()));
-    assert_eq!(h.prev(""), Some("b".into()));
-    assert_eq!(h.prev(""), Some("a".into()));
-    assert_eq!(h.prev(""), None); // at oldest
+    assert_eq!(h.prev(&mut w, ""), Some("c".into()));
+    assert_eq!(h.prev(&mut w, ""), Some("b".into()));
+    assert_eq!(h.prev(&mut w, ""), Some("a".into()));
+    assert_eq!(h.prev(&mut w, ""), None); // at oldest
 }
 
 #[test]
 fn next_after_prev_walks_forward_then_scratch() {
     let mut h = h(10);
+    let mut w = None;
     h.push("a".into());
     h.push("b".into());
     h.push("c".into());
     // Walk to oldest.
-    h.prev("");
-    h.prev("");
-    h.prev("");
+    h.prev(&mut w, "");
+    h.prev(&mut w, "");
+    h.prev(&mut w, "");
     // Walk back forward.
-    assert_eq!(h.next(), Some("b".into()));
-    assert_eq!(h.next(), Some("c".into()));
+    assert_eq!(h.next(&mut w), Some("b".into()));
+    assert_eq!(h.next(&mut w), Some("c".into()));
     // Past newest restores scratch ("").
-    assert_eq!(h.next(), Some("".into()));
+    assert_eq!(h.next(&mut w), Some("".into()));
 }
 
 #[test]
 fn next_returns_none_when_not_navigating() {
     let mut h = h(10);
+    let mut w = None;
     h.push("a".into());
-    assert_eq!(h.next(), None);
+    assert_eq!(h.next(&mut w), None);
 }
 
 #[test]
 fn prev_stashes_scratch_on_first_call() {
-    let mut ring = History::new(10);
-    ring.push("xylophone".into());
+    let mut h = h(10);
+    let mut w = None;
+    h.push("xylophone".into());
     // First prev: stashes "x" as scratch (the prefix search is satisfied by "xylophone").
-    assert_eq!(ring.prev("x"), Some("xylophone".into()));
-    assert_eq!(ring.scratch, Some("x".into()));
+    assert_eq!(h.prev(&mut w, "x"), Some("xylophone".into()));
+    assert_eq!(w.as_ref().map(|w| w.scratch.as_str()), Some("x"));
     // Navigating forward past newest restores scratch.
-    assert_eq!(ring.next(), Some("x".into()));
-    assert_eq!(ring.cursor, None);
+    assert_eq!(h.next(&mut w), Some("x".into()));
+    assert_eq!(w.as_ref().map(|w| w.cursor), None);
 }
 
 #[test]
@@ -78,110 +82,84 @@ fn non_consecutive_duplicate_is_kept() {
 #[test]
 fn capacity_evicts_oldest() {
     let mut h = h(3);
+    let mut w = None;
     h.push("a".into());
     h.push("b".into());
     h.push("c".into());
     h.push("d".into()); // evicts "a"
     assert_eq!(h.entries.len(), 3);
-    assert_eq!(h.prev(""), Some("d".into()));
-    assert_eq!(h.prev(""), Some("c".into()));
-    assert_eq!(h.prev(""), Some("b".into()));
-    assert_eq!(h.prev(""), None);
+    assert_eq!(h.prev(&mut w, ""), Some("d".into()));
+    assert_eq!(h.prev(&mut w, ""), Some("c".into()));
+    assert_eq!(h.prev(&mut w, ""), Some("b".into()));
+    assert_eq!(h.prev(&mut w, ""), None);
 }
 
 #[test]
 fn prev_on_empty_history_returns_none() {
-    let mut h = h(10);
-    assert_eq!(h.prev("x"), None);
+    let h = h(10);
+    let mut w = None;
+    assert_eq!(h.prev(&mut w, "x"), None);
     // Scratch should NOT have been set: there was nothing to navigate to.
-    assert!(h.scratch.is_none());
+    assert!(w.as_ref().map(|w| w.scratch.as_str()).is_none());
 }
 
 #[test]
 fn prev_at_oldest_returns_none_keeps_position() {
     let mut h = h(10);
+    let mut w = None;
     h.push("a".into());
-    h.prev(""); // lands on "a" (oldest)
-    assert_eq!(h.cursor, Some(0));
-    assert_eq!(h.prev(""), None); // still at oldest
-    assert_eq!(h.cursor, Some(0)); // position unchanged
-}
-
-#[test]
-fn demote_to_scratch_clears_navigation() {
-    let mut h = h(10);
-    h.push("a".into());
-    h.push("b".into());
-    h.prev(""); // cursor = Some(1) = "b"
-    h.demote_to_scratch();
-    assert_eq!(h.cursor, None);
-    assert_eq!(h.scratch, None);
-    // Next prev re-stashes current text (empty prefix matches "b").
-    assert_eq!(h.prev(""), Some("b".into()));
-    assert_eq!(h.scratch, Some("".into()));
-}
-
-#[test]
-fn empty_push_is_ignored() {
-    let mut h = h(10);
-    h.push(String::new());
-    assert_eq!(h.entries.len(), 0);
+    h.prev(&mut w, ""); // lands on "a" (oldest)
+    assert_eq!(w.as_ref().map(|w| w.cursor), Some(0));
+    assert_eq!(h.prev(&mut w, ""), None); // still at oldest
+    assert_eq!(w.as_ref().map(|w| w.cursor), Some(0)); // position unchanged
 }
 
 #[test]
 fn blank_push_is_ignored() {
     let mut h = h(10);
-    h.push(" \t ".into());
+    for blank in ["", " \t "] {
+        h.push(blank.into());
+    }
     assert_eq!(h.entries.len(), 0);
-}
-
-#[test]
-fn begin_session_resets_nav_but_keeps_entries() {
-    let mut h = h(10);
-    h.push("a".into());
-    h.prev(""); // cursor = Some(0)
-    h.begin_session();
-    assert_eq!(h.cursor, None);
-    assert_eq!(h.scratch, None);
-    assert_eq!(h.entries.len(), 1); // entry still there
-    // Can navigate again in the new session.
-    assert_eq!(h.prev(""), Some("a".into()));
 }
 
 #[test]
 fn prev_filters_by_typed_prefix() {
     let mut h = h(10);
+    let mut w = None;
     h.push("e".into());
     h.push("plum-install-grammar".into());
     h.push("pwd".into());
     // "pl" skips "pwd" (no match) and lands on "plum-install-grammar".
-    assert_eq!(h.prev("pl"), Some("plum-install-grammar".into()));
+    assert_eq!(h.prev(&mut w, "pl"), Some("plum-install-grammar".into()));
     // No older entry starts with "pl", so position unchanged, returns None.
-    assert_eq!(h.prev("pl"), None);
-    assert_eq!(h.cursor, Some(1));
+    assert_eq!(h.prev(&mut w, "pl"), None);
+    assert_eq!(w.as_ref().map(|w| w.cursor), Some(1));
 }
 
 #[test]
 fn prefix_persists_across_prev_next_steps() {
     let mut h = h(10);
+    let mut w = None;
     h.push("foo1".into());
     h.push("bar".into());
     h.push("foo2".into());
-    assert_eq!(h.prev("fo"), Some("foo2".into()));
-    assert_eq!(h.prev("fo"), Some("foo1".into()));
-    assert_eq!(h.next(), Some("foo2".into()));
+    assert_eq!(h.prev(&mut w, "fo"), Some("foo2".into()));
+    assert_eq!(h.prev(&mut w, "fo"), Some("foo1".into()));
+    assert_eq!(h.next(&mut w), Some("foo2".into()));
     // Past newest match restores the stashed prefix, not the raw entry.
-    assert_eq!(h.next(), Some("fo".into()));
-    assert_eq!(h.cursor, None);
+    assert_eq!(h.next(&mut w), Some("fo".into()));
+    assert_eq!(w.as_ref().map(|w| w.cursor), None);
 }
 
 #[test]
 fn prev_first_step_miss_leaves_state_untouched() {
     let mut h = h(10);
+    let mut w = None;
     h.push("abc".into());
-    assert_eq!(h.prev("z"), None);
-    assert_eq!(h.cursor, None);
-    assert_eq!(h.scratch, None);
+    assert_eq!(h.prev(&mut w, "z"), None);
+    assert_eq!(w.as_ref().map(|w| w.cursor), None);
+    assert_eq!(w.as_ref().map(|w| w.scratch.as_str()), None);
 }
 
 // ── HistoryStore ──────────────────────────────────────────────────────────
@@ -292,28 +270,4 @@ fn history_store_set_capacity_updates_all_rings() {
     assert_eq!(s.get(HistoryKind::Sift).capacity, 5);
     // Existing entries fit in 5 so none were evicted.
     assert_eq!(s.get(HistoryKind::Command).entries().len(), 1);
-}
-
-#[test]
-fn begin_session_all_resets_all_rings() {
-    let mut s = store(10);
-    s.get_mut(HistoryKind::Command).push("w".into());
-    s.get_mut(HistoryKind::SearchForward).push("foo".into());
-    s.get_mut(HistoryKind::Pipe).push("sort".into());
-    s.get_mut(HistoryKind::Sift).push("o".into());
-    s.get_mut(HistoryKind::Command).prev("");
-    s.get_mut(HistoryKind::SearchForward).prev("");
-    s.get_mut(HistoryKind::Pipe).prev("");
-    s.get_mut(HistoryKind::Sift).prev("");
-    assert!(s.get(HistoryKind::Command).cursor.is_some());
-    assert!(s.get(HistoryKind::SearchForward).cursor.is_some());
-    assert!(s.get(HistoryKind::Pipe).cursor.is_some());
-    assert!(s.get(HistoryKind::Sift).cursor.is_some());
-
-    s.begin_session_all();
-
-    assert!(s.get(HistoryKind::Command).cursor.is_none());
-    assert!(s.get(HistoryKind::SearchForward).cursor.is_none());
-    assert!(s.get(HistoryKind::Pipe).cursor.is_none());
-    assert!(s.get(HistoryKind::Sift).cursor.is_none());
 }

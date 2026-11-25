@@ -649,13 +649,11 @@ fn macros_and_numbered_registers_come_back() {
     assert_eq!(read('7').and_then(|r| r.as_macro()), Some(&[key('x')][..]));
 }
 
-/// Every prompt's history, oldest entry first, in `entries_by_kind` order.
+/// Every prompt's history, oldest entry first, in `HistoryKind::ALL` order.
 fn histories(ed: &Editor) -> Vec<Vec<String>> {
-    ed.state
-        .history
-        .entries_by_kind()
+    HistoryKind::ALL
         .iter()
-        .map(|(_, entries)| entries.iter().cloned().collect())
+        .map(|&kind| history(ed, kind))
         .collect()
 }
 

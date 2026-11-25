@@ -1,12 +1,12 @@
 //! Minibuffer history: bounded, in-memory recall for the `:`, `/`, `?`, `|`
 //! and `⫽` prompts.
 //!
-//! Each prompt gets its own [`History`] ring (oldest-first [`VecDeque`]) with
-//! per-session navigation state (cursor + scratch). The rings are grouped
-//! in [`HistoryStore`], which lives on `Editor` and is keyed by [`HistoryKind`].
-//! A `MiniBuffer` names its ring as it opens and records, recalls and walks
-//! it itself, so a ring holds only what was typed and confirmed at its
-//! prompt.
+//! Each prompt gets its own [`History`] ring (oldest-first [`VecDeque`]).
+//! The rings are grouped in [`HistoryStore`], which lives on `Editor` and is
+//! keyed by [`HistoryKind`]. A `MiniBuffer` names its ring as it opens,
+//! records in it, and holds its own [`HistoryWalk`] through it, so a ring
+//! holds only what was typed and confirmed at its prompt and a walk ends
+//! with the prompt.
 //!
 use std::collections::VecDeque;
 
@@ -52,23 +52,24 @@ impl HistoryKind {
     };
 }
 
-/// A single bounded history ring with per-session navigation state.
+/// A single bounded history ring.
 ///
 /// Entries are stored oldest-first; `back()` is always the most recent.
-/// Navigation state (`cursor`, `scratch`) is reset at the start of each
-/// minibuffer session and has no meaning between sessions.
 #[derive(Debug)]
 pub(in crate::editor) struct History {
     entries: VecDeque<String>,
     capacity: usize,
-    /// `None` = not currently navigating (at "scratch" / no Up pressed yet).
-    /// `Some(i)` = `entries[i]` is currently shown in the minibuffer.
-    cursor: Option<usize>,
-    /// The text that was in the minibuffer when the user first pressed Up this
-    /// session, restored by Down past the newest entry. Also doubles as the
-    /// fixed prefix that `prev`/`next` filter the walk by for the rest of the
-    /// session, so navigation only visits entries matching what was typed.
-    scratch: Option<String>,
+}
+
+/// One prompt's walk through its ring, from the first Up until an edit, a
+/// Down past the newest match, or the prompt closing.
+#[derive(Debug, Clone)]
+pub(super) struct HistoryWalk {
+    /// The ring index of the entry the prompt shows.
+    cursor: usize,
+    /// The line as it was at the first Up: the prefix every step filters
+    /// by, restored by Down past the newest match.
+    scratch: String,
 }
 
 impl History {
@@ -83,18 +84,14 @@ impl History {
         Self {
             entries: VecDeque::new(),
             capacity,
-            cursor: None,
-            scratch: None,
         }
     }
 
     /// Record a submitted entry. Skips blank strings and consecutive
-    /// duplicates. Always resets nav state: a confirm ends the session.
-    /// Caps the ring at `self.capacity` with a `while`, not an `if`, so a
+    /// duplicates. Caps the ring at `self.capacity` with a `while`, not an `if`, so a
     /// `set_capacity` shrink of any size converges to the new cap in this
     /// one call rather than one entry per push.
     pub(in crate::editor) fn push(&mut self, entry: String) {
-        self.begin_session();
         let is_duplicate = self.entries.back().is_some_and(|last| *last == entry);
         if !entry.trim().is_empty() && !is_duplicate {
             self.entries.push_back(entry);
@@ -108,72 +105,49 @@ impl History {
     /// immediately, matching Vim's `undolevels` semantics (see
     /// `hume_editing::history::UndoTree::set_undo_levels`): lowering the cap
     /// does not retroactively trim existing entries. Called when
-    /// `prompt-history-levels` is changed at runtime. No `cursor`/`scratch`
-    /// adjustment needed here, since no entries are removed by this call:
-    /// a mid-navigation `cursor` stays valid until `push`'s own `while` trim
-    /// runs on the next confirm.
+    /// `prompt-history-levels` is changed at runtime.
     pub(in crate::editor) fn set_capacity(&mut self, new_cap: usize) {
         debug_assert!(new_cap > 0, "History capacity must be non-zero");
         self.capacity = new_cap;
     }
 
     /// Walk one step older, restricted to entries whose text starts with the
-    /// prefix that was in the minibuffer when navigation began (stashed as
-    /// `scratch` on the first call). An empty prefix matches every entry, so a
-    /// fresh prompt still walks the full ring. Returns the entry to install, or
-    /// `None` if no older match exists (position unchanged).
-    pub(in crate::editor) fn prev(&mut self, current: &str) -> Option<String> {
-        if self.entries.is_empty() {
-            return None;
-        }
-        let first_step = self.cursor.is_none();
-        let prefix = if first_step {
-            current
-        } else {
-            self.scratch.as_deref().unwrap_or("")
+    /// walk's prefix: `current` when `walk` is `None`, which starts the walk.
+    /// An empty prefix matches every entry. Returns the entry to install, or
+    /// `None` if no older match exists (`walk` unchanged).
+    pub(super) fn prev(&self, walk: &mut Option<HistoryWalk>, current: &str) -> Option<String> {
+        let (prefix, scan_from) = match walk {
+            Some(w) => (w.scratch.as_str(), w.cursor),
+            None => (current, self.entries.len()),
         };
-        let scan_from = self.cursor.unwrap_or(self.entries.len());
         let idx = (0..scan_from)
             .rev()
             .find(|&idx| self.entries[idx].starts_with(prefix))?;
-        if first_step {
-            self.scratch = Some(current.to_owned());
+        match walk {
+            Some(w) => w.cursor = idx,
+            None => {
+                *walk = Some(HistoryWalk {
+                    cursor: idx,
+                    scratch: current.to_owned(),
+                });
+            }
         }
-        self.cursor = Some(idx);
         Some(self.entries[idx].clone())
     }
 
     /// Walk one step newer within the prefix match set. Past the newest match,
-    /// restores the stashed prefix text and exits navigation. `None` if not
-    /// currently navigating.
-    pub(in crate::editor) fn next(&mut self) -> Option<String> {
-        let i = self.cursor?;
-        let prefix = self.scratch.as_deref().unwrap_or("");
-        match ((i + 1)..self.entries.len()).find(|&idx| self.entries[idx].starts_with(prefix)) {
+    /// ends the walk and returns its stashed prefix text. `None` if `walk` is.
+    pub(super) fn next(&self, walk: &mut Option<HistoryWalk>) -> Option<String> {
+        let w = walk.as_mut()?;
+        let newer = ((w.cursor + 1)..self.entries.len())
+            .find(|&idx| self.entries[idx].starts_with(&w.scratch));
+        match newer {
             Some(idx) => {
-                self.cursor = Some(idx);
+                w.cursor = idx;
                 Some(self.entries[idx].clone())
             }
-            None => {
-                // Past newest match: restore scratch and exit navigation mode.
-                let scratch = self.scratch.take().unwrap_or_default();
-                self.cursor = None;
-                Some(scratch)
-            }
+            None => walk.take().map(|w| w.scratch),
         }
-    }
-
-    /// Demote: the user edited a recalled entry. Clears the cursor so the next
-    /// `prev` re-stashes the current (now-edited) text as fresh scratch.
-    pub(in crate::editor) fn demote_to_scratch(&mut self) {
-        self.cursor = None;
-        self.scratch = None;
-    }
-
-    /// Reset per-session nav state. Called when the minibuffer opens or closes.
-    pub(in crate::editor) fn begin_session(&mut self) {
-        self.cursor = None;
-        self.scratch = None;
     }
 
     #[cfg(test)]
@@ -240,14 +214,6 @@ impl HistoryStore {
     /// Every ring's entries, oldest first, with the kind it belongs to.
     pub(in crate::editor) fn entries_by_kind(&self) -> [(HistoryKind, &VecDeque<String>); 5] {
         HistoryKind::ALL.map(|kind| (kind, &self.get(kind).entries))
-    }
-
-    /// Reset per-session nav state on every ring. Called when any minibuffer
-    /// opens or closes.
-    pub(in crate::editor) fn begin_session_all(&mut self) {
-        for ring in self.rings_mut() {
-            ring.begin_session();
-        }
     }
 
     /// Update the capacity of every ring; see `History::set_capacity` for

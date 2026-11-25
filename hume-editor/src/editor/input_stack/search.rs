@@ -108,7 +108,6 @@ impl SearchLayer {
                 search::ops::clear_buffer_search(&mut state.buffers, &mut state.panes.entries, bid);
             }
         }
-        state.history.begin_session_all();
     }
 }
 
@@ -149,8 +148,7 @@ fn handle_search_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEvent) {
         }
         MiniBufferEvent::BackspaceOnEmpty => {
             // Input already empty: user pressed Backspace a second time to
-            // dismiss. Teardown restores the snapshot, clears the search, and
-            // begins a fresh history session.
+            // dismiss. Teardown restores the snapshot and clears the search.
             ed.state.truncate_layers(&ed.view, r);
         }
         MiniBufferEvent::Line(LineEdit::Changed) => update_live_search(&mut ed.state, r),

@@ -6,12 +6,9 @@
 use hume_engine::pipeline::EngineView;
 use hume_engine::types::EditorMode;
 
-use super::super::error::CommandError;
 use super::super::minibuf::{self, MiniBuffer, MiniBufferEvent};
-use super::super::paste_plan::PlannedPaste;
 use super::super::replay::{Answer, InputOpener, PendingAnswer, WaitingInput};
 use super::super::{Editor, EditorState};
-use super::paste::PastedText;
 use super::stack::{InputEvent, Layer, LayerHandler, LayerRef, PasteHandler, Removal};
 
 /// Built only by [`open_prompt`].
@@ -48,18 +45,15 @@ pub(in crate::editor) fn open_prompt(
             )
             .map_err(|refusal| refusal.to_string());
     }
-    // Not "a Command-mode minibuffer is open": a `prompt!` called from a
-    // `:command`'s body runs while that command line's own `Command` layer
-    // is still on the stack (it's truncated only after the command
-    // returns). Only a `Prompt` layer already on top means a prior
-    // `prompt!` call has taken over the session.
+    // Not "a Command-mode minibuffer is open": a `:` line on top is
+    // replaced by this prompt. Only a `Prompt` layer already on top means a
+    // prior `prompt!` call has taken over the session.
     if state.input.is::<PromptLayer>(state.input.mode_layer()) {
         return Err("a minibuffer session is already open".to_string());
     }
     let input = state
         .waiting_input(InputOpener::Code)
         .map_err(|refusal| refusal.to_string())?;
-    state.history.begin_session_all();
     state.push_mode_layer(
         view,
         PromptLayer {
@@ -101,7 +95,7 @@ impl Layer for PromptLayer {
         prompt_input
     }
     fn paste_handler(&self) -> PasteHandler {
-        prompt_paste
+        minibuf::paste_line
     }
     fn mode(&self) -> Option<EditorMode> {
         // The engine has no `Prompt` variant, and today's `(prompt! …)`
@@ -126,7 +120,6 @@ impl Layer for PromptLayer {
     /// layer *by value* via `EditorState::take_layer`, firing its own
     /// callback explicitly instead.
     fn tear_down(mut self: Box<Self>, state: &mut EditorState, _view: &EngineView, _why: Removal) {
-        state.history.begin_session_all();
         self.fire(state, None);
     }
     fn minibuf(&self) -> Option<&MiniBuffer> {
@@ -141,18 +134,6 @@ pub(in crate::editor) fn prompt_input(ed: &mut Editor, r: LayerRef, ev: InputEve
     if let Some(event) = minibuf::command_line_input(ed, r, ev) {
         handle_steel_prompt_event(ed, r, event);
     }
-}
-
-/// A line edit has no follow-up here, as `handle_steel_prompt_event`'s
-/// `Line` arm shows.
-fn prompt_paste(
-    state: &mut EditorState,
-    _view: &EngineView,
-    _r: LayerRef,
-    text: PastedText,
-) -> Result<PlannedPaste, CommandError> {
-    minibuf::paste_into_minibuf(state, &text);
-    Ok(PlannedPaste::NONE)
 }
 
 /// Routes a `Prompt` layer's key for a Steel `(prompt! …)` session
@@ -175,10 +156,8 @@ fn handle_steel_prompt_event(ed: &mut Editor, r: LayerRef, event: MiniBufferEven
 /// layer *by value* via `EditorState::take_layer`, which skips its own
 /// `tear_down` (unlike `truncate_layers`), so this doesn't double-fire
 /// against `PromptLayer::tear_down`'s own `#f` fire for the incidental
-/// case. Keeps its own `history.begin_session_all()` call so this
-/// explicit path's behavior is unchanged by that split.
+/// case.
 fn finish_steel_prompt(ed: &mut Editor, r: LayerRef, text: Option<String>) {
     let mut prompt = ed.state.take_layer::<PromptLayer>(&ed.view, r);
-    ed.state.history.begin_session_all();
     prompt.fire(&mut ed.state, text);
 }

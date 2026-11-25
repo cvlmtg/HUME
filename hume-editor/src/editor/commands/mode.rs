@@ -174,7 +174,6 @@ pub(in crate::editor) fn cmd_command_mode(
     let input = state
         .waiting_input(InputOpener::Code)
         .map_err(|refusal| CommandError::new(format!("command-mode: {refusal}")))?;
-    state.history.begin_session_all();
     state.push_mode_layer(view, CommandLayer::new(input));
     Ok(())
 }
