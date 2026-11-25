@@ -142,7 +142,7 @@
   (lambda (pane) (md-tables/select-cells! pane #t)))
 
 (define-command! "markdown/select-column"
-  "Select the text of every cell in the table column under the primary selection, one selection per row, the header included and the delimiter row left out."
+  "Select the text of every cell in the table column under the primary selection, one selection per row, the header included and the delimiter row left out. A row with no cell in the column, or an empty one, is left out, and a warning gives how many were."
   md-tables/select-column!)
 
 (bind-key! 'normal "m i |" "markdown/select-cell" #:keymap md-preview/keymap)

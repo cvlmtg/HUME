@@ -15,8 +15,8 @@ move rows and columns.
 (load-plugin! "core:markdown" #:config (hash 'preview #t 'rule-width 40))
 ```
 
-- **Depends on:** `core:stdlib`, for config validation and a few list and selection
-  helpers.
+- **Depends on:** `core:stdlib`, for config validation, list concatenation and its
+  selection queries.
 - **Activates on:** the first `markdown` buffer, or any command in `manifest.scm`, a
   Markdown popup's `format-text/markdown` call included. A `#:languages` manifest may list
   no buffer event, so it lists none.
