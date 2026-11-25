@@ -69,6 +69,17 @@ fn m_s_inside_strikethrough_removes_both_tildes() {
 }
 
 #[test]
+fn m_s_on_an_outer_tilde_removes_both_tildes() {
+    assert_eq!(after("-[~]>~a~~\n", "MS"), "-[a]>\n");
+    assert_eq!(after("~~a~-[~]>\n", "MS"), "-[a]>\n");
+}
+
+#[test]
+fn m_s_on_the_whole_strikethrough_removes_both_tildes() {
+    assert_eq!(after("-[~~a~~]>\n", "MS"), "-[a]>\n");
+}
+
+#[test]
 fn m_b_inside_bold_italic_keeps_the_italic() {
     assert_eq!(after("***-[a]>***\n", "MB"), "*-[a]>*\n");
 }

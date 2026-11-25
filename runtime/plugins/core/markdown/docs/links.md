@@ -125,7 +125,8 @@ An empty fragment, a bare `#`, names the file's start, as in a browser.
 A file just opened has no tree until its first parse lands, and no language until the
 command that opened it returns. No query tells a parse still to come from a file without
 the heading, so a heading not found in a file whose language is `""` or `markdown` is
-waited for. The pane shows the file's start, and the file's next `on-syntax-changed` moves
+waited for, unless the file's last `on-syntax-changed` came at its current generation: its
+tree is then current, and the miss warns at once. The pane shows the file's start, and the file's next `on-syntax-changed` moves
 it to the heading, or warns that no heading matches. It moves only while the pane still
 shows the file, its text is unchanged and its primary cursor is still at the start, so a
 move or an edit made before the parse lands keeps its place. The second move records a
@@ -134,8 +135,7 @@ time, and the next follow drops it.
 
 A wait that no parse ends within a second warns that no heading matches and goes on
 waiting, so a parse that lands later still moves to the heading. That covers a file that
-turns out not to be Markdown, whose hooks never reach this plugin, and a miss in a file
-already parsed, which gets no further parse. A file in another language, or any file while
+turns out not to be Markdown, whose hooks never reach this plugin. A file in another language, or any file while
 the `markdown` grammar is missing, warns at once.
 
 ## Implementation notes

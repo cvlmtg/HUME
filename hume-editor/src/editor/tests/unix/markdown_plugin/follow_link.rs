@@ -252,6 +252,32 @@ fn a_file_that_is_not_markdown_warns_after_a_second() {
 }
 
 #[test]
+fn a_missing_heading_of_the_parsed_buffer_warns_at_once() {
+    let mut p = linking("[-[s]>ee](#nowhere)\n\n# A\n", &[]);
+    p.parse();
+    assert_eq!(follow(&mut p), "t");
+    assert_eq!(missed(&p, "nowhere"), 1);
+}
+
+#[test]
+fn a_missing_heading_of_an_open_parsed_file_warns_at_once() {
+    let mut p = linking("[-[s]>ee](b.md#nowhere)\n", &[("b.md", "# B\n")]);
+    assert_eq!(follow(&mut p), "t");
+    p.parse();
+    assert_eq!(missed(&p, "nowhere"), 1);
+    call(&mut p.ed, "goto-alternate-buffer");
+    call(&mut p.ed, "markdown/follow-link");
+    assert_eq!(missed(&p, "nowhere"), 2);
+}
+
+#[test]
+fn an_image_naming_a_heading_moves_to_it() {
+    let mut p = linking("![-[x]>](#a)\n\n# A\n", &[]);
+    assert_eq!(follow(&mut p), "t");
+    assert_eq!(state(&p.ed), "![x](#a)\n\n-[#]> A\n");
+}
+
+#[test]
 fn a_heading_found_after_the_warning_still_moves_to_it() {
     let mut p = linking("[-[n]>otes](n.txt#a)\n", &[("n.txt", "x\n# A\n")]);
     assert_eq!(follow(&mut p), "t");

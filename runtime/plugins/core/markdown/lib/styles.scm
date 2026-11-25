@@ -36,14 +36,17 @@
          #f
          spans))
 
-;;; `span` and each span of `spans` wrapping it one character wider on each side.
-(define (md-styles/with-outer spans span)
-  (let* ([node (car span)]
-         [outer (findf (lambda (o)
-                         (and (= (md-preview/capture-start (car o)) (- (md-preview/capture-start node) 1))
-                              (= (md-preview/capture-end (car o)) (+ (md-preview/capture-end node) 1))))
-                       spans)])
-    (if outer (cons span (md-styles/with-outer spans outer)) (list span))))
+;;; `span` and each span of `spans` nested with it, one character narrower or wider on each side per level.
+(define (md-styles/nested spans span)
+  (define (step s delta)
+    (let ([node (car s)])
+      (findf (lambda (o)
+               (and (= (md-preview/capture-start (car o)) (- (md-preview/capture-start node) delta))
+                    (= (md-preview/capture-end (car o)) (+ (md-preview/capture-end node) delta))))
+             spans)))
+  (let up ([s (let down ([s span]) (let ([inner (step s -1)]) (if inner (down inner) s)))] [chain '()])
+    (let ([outer (step s 1)])
+      (if outer (up outer (cons s chain)) (cons s chain)))))
 
 ;;; Whether `head` is on one of `spans`' closing delimiters, those in a span's second half.
 (define (md-styles/on-closer? spans head)
@@ -67,7 +70,7 @@
                    (let ([span (md-styles/innermost spans (selection-start-char sel) (selection-end-char sel))])
                      (cond
                        [(not span) '()]
-                       [(equal? style "strikethrough") (md-styles/with-outer spans span)]
+                       [(equal? style "strikethrough") (md-styles/nested spans span)]
                        [else (list span)])))]
          [arounds (map around sels)])
     (and (pair? (around (call! "stdlib/primary-selection" sels)))

@@ -216,8 +216,10 @@
 ;;; Whether a heading of `target` may come with a parse still to land. See docs/links.md's
 ;;; "Following links".
 (define (md-links/may-parse? target)
-  (and (language-has-grammar? "markdown")
-       (member (get-buffer-option target 'language) '("markdown" ""))))
+  (let ([entry (md-preview/entry target)])
+    (and (language-has-grammar? "markdown")
+         (member (get-buffer-option target 'language) '("markdown" ""))
+         (not (and entry (equal? (hash-ref entry 'generation) (buffer-generation target)))))))
 
 ;;; Show `target`'s buffer in `pane`'s pane, at the heading the percent-encoded `fragment`
 ;;; names, or at its start. See docs/links.md's "Following links".
@@ -255,7 +257,7 @@
   (let ([parts (md-destinations/split target)])
     (cond
       [(md-links/scheme target) (md-links/open-externally! target)]
-      [(and (starts-with? target "#") (not image?)) (md-links/show! pane pane (cdr parts))]
+      [(starts-with? target "#") (md-links/show! pane pane (cdr parts))]
       [else
        (let ([path (md-destinations/resolve pane (md-destinations/decode (car parts)))])
          (cond
