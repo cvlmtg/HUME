@@ -59,7 +59,7 @@
 |---|---|
 | `manifest.scm` | Lazy activation on the language and the commands |
 | `plugin.scm` | Config, hooks, command definitions, keymap and the `markdown:paths` completion source |
-| `lib/state.scm` | Per-buffer state (preview on or off, the generation of the last parsed tree), the grammars warned about, `md-preview/box-insert!` |
+| `lib/state.scm` | Per-buffer state (preview on or off, the generation of the last parsed tree), the grammars warned about, `md-preview/box-insert!` and `md-preview/memo` |
 | `lib/queries.scm` | The block, inline and list queries, capture accessors, [match grouping](#matches), the task-box rule, conceal order |
 | `lib/blocks.scm`, `lib/inline.scm` | Block and inline captures to conceals, line backgrounds and highlights |
 | `lib/table.scm` | Table captures to conceals |

@@ -65,16 +65,14 @@
 ;;; The inline conceals the preview draws on the lines `captures` lie on, in drawing order, or
 ;;; none without the `markdown.inline` grammar.
 (define (md-links/conceals target captures)
-  (if (language-has-grammar? "markdown.inline")
-      (let* ([reader (md-preview/line-reader target)]
-             [line-of (car reader)]
-             [line-info (cdr reader)])
-        (md-preview/drawn line-of line-info
-          (md-preview/inline-elements
-            (syntax-captures target "markdown.inline" md-preview/inline-query
-                             #:ranges (map (lambda (c) (md-preview/line-span line-of c)) captures))
-            line-of line-info)))
-      '()))
+  (let* ([reader (md-preview/line-reader target)]
+         [line-of (md-preview/lines-line-of reader)]
+         [line-info (md-preview/lines-info reader)])
+    (md-preview/drawn line-of line-info
+      (md-preview/inline-elements
+        (md-preview/captures target "markdown.inline" md-preview/inline-query
+                             (map (lambda (c) (md-preview/line-span line-of c)) captures))
+        line-of line-info))))
 
 ;;; `text`, the buffer's text from offset `start`, as the preview shows it once `conceals` apply.
 (define (md-links/shown-text text start conceals)
@@ -85,21 +83,14 @@
 ;;; is the link, named by its kind, and its last the text it targets.
 (define (md-links/link-at pane head)
   (let ([line (char-offset->line pane head)])
-    (foldl (lambda (found best)
-             (let* ([match (if (equal? (car (car found)) "reference")
-                               (list (md-links/bracketed pane (car found)))
-                               found)]
-                    [link (car match)])
-               (if (and (<= (md-preview/capture-start link) head)
-                        (< head (md-preview/capture-end link))
-                        (or (not best) (md-preview/inside? link (car best))))
-                   match
-                   best)))
-           #f
-           (if (language-has-grammar? "markdown.inline")
-               (syntax-captures pane "markdown.inline" md-links/inline-query
-                                #:ranges (list (hash 'start-line line 'end-line (+ line 1))))
-               '()))))
+    (md-preview/innermost
+      (map (lambda (found)
+             (if (equal? (car (car found)) "reference") (list (md-links/bracketed pane (car found))) found))
+           (md-preview/captures pane "markdown.inline" md-links/inline-query
+                                (list (hash 'start-line line 'end-line (+ line 1)))))
+      head
+      (+ head 1)
+      car)))
 
 ;;; The reference link `capture`, widened over the brackets around it when one more pair
 ;;; wraps it: the grammar reads a wiki link `[[b]]` as a shortcut link `[b]` between them.
@@ -176,7 +167,7 @@
          [texts (map cadr matches)]
          [owned (md-preview/bucket (map md-preview/extent texts)
                                    (md-links/conceals target texts)
-                                   (lambda (c) (hash-ref c 'start-char)))]
+                                   md-preview/char-start)]
          [counts (box (hash))])
     (map (lambda (match conceals)
            (let* ([slug (md-links/slug (md-links/heading-text target match conceals))]

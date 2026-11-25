@@ -40,7 +40,7 @@
          [from (if (and (< from (string-length text)) (char=? (string-ref text from) #\:)) (+ from 1) from)]
          [dashes (md-preview/skip-while text from (lambda (c) (char=? c #\-)))]
          [after (if (and (< dashes (string-length text)) (char=? (string-ref text dashes) #\:)) (+ dashes 1) dashes)])
-    (and (> dashes from) (= (md-preview/skip-blanks text after) (string-length text)))))
+    (and (> dashes from) (md-preview/blank-from? text after))))
 
 ;;; The row `text` holds as `(cells delimiter?)`, each cell `(pipe-before text-start text-end)` in columns, or `#f`
 ;;; for a line with no unescaped pipe.
@@ -48,7 +48,7 @@
   (let* ([prefix (md-lists/container-end (md-lists/container-of text))]
          [pipes (md-cells/pipes text prefix)])
     (and (pair? pipes)
-         (let* ([closer? (= (md-preview/skip-blanks text (+ (last pipes) 1)) (string-length text))]
+         (let* ([closer? (md-preview/blank-from? text (+ (last pipes) 1))]
                 [bounds (if closer? pipes (append pipes (list (string-length text))))]
                 [opened (map (lambda (pipe end) (md-cells/cell pipe (+ pipe 1) end))
                              (take bounds (- (length bounds) 1))

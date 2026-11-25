@@ -1,6 +1,7 @@
 ;;; core:markdown — styles.scm. See docs/architecture.md, "Inline styles".
 
 (require "queries.scm")
+(require "render.scm")
 
 (provide md-styles/toggler)
 
@@ -13,28 +14,12 @@
 
 ;;; The `style` spans on the lines `sels` touch, each `(span . delimiters)`.
 (define (md-styles/spans pane style sels)
-  (if (language-has-grammar? "markdown.inline")
-      (let* ([line-of (lambda (offset) (char-offset->line pane offset))]
-             [ranges (map (lambda (sel)
-                            (let ([lines (md-preview/lines-of line-of (selection-start-char sel)
-                                                              (selection-end-char sel))])
-                              (hash 'start-line (car lines) 'end-line (cdr lines))))
-                          sels)]
-             [matches (syntax-captures pane "markdown.inline" md-styles/query #:ranges ranges)])
-        (map (lambda (run) (cons (car run) (call! "stdlib/concat" (cdr run))))
-             (filter (lambda (run) (equal? (car (car run)) style)) (md-preview/runs matches))))
-      '()))
-
-(define (md-styles/innermost spans start end)
-  (foldl (lambda (span best)
-           (let ([node (car span)])
-             (if (and (<= (md-preview/capture-start node) start)
-                      (<= end (md-preview/capture-end node))
-                      (or (not best) (md-preview/inside? node (car best))))
-                 span
-                 best)))
-         #f
-         spans))
+  (let* ([line-of (md-preview/line-of pane)]
+         [ranges (map (lambda (sel) (md-preview/range-span line-of (selection-start-char sel) (selection-end-char sel)))
+                      sels)])
+    (map (lambda (run) (cons (car run) (call! "stdlib/concat" (cdr run))))
+         (filter (lambda (run) (equal? (car (car run)) style))
+                 (md-preview/runs (md-preview/captures pane "markdown.inline" md-styles/query ranges))))))
 
 ;;; `span` and each span of `spans` nested with it, one character narrower or wider on each side per level.
 (define (md-styles/nested spans span)
@@ -67,7 +52,7 @@
   (let* ([sels (buffer-selections pane)]
          [spans (md-styles/spans pane style sels)]
          [around (lambda (sel)
-                   (let ([span (md-styles/innermost spans (selection-start-char sel) (selection-end-char sel))])
+                   (let ([span (md-preview/innermost spans (selection-start-char sel) (selection-end-char sel) car)])
                      (cond
                        [(not span) '()]
                        [(equal? style "strikethrough") (md-styles/nested spans span)]
@@ -83,13 +68,11 @@
                  (md-preview/all? (lambda (pair) (md-styles/on-closer? (car pair) (selection-head (cdr pair))))
                                   (map cons arounds sels)))))))
 
-(define (md-styles/single-cursor? pane)
-  (let ([sels (buffer-selections pane)])
-    (and (null? (cdr sels))
-         (= (selection-anchor (car sels)) (selection-head (car sels))))))
-
 (define (md-styles/wrap! pane marker)
-  (let ([back (if (md-styles/single-cursor? pane) "move-left" "undo-selection-change")])
+  (let* ([sels (buffer-selections pane)]
+         [back (if (and (call! "stdlib/single-selection?" sels) (call! "stdlib/all-single-char?" sels))
+                   "move-left"
+                   "undo-selection-change")])
     (let loop ([chars (string->list marker)])
       (call! "surround-add" pane (car chars))
       (unless (null? (cdr chars))
@@ -101,7 +84,6 @@
     (let ([removal (md-styles/removal pane style)])
       (if removal
           (begin
-            (edit-text! pane (map (lambda (m) (hash 'start-char (car m) 'end-char (cdr m) 'text ""))
-                                  (car removal)))
+            (edit-text! pane (map (lambda (m) (md-preview/edit (car m) (cdr m) "")) (car removal)))
             (when (cdr removal) (call! "move-left" pane)))
           (md-styles/wrap! pane marker)))))

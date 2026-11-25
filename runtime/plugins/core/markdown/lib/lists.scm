@@ -10,7 +10,7 @@
          md-lists/container-of md-lists/container-end)
 
 (define (md-lists/distinct lines)
-  (reverse (foldl (lambda (line kept) (if (and (pair? kept) (= (car kept) line)) kept (cons line kept)))
+  (reverse (foldl (lambda (line kept) (if (and (pair? kept) (equal? (car kept) line)) kept (cons line kept)))
                   '()
                   lines)))
 
@@ -122,9 +122,7 @@
 
 (define (md-lists/ended-edit item)
   (let ([start (hash-ref item 'start)])
-    (hash 'start-char (+ start (md-lists/kept-col item))
-          'end-char (+ start (hash-ref item 'prefix-end))
-          'text "")))
+    (md-preview/edit (+ start (md-lists/kept-col item)) (+ start (hash-ref item 'prefix-end)) "")))
 
 ;; ── Renumbering ───────────────────────────────────────────────────────────────
 
@@ -213,9 +211,7 @@
       (unless (= counter (number n))
         (let ([s (md-lists/numbered-start n)])
           (set-box! edits
-                    (cons (hash 'start-char s
-                                'end-char (+ s (md-lists/numbered-width n))
-                                'text (number->string counter))
+                    (cons (md-preview/edit s (+ s (md-lists/numbered-width n)) (number->string counter))
                           (unbox edits))))))
     (for-each
       (lambda (items)
@@ -355,9 +351,7 @@
 ;;; The line ranges the lists `edited` renumbers lie on, as `(start . end)`, in a text of `line-count` lines:
 ;;; each hunk's new lines, from the last non-blank line before them through the first one after them.
 (define (md-lists/edited-spans edited line-count line-info)
-  (define (blank? line)
-    (let ([text (cdr (line-info line))])
-      (= (md-preview/skip-blanks text 0) (string-length text))))
+  (define (blank? line) (md-preview/blank-from? (cdr (line-info line)) 0))
   (map (lambda (e)
          (cons (let back ([line (- (md-lists/edited-start e) 1)])
                  (if (and (> line 0) (blank? line)) (back (- line 1)) (max line 0)))
@@ -425,7 +419,7 @@
         (let ([check? (not (md-lists/checked? decider))])
           (map (lambda (item)
                  (let ([mark (+ (md-preview/capture-start (hash-ref item 'task)) 1)])
-                   (hash 'start-char mark 'end-char (+ mark 1) 'text (if check? "x" " "))))
+                   (md-preview/edit mark (+ mark 1) (if check? "x" " "))))
                (filter (lambda (item) (and (md-lists/task? item) (not (eq? (md-lists/checked? item) check?))))
                        items)))
         '())))

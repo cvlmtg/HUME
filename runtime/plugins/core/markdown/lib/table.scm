@@ -6,8 +6,6 @@
 
 (define md-preview/table-scope "punctuation.special")
 
-(define (md-preview/char-start conceal) (hash-ref conceal 'start-char))
-
 (define (md-preview/cell-span cell slice)
   (let ([start (md-preview/capture-start cell)])
     (cons start

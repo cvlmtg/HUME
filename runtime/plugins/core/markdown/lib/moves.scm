@@ -5,10 +5,6 @@
 
 (provide md-moves/blocks md-moves/neighbor md-moves/row-edits md-moves/cell-edits)
 
-(define (md-moves/edit start end text) (hash 'start-char start 'end-char end 'text text))
-
-(define (md-moves/insert at text) (md-moves/edit at at text))
-
 ;;; The runs of consecutive numbers in the sorted `numbers`, as `(first . last)` pairs.
 (define (md-moves/blocks numbers)
   (foldr (lambda (n runs)
@@ -31,10 +27,10 @@
                   [other (info (md-moves/neighbor block down?))]
                   [moved (string-append (cdr other) "\n")])
              (if down?
-                 (cons (md-moves/insert (car (info first)) moved)
-                       (cons (md-moves/edit (md-preview/line-end (info last)) (md-preview/line-end other) "") out))
-                 (cons (md-moves/edit (car other) (car (info first)) "")
-                       (cons (md-moves/insert (+ (md-preview/line-end (info last)) 1) moved) out)))))
+                 (cons (md-preview/insert (car (info first)) moved)
+                       (cons (md-preview/edit (md-preview/line-end (info last)) (md-preview/line-end other) "") out))
+                 (cons (md-preview/edit (car other) (car (info first)) "")
+                       (cons (md-preview/insert (+ (md-preview/line-end (info last)) 1) moved) out)))))
          '()
          blocks))
 
@@ -49,18 +45,18 @@
                    [last (cell (cdr block))]
                    [other (cell (md-moves/neighbor block right?))])
                (if right?
-                   (cons (md-moves/insert (char (md-cells/around-start first))
+                   (cons (md-preview/insert (char (md-cells/around-start first))
                                           (if (md-cells/pipe-before first)
                                               (string-append "|" (text-of other))
                                               (string-append (text-of other) "|")))
-                         (cons (md-moves/edit (char (md-cells/pipe-before other)) (char (md-cells/text-end other)) "")
+                         (cons (md-preview/edit (char (md-cells/pipe-before other)) (char (md-cells/text-end other)) "")
                                out))
-                   (cons (md-moves/edit (char (md-cells/around-start other))
+                   (cons (md-preview/edit (char (md-cells/around-start other))
                                         (char (if (md-cells/pipe-before other)
                                                   (md-cells/pipe-before first)
                                                   (md-cells/text-start first)))
                                         "")
-                         (cons (md-moves/insert (char (md-cells/text-end last)) (string-append "|" (text-of other)))
+                         (cons (md-preview/insert (char (md-cells/text-end last)) (string-append "|" (text-of other)))
                                out)))))
            '()
            blocks)))

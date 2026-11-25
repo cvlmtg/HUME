@@ -2,8 +2,9 @@
 
 (provide md-preview/block-query md-preview/inline-query md-preview/atx-levels md-preview/setext-levels
          md-preview/capture-start md-preview/capture-end md-preview/capture-before? md-preview/lines-of
-         md-preview/line-span md-preview/inside? md-preview/line-slice md-preview/blank? md-preview/all?
-         md-preview/skip-while md-preview/skip-blanks
+         md-preview/range-span md-preview/line-span md-preview/inside? md-preview/innermost md-preview/line-slice
+         md-preview/blank? md-preview/all? md-preview/skip-while md-preview/skip-blanks md-preview/blank-from?
+         md-preview/edit md-preview/insert md-preview/char-start
          md-preview/quote-cols md-preview/bucket md-preview/extent
          md-preview/conceal md-preview/hidden-revealing
          md-preview/conceal-before? md-preview/shown-text md-preview/group md-preview/runs-of md-preview/runs md-preview/children
@@ -26,13 +27,29 @@
 (define (md-preview/lines-of line-of start end)
   (cons (line-of start) (+ (line-of (- end 1)) 1)))
 
-(define (md-preview/line-span line-of capture)
-  (let ([lines (md-preview/lines-of line-of (md-preview/capture-start capture) (md-preview/capture-end capture))])
+;;; The lines chars `[start, end)` lie on, as a range of `'start-line` and exclusive `'end-line`.
+(define (md-preview/range-span line-of start end)
+  (let ([lines (md-preview/lines-of line-of start end)])
     (hash 'start-line (car lines) 'end-line (cdr lines))))
+
+(define (md-preview/line-span line-of capture)
+  (md-preview/range-span line-of (md-preview/capture-start capture) (md-preview/capture-end capture)))
 
 (define (md-preview/inside? capture container)
   (and (>= (md-preview/capture-start capture) (md-preview/capture-start container))
        (<= (md-preview/capture-end capture) (md-preview/capture-end container))))
+
+;;; The item of `items` whose capture, `(capture-of item)`, is the innermost holding chars `[start, end)`, or `#f`.
+(define (md-preview/innermost items start end capture-of)
+  (foldl (lambda (item best)
+           (let ([capture (capture-of item)])
+             (if (and (<= (md-preview/capture-start capture) start)
+                      (<= end (md-preview/capture-end capture))
+                      (or (not best) (md-preview/inside? capture (capture-of best))))
+                 item
+                 best)))
+         #f
+         items))
 
 (define (md-preview/blank? c) (or (char=? c #\space) (char=? c #\tab)))
 
@@ -45,6 +62,17 @@
 
 (define (md-preview/skip-blanks text col)
   (md-preview/skip-while text col md-preview/blank?))
+
+;;; Whether `text` holds only blanks from `col` on.
+(define (md-preview/blank-from? text col)
+  (= (md-preview/skip-blanks text col) (string-length text)))
+
+;;; An edit replacing chars `[start, end)` with `text`.
+(define (md-preview/edit start end text) (hash 'start-char start 'end-char end 'text text))
+
+(define (md-preview/insert at text) (md-preview/edit at at text))
+
+(define (md-preview/char-start conceal) (hash-ref conceal 'start-char))
 
 ;;; The column of each `>` in `capture`, which lies on the line `text` starting at `start`, in order, before `tail`.
 (define (md-preview/quote-cols capture start text tail)
@@ -186,7 +214,7 @@
         (and (<= to (string-length text))
              (char=? (string-ref text from) #\[)
              (char=? (string-ref text (+ from 2)) #\])
-             (= (md-preview/skip-blanks text to) (string-length text))
+             (md-preview/blank-from? text to)
              (let ([mark (string-ref text (+ from 1))])
                (cond
                  [(md-preview/blank? mark) (list md-preview/unchecked-box (+ start from) (+ start to))]

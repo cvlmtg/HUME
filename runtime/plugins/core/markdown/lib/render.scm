@@ -6,8 +6,8 @@
 (require "inline.scm")
 (require "table.scm")
 
-(provide md-preview/render-buffer! md-preview/clear! md-preview/elements md-preview/line-reader
-         md-preview/drawn)
+(provide md-preview/render-buffer! md-preview/clear! md-preview/elements md-preview/line-of md-preview/line-reader
+         md-preview/lines-line-of md-preview/lines-info md-preview/captures md-preview/drawn)
 
 (define md-preview/source "markdown-preview")
 
@@ -24,16 +24,26 @@
                  (hash-ref shown 'ranges))
             (hash-ref shown 'headers))))
 
+;;; A procedure giving the line of `pane`'s text a char offset lies on.
+(define (md-preview/line-of pane) (lambda (char) (char-offset->line pane char)))
+
+;;; A reader of the lines of a text: `(line-of char)` is the line a char lies on, and `(info line)` the line's
+;;; `(start-char . text)`.
+(struct md-preview/lines (line-of info))
+
 (define (md-preview/line-reader pane)
-  (let ([memo (box (hash))])
-    (cons
-      (lambda (char) (char-offset->line pane char))
+  (md-preview/lines
+    (md-preview/line-of pane)
+    (md-preview/memo
       (lambda (line)
-        (or (hash-try-get (unbox memo) line)
-            (let ([info (cons (line->char-offset pane line)
-                              (car (buffer-lines pane #:range (hash 'start-line line 'end-line (+ line 1)))))])
-              (md-preview/box-insert! memo line info)
-              info))))))
+        (cons (line->char-offset pane line)
+              (car (buffer-lines pane #:range (hash 'start-line line 'end-line (+ line 1)))))))))
+
+;;; The matches of `query` over `pane`'s `language` layers on `ranges`, none without that grammar.
+(define (md-preview/captures pane language query ranges)
+  (if (language-has-grammar? language)
+      (syntax-captures pane language query #:ranges ranges)
+      '()))
 
 (define (md-preview/fence-contents matches)
   (map car (filter (lambda (m) (equal? (car (car m)) "fence-content")) matches)))
@@ -113,7 +123,7 @@
                   (lambda (inline-ranges)
                     (syntax-captures pane "markdown.inline" md-preview/inline-query
                                      #:ranges inline-ranges))
-                  ranges (car lines) (cdr lines) line-count rule-width)])
+                  ranges (md-preview/lines-line-of lines) (md-preview/lines-info lines) line-count rule-width)])
     (set-conceals! pane md-preview/source (hash-ref found 'conceals) #:overlaps 'drop)
     (set-line-backgrounds! pane md-preview/source (hash-ref found 'bands))
     (set-extra-highlights! pane md-preview/source (hash-ref found 'highlights))))

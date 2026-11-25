@@ -8,11 +8,8 @@
 
 (define (md-lists/groups pane query spans)
   (md-preview/group
-    (if (language-has-grammar? "markdown")
-        (syntax-captures pane "markdown" query
-                         #:ranges (map (lambda (span) (hash 'start-line (car span) 'end-line (cdr span)))
-                                       spans))
-        '())))
+    (md-preview/captures pane "markdown" query
+                         (map (lambda (span) (hash 'start-line (car span) 'end-line (cdr span))) spans))))
 
 (define (md-lists/numbered-lists-of pane groups line-of)
   (md-lists/numbered-lists groups line-of
@@ -28,9 +25,9 @@
              (if prefix
                  (let* ([head (selection-head sel)]
                         [start (line->char-offset pane (char-offset->line pane head))]
-                        [insert (hash 'start-char head 'end-char head 'text prefix)])
+                        [insert (md-preview/insert head prefix)])
                    (if (< start head)
-                       (list (hash 'start-char start 'end-char head 'text "") insert)
+                       (list (md-preview/edit start head "") insert)
                        (list insert)))
                  '()))
            sels
@@ -39,8 +36,8 @@
 ;;; See docs/lists.md's "Order of edits".
 (define (md-lists/enter! pane)
   (let* ([reader (md-preview/line-reader pane)]
-         [line-of (car reader)]
-         [line-info (cdr reader)]
+         [line-of (md-preview/lines-line-of reader)]
+         [line-info (md-preview/lines-info reader)]
          [heads (map selection-head (buffer-selections pane))]
          [lines (map line-of heads)])
     (if (findf (lambda (line) (md-lists/may-start-prefix? (cdr (line-info line)))) lines)
@@ -59,8 +56,8 @@
 ;;; See docs/lists.md's "Order of edits".
 (define (md-lists/open! pane below?)
   (let* ([reader (md-preview/line-reader pane)]
-         [line-of (car reader)]
-         [line-info (cdr reader)]
+         [line-of (md-preview/lines-line-of reader)]
+         [line-info (md-preview/lines-info reader)]
          [sources (md-lists/distinct
                     (map (lambda (sel)
                            (line-of (if below? (- (selection-end-char sel) 1) (selection-start-char sel))))
@@ -85,8 +82,8 @@
                      '())])
     (unless (null? edited)
       (let* ([reader (md-preview/line-reader pane)]
-             [line-of (car reader)]
-             [line-info (cdr reader)]
+             [line-of (md-preview/lines-line-of reader)]
+             [line-info (md-preview/lines-info reader)]
              [groups (md-lists/groups pane md-lists/numbered-query
                                       (md-lists/edited-spans edited (buffer-line-count pane) line-info))]
              [lists (md-lists/numbered-lists-of pane groups line-of)]
@@ -98,8 +95,8 @@
 
 (define (md-lists/toggle-tasks! pane)
   (let* ([reader (md-preview/line-reader pane)]
-         [line-of (car reader)]
-         [line-info (cdr reader)]
+         [line-of (md-preview/lines-line-of reader)]
+         [line-info (md-preview/lines-info reader)]
          [sels (buffer-selections pane)]
          [span-of (lambda (sel) (md-preview/lines-of line-of (selection-start-char sel) (selection-end-char sel)))]
          [spans (map span-of sels)]

@@ -2,7 +2,7 @@
 
 (provide md-preview/entry md-preview/track-buffer! md-preview/remove-buffer!
          md-preview/note-tree! md-preview/toggle-enabled! md-preview/warn-once!
-         md-preview/box-insert!)
+         md-preview/box-insert! md-preview/memo)
 
 (define md-preview/*buffers* (box (hash)))
 
@@ -12,6 +12,16 @@
   (let ([table (unbox table-box)])
     (set-box! table-box #f)
     (set-box! table-box (hash-insert table key value))))
+
+;;; `compute`, remembering the value it gives for each argument.
+(define (md-preview/memo compute)
+  (let ([seen (box (hash))])
+    (lambda (key)
+      (if (hash-contains? (unbox seen) key)
+          (hash-ref (unbox seen) key)
+          (let ([value (compute key)])
+            (md-preview/box-insert! seen key value)
+            value)))))
 
 (define (md-preview/entry pane)
   (hash-try-get (unbox md-preview/*buffers*) (buffer-key pane)))
