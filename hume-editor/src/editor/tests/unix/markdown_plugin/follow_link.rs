@@ -278,6 +278,66 @@ fn an_image_naming_a_heading_moves_to_it() {
 }
 
 #[test]
+fn a_fragment_into_an_open_file_in_another_language_warns_at_once() {
+    let mut p = preview();
+    p.ed.state
+        .config
+        .languages
+        .register_identity("toml", &["toml"], &[], &[])
+        .unwrap();
+    p.open("c.toml", "x = 1\n");
+    p.open_marked("a.md", "[-[c]>onf](c.toml#a)\n");
+    assert_eq!(follow(&mut p), "t");
+    assert_eq!(missed(&p, "a"), 1);
+    assert_eq!(state(&p.ed), "-[x]> = 1\n");
+}
+
+#[test]
+fn an_edit_before_the_file_is_parsed_keeps_the_cursor() {
+    let b = "# B\n\n## Part two\n";
+    let mut p = linking("[-[s]>ee](b.md#part-two)\n", &[("b.md", b)]);
+    run(
+        &mut p.ed,
+        p.tmp.path(),
+        r#"(define-command! "append-x" "" (lambda (pane) (edit-text! pane (list (hash 'start-char 17 'end-char 17 'text "x")))))"#,
+    );
+    assert_eq!(follow(&mut p), "t");
+    call(&mut p.ed, "append-x");
+    p.parse();
+    assert_eq!(state(&p.ed), "-[#]> B\n\n## Part two\nx\n");
+}
+
+#[test]
+fn leaving_the_file_before_it_parses_stays_on_the_other_buffer() {
+    let b = "# B\n\n## Part two\n";
+    let mut p = linking("[-[s]>ee](b.md#part-two)\n", &[("b.md", b)]);
+    assert_eq!(follow(&mut p), "t");
+    let target = p.ed.focused_buffer_id();
+    call(&mut p.ed, "goto-alternate-buffer");
+    let (width, height) = p.size;
+    poll_until(
+        &mut p.ed,
+        |ed| {
+            frame(ed, width, height);
+            ed.settle();
+        },
+        |ed| ed.state.buffers.get(target).current_layers().is_some(),
+    );
+    assert_eq!(state(&p.ed), "[-[s]>ee](b.md#part-two)\n");
+}
+
+#[test]
+fn the_heading_move_records_a_jump_back_to_the_files_start() {
+    let b = "# B\n\n## Part two\n";
+    let mut p = linking("[-[s]>ee](b.md#part-two)\n", &[("b.md", b)]);
+    assert_eq!(follow(&mut p), "t");
+    p.parse();
+    assert_eq!(state(&p.ed), "# B\n\n-[#]># Part two\n");
+    call(&mut p.ed, "jump-backward");
+    assert_eq!(state(&p.ed), "-[#]> B\n\n## Part two\n");
+}
+
+#[test]
 fn a_heading_found_after_the_warning_still_moves_to_it() {
     let mut p = linking("[-[n]>otes](n.txt#a)\n", &[("n.txt", "x\n# A\n")]);
     assert_eq!(follow(&mut p), "t");
@@ -361,6 +421,54 @@ fn a_backslash_escape_in_a_path_names_the_escaped_character() {
 }
 
 #[test]
+fn a_percent_without_two_hex_digits_stays_as_written() {
+    let mut p = linking("[-[n]>otes](50%zz.md)\n", &[("50%zz.md", "hello\n")]);
+    assert_eq!(follow(&mut p), "t");
+    assert_eq!(state(&p.ed), "-[h]>ello\n");
+}
+
+#[test]
+fn an_escaped_or_referenced_hash_names_a_heading() {
+    let b = "# B\n\n## Part two\n";
+    for destination in ["b.md\\#part-two", "b.md&#35;part-two"] {
+        let mut p = linking(&format!("[-[s]>ee]({destination})\n"), &[("b.md", b)]);
+        assert_eq!(follow(&mut p), "t", "{destination}");
+        p.parse();
+        assert_eq!(state(&p.ed), "# B\n\n-[#]># Part two\n", "{destination}");
+    }
+}
+
+#[test]
+fn an_angle_destination_names_its_file() {
+    let mut p = linking(
+        "[-[n]>otes](<my notes.md>)\n",
+        &[("my notes.md", "hello\n")],
+    );
+    assert_eq!(follow(&mut p), "t");
+    assert_eq!(state(&p.ed), "-[h]>ello\n");
+}
+
+#[test]
+fn a_link_to_a_folder_raises() {
+    let mut p = linking("[-[n]>otes](sub)\n", &[]);
+    std::fs::create_dir(p.tmp.path().join("sub")).unwrap();
+    assert!(follow(&mut p).contains("is a folder"), "{}", status(&p.ed));
+    assert_eq!(state(&p.ed), "[-[n]>otes](sub)\n");
+}
+
+#[test]
+fn a_link_in_a_buffer_with_no_file_raises() {
+    let mut p = linking("-[x]>\n", &[]);
+    p.open_unsaved_marked("[-[n]>otes](n.md)\n");
+    p.parse();
+    assert!(
+        follow(&mut p).contains("a buffer with no file"),
+        "{}",
+        status(&p.ed)
+    );
+}
+
+#[test]
 fn an_entity_in_a_web_address_names_its_character() {
     let mut p = linking("[-[s]>ite](https://a.com/?a=1&amp;b=2)\n", &[]);
     assert_eq!(opened(&mut p), "https://a.com/?a=1&b=2");
@@ -406,6 +514,13 @@ fn a_wiki_or_reference_link_asks_the_language_server() {
         assert_eq!(follow(&mut p), "t", "{marked:?}");
         assert_eq!(state(&p.ed), asked, "{marked:?}");
     }
+}
+
+#[test]
+fn a_reference_link_without_a_language_server_does_nothing() {
+    let mut p = linking("see [[-[b]>]]\n", &[]);
+    assert_eq!(follow(&mut p), "f");
+    assert_eq!(state(&p.ed), "see [[-[b]>]]\n");
 }
 
 #[test]

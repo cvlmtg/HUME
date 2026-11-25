@@ -260,6 +260,30 @@ fn two_cursors_in_one_list_each_start_an_item() {
 }
 
 #[test]
+fn enter_with_every_cursor_on_an_empty_item_ends_each_one() {
+    assert_eq!(
+        entered("- a\n- -[\n]>- b\n- -{\n}>"),
+        "- a\n-[\n]>- b\n-{\n}>"
+    );
+}
+
+#[test]
+fn enter_with_a_cursor_on_a_full_item_continues_every_item() {
+    assert_eq!(entered("- a-[\n]>- -{\n}>"), "- a\n- -[\n]>- \n- -{\n}>");
+}
+
+#[test]
+fn shift_o_on_a_bullet_opens_an_item_before_it() {
+    assert_eq!(opened("- -[a]>\n", 'O'), "- -[\n]>- a\n");
+}
+
+#[test]
+fn o_and_shift_o_on_a_quote_line_continue_the_quote() {
+    assert_eq!(opened("> -[a]>\n", 'o'), "> a\n> -[\n]>");
+    assert_eq!(opened("> -[a]>\n", 'O'), "> -[\n]>> a\n");
+}
+
+#[test]
 fn enter_and_o_in_another_language_run_their_global_bindings() {
     let mut p = editing_plain("- foo-[\n]>");
     bind_global_probe(&mut p, &[("insert", "enter"), ("normal", "o")]);
@@ -274,6 +298,16 @@ fn continue_lists_off_leaves_enter_as_usual() {
     let mut p = editing_without_lists("- foo-[\n]>");
     p.ed.feed_keys([key('i'), key_enter()]);
     assert_eq!(state(&p.ed), "- foo\n-[\n]>");
+}
+
+#[test]
+fn continue_lists_off_leaves_o_and_shift_o_as_usual() {
+    for (key_char, opened) in [('o', "- foo\n-[\n]>"), ('O', "-[\n]>- foo\n")] {
+        let mut p = editing_without_lists("- -[f]>oo\n");
+        p.ed.feed_key(key(key_char));
+        p.ed.settle();
+        assert_eq!(state(&p.ed), opened, "{key_char}");
+    }
 }
 
 /// The plugin's editor on `marked` after `typed` is pressed, once the
@@ -346,6 +380,16 @@ fn continue_lists_off_renumbers_nothing_after_an_edit() {
     press(&mut p.ed, "r1");
     p.render();
     assert_eq!(text(&p.ed), "1. a\n2. b\n\nx\n\n1. c\n4. d\n");
+}
+
+#[test]
+fn a_pasted_run_of_items_keeps_its_numbers() {
+    let mut p = editing("1. a\n-[2]>. b\n3. c\n");
+    press(&mut p.ed, "x");
+    seed_ring(&mut p.ed, &["7. x\n8. y\n"]);
+    p.ed.feed_key(key('p'));
+    p.render();
+    assert_eq!(text(&p.ed), "1. a\n7. x\n8. y\n9. c\n");
 }
 
 #[test]

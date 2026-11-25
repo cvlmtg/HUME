@@ -188,10 +188,12 @@ impl Preview {
     }
 
     /// Opens `marked`'s text as a scratch buffer set to Markdown, and
-    /// selects as `marked` marks it.
+    /// selects as `marked` marks it. The open settles first, since its
+    /// language detection replaces a language set before it runs.
     fn open_unsaved_marked(&mut self, marked: &str) {
         let (text, _) = test_fixtures::testing::parse_state(marked);
         let bid = open_other_buffer(&mut self.ed, &text.to_string());
+        self.ed.settle();
         let markdown = self.ed.state.config.languages.intern("markdown");
         self.ed
             .set_buffer_language(bid, Some(markdown))

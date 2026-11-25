@@ -271,6 +271,53 @@ fn a_row_short_of_a_swapped_cell_stops_the_move_with_a_warning() {
 }
 
 #[test]
+fn two_rows_short_of_a_swapped_cell_are_counted_in_the_warning() {
+    let marked = "| h1 | h2 |\n|----|----|\n| -[a]>1 |\n| b1 |\n";
+    let mut p = editing(marked);
+    p.ed.feed_keys("GTl".chars().map(key));
+    assert_eq!(state(&p.ed), marked);
+    assert_eq!(
+        warning_texts(&p.ed),
+        ["markdown: moved no column, since 2 rows have too few cells"]
+    );
+}
+
+#[test]
+fn a_row_short_of_a_swapped_cell_stops_a_left_move_with_a_warning() {
+    let marked = "| h1 | h2 |\n|----|----|\n| a1 | -[a]>2 |\n| b1 |\n";
+    let mut p = editing(marked);
+    p.ed.feed_keys("GTh".chars().map(key));
+    assert_eq!(state(&p.ed), marked);
+    assert_eq!(
+        warning_texts(&p.ed),
+        ["markdown: moved no column, since 1 row has too few cells"]
+    );
+}
+
+#[test]
+fn a_column_of_a_quoted_or_list_items_table_moves() {
+    assert_eq!(
+        after("> | h1 | h2 |\n> |----|----|\n> | -[a]>1 | a2 |\n", "GTl"),
+        "> | h2 | h1 |\n> |----|----|\n> | a2 | -[a]>1 |\n"
+    );
+    assert_eq!(
+        after("- | h1 | h2 |\n  |----|----|\n  | -[a]>1 | a2 |\n", "GTl"),
+        "- | h2 | h1 |\n  |----|----|\n  | a2 | -[a]>1 |\n"
+    );
+}
+
+#[test]
+fn columns_move_in_each_table_a_selection_touches() {
+    assert_eq!(
+        after(
+            "| h1 | h2 |\n|----|----|\n| -[a]>1 | a2 |\n\n| x1 | x2 |\n|----|----|\n| -{b}>1 | b2 |\n",
+            "GTl"
+        ),
+        "| h2 | h1 |\n|----|----|\n| a2 | -[a]>1 |\n\n| x2 | x1 |\n|----|----|\n| b2 | -{b}>1 |\n"
+    );
+}
+
+#[test]
 fn a_selection_outside_a_table_does_not_stop_the_move() {
     assert_eq!(
         after(

@@ -172,6 +172,37 @@ fn an_empty_cell_is_skipped_with_a_warning() {
 }
 
 #[test]
+fn two_skipped_rows_are_counted_in_the_warning() {
+    let mut p = editing("| a | -[b]>b |\n|---|----|\n| c |\n| d |\n");
+    p.ed.feed_keys([key('m'), key('|')]);
+    assert_eq!(
+        warning_texts(&p.ed),
+        ["markdown: skipped 2 rows with no selectable cell in this column"]
+    );
+}
+
+#[test]
+fn a_column_from_an_empty_cell_makes_its_first_cell_primary() {
+    let mut p = editing("| h |\n|---|\n-[|]>|\n| x |\n");
+    p.ed.feed_keys([key('m'), key('|')]);
+    assert_eq!(state(&p.ed), "| -{h}> |\n|---|\n||\n| -[x]> |\n");
+}
+
+#[test]
+fn a_cell_from_an_empty_primary_makes_the_first_cell_primary() {
+    assert_eq!(cell("|-{|}> -[b]> |\n|-|---|\n"), "|| -[b]> |\n|-|---|\n");
+}
+
+#[test]
+fn a_column_from_outside_a_table_changes_nothing() {
+    let marked = "te-[x]>t\n\n| a |\n|---|\n";
+    let mut p = editing(marked);
+    p.ed.feed_keys([key('m'), key('|')]);
+    assert_eq!(state(&p.ed), marked);
+    assert_eq!(warning_texts(&p.ed), Vec::<String>::new());
+}
+
+#[test]
 fn a_column_of_a_wide_table_under_soft_wrap() {
     let mut p = preview().sized(20, 12);
     p.open_marked(
