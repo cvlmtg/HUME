@@ -60,9 +60,9 @@
 (define (md-preview/lists! groups line-of line-info emit!)
   (for-each
     (lambda (run)
-      (let* ([marker (car run)]
+      (let* ([info (md-preview/capture-line (car run) line-of line-info)]
+             [marker (md-preview/marker (car run) (car info) (cdr info))]
              [start (md-preview/capture-start marker)]
-             [info (md-preview/capture-line marker line-of line-info)]
              [task (md-preview/task-box marker (md-preview/child run) (car info) (cdr info))])
         (emit! 'conceals
                (if task

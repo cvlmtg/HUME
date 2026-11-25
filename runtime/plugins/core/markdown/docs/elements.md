@@ -56,7 +56,9 @@ and every inline conceal inside it, reveal over the whole table.
 
 Checked against the pinned grammar fixtures (`tests/fixtures/grammars`):
 
-- **Lists:** `list_marker_minus` and its siblings include the space after the marker.
+- **Lists:** `list_marker_minus` and its siblings include the space after the marker. A
+  marker indented past its parent item's text also holds the blanks past that text's
+  column, so `md-preview/marker` starts it at its first non-blank.
   `task_list_marker_unchecked` follows the marker directly, and the space after it belongs
   to the paragraph. A box with nothing after it, as in `- [ ] `, is text, so
   `md-preview/task-box` reads it from the line.

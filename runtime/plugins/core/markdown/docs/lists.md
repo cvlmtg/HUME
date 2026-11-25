@@ -46,11 +46,14 @@ A deletion, unlike a replacement, leaves the cursor at the end of what is kept.
 |---|---|---|
 | `'after`, `'before` | Enter and `o`; `O` | A new item after or before the marker |
 | `'anchor` | an edit | The marker's number was edited: it keeps it, and the items after count on from it |
+| `'moved` | an edit | The marker's item was indented or outdented into the list: it takes the next number, `1` as the list's first item |
 | `'resume` | an edit | The items after the marker count on from it, past removed items |
 | `'start n` | an edit | The marker takes `n`, the number of the removed first item before it |
 
-`md-lists/numbered-lists` reads each list once, with one `buffer-lines` call over its
-markers' lines, and the walk reads these records, not the buffer. Only ordered markers
+`md-lists/numbered-lists` reads each list once, with one `buffer-lines` call from its parent
+item's line, or its first marker's with none, through its last marker's. A list's base is
+the column its parent item's text starts at, `0` with no parent item, from a match of
+`md-lists/numbered-query` that pairs a `list` with the item it is nested in. The walk reads these records, not the buffer. Only ordered markers
 count. The walk starts at a list's first event: earlier items keep their numbers, and each
 later slot, new items included and removed ones skipped, takes the next number. So a new
 item after `n.` is `n+1`, before `n.` is `n`, and a removed `n.` hands `n` to the item
@@ -58,8 +61,8 @@ after it. A wider number does not move the text after the marker.
 
 A list whose items share one number, as in `1.`, `1.`, `1.`, keeps it, since Markdown
 counts on from the first item anyway. That holds when at least two of its items have no
-`'anchor` and share one number: the walk makes no edit, and each new item takes that
-number.
+`'anchor` or `'moved` and share one number: each moved item and each new item takes that
+number, and the walk makes no other edit.
 
 The result is the edits and, per event, its new item's number, `#f` for a bullet or a line
 with no marker.
@@ -76,16 +79,22 @@ hunk before the tree is read. Both sides go through `md-lists/line-markers`, the
 reader the table commands use, so a line it misreads counts the same on both. Edits on
 adjacent lines arrive as one hunk, as Enter at two adjacent items gives, so a kept hunk is
 split by `diff-lines` into the lines it changed, and the item between two new ones counts
-on instead of anchoring. A pure insertion or deletion stays whole, since `diff-lines`
+on instead of anchoring. A part whose old and new lines differ only in the blanks of their
+prefixes, as `>` and `<` give, is a reindent. A pure insertion or deletion stays whole, since `diff-lines`
 reads an empty text as one empty line.
 
-**Which lists.** `md-lists/numbered-query`, the list pattern alone, runs over each kept
+**Which lists.** `md-lists/numbered-query`, the list patterns alone, runs over each kept
 hunk's new lines, reaching back to the last non-blank line before them and on to the first
-one after, so a list that now starts after a blanked item comes back. Per list, a hunk
-that changed one of its marker columns gives (`md-lists/list-events`):
+one after, so a list that now starts after a blanked item comes back. A hunk touches a
+list when it changed a column that one of the list's markers is at, or a column where its
+old lines held a list's item: at or past the list's base and left of the text of the
+list's last item before the hunk, where Markdown places a sibling of that item. So `>` on
+`  3.` and `  4.` under `2. b` touches the list they leave, though its other items are at
+column 0. A hunk that touches a list gives (`md-lists/list-events`):
 
 - an `'anchor` for each of the list's markers on the hunk's new lines: an edited number, a
-  pasted item, an item Enter, `o` or `O` added, an item outdented into the list;
+  pasted item, an item Enter, `o` or `O` added. In a reindent each is a `'moved`: an item
+  indented or outdented into the list;
 - with none, a `'resume` on the list's last item before the hunk: deleted items, or an
   item indented into a nested list;
 - with no item before the hunk either, a `'start` on its first item after, carrying the

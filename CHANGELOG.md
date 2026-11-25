@@ -19,7 +19,7 @@
 
 ### Plugins & scripting
 - `core:markdown` turns a URL or a file's path pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
-- `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and keeps a numbered list in order as you add, renumber or delete items.
+- `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and keeps a numbered list in order as you add, renumber, delete, indent or outdent items.
 - `core:markdown` checks or unchecks a list's task boxes with `G X`.
 - `core:markdown` toggles bold, italic, inline code and strikethrough with `M B`, `M I`, `M C` and `M S`.
 - `core:markdown` follows the link under the cursor with `g d`.

@@ -76,9 +76,9 @@ In a list, `Enter` starts the next item: a bullet gets the same bullet, a number
 
 Adding an item to a numbered list renumbers the items after it, so a new item after `2.` turns the `3.` below it into `4.`.
 
-Changing the number of a numbered item renumbers the items after it, so turning `3.` into `1.` makes the `4.` below it `2.`. Deleting an item, as `x d` does, renumbers the items after it to close the gap, and deleting the first item numbers the rest from its number. Indenting an item into a nested list closes the gap it leaves in the same way. A change typed in Insert mode undoes together with its renumbering; after a Normal-mode change such as `r`, or a `.`, the first `u` undoes the renumbering and the second the change.
+Changing the number of a numbered item renumbers the items after it, so turning `3.` into `1.` makes the `4.` below it `2.`. Deleting an item, as `x d` does, renumbers the items after it to close the gap, and deleting the first item numbers the rest from its number. Indenting or outdenting an item numbers it in the list it moves to, `1.` as that list's first item, and closes the gap it leaves in the same way. A change typed in Insert mode undoes together with its renumbering; after a Normal-mode change such as `r`, or a `.`, the first `u` undoes the renumbering and the second the change.
 
-A list numbered `1.`, `1.`, `1.`, or with any one number on every item, keeps its numbers: Markdown numbers it in order when it is shown. `Enter`, `o` and `O` give a new item in it the same number, and changing or deleting an item renumbers nothing.
+A list numbered `1.`, `1.`, `1.`, or with any one number on every item, keeps its numbers: Markdown numbers it in order when it is shown. `Enter`, `o` and `O` give a new item in it the same number, and so does indenting or outdenting an item into it. Changing or deleting an item renumbers nothing.
 
 ## Task boxes
 

@@ -10,7 +10,7 @@
          md-preview/child md-preview/captured
          md-preview/group-by md-preview/unchecked-box md-preview/checked-box
          md-preview/start-col md-preview/end-col md-preview/capture-line md-preview/line-end
-         md-preview/task-box md-preview/line-slicer md-preview/level-capture
+         md-preview/task-box md-preview/marker md-preview/line-slicer md-preview/level-capture
          md-lists/query md-lists/numbered-query)
 
 (define md-preview/atx-levels '(1 2 3 4 5 6))
@@ -171,6 +171,12 @@
 (define (md-preview/end-col capture start text)
   (min (string-length text) (- (md-preview/capture-end capture) start)))
 
+;;; The list marker capture `marker`, on the line `text` starting at `start`, from its first non-blank.
+;;; See docs/elements.md's "Node shapes".
+(define (md-preview/marker marker start text)
+  (cons (car marker)
+        (cons (+ start (md-preview/skip-blanks text (md-preview/start-col marker start))) (cddr marker))))
+
 ;;; The task box after `marker` on the line `text` starting at `start`: `parsed`, the parser's,
 ;;; or else one read from the line. See docs/elements.md's "Node shapes".
 (define (md-preview/task-box marker parsed start text)
@@ -228,7 +234,8 @@
     "[(entity_reference) (numeric_character_reference)] @entity\n"))
 
 (define md-lists/numbered-query
-  (string-append "(list (list_item " md-preview/ordered-markers " @ordered)) @list\n"))
+  (string-append "(list (list_item " md-preview/ordered-markers " @ordered)) @list\n"
+                 "(list_item [" md-preview/bullet-markers " " md-preview/ordered-markers "] @list-parent (list) @nested)\n"))
 
 (define md-lists/query
   (string-append

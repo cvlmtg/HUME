@@ -472,6 +472,14 @@ fn nested_bullets_become_dots() {
 }
 
 #[test]
+fn a_bullet_indented_past_its_parent_becomes_a_dot() {
+    // "1. a\n" 0..5, "    - b\n" 5..13: the parent's text starts at column
+    // 3, so the marker node starts on the blank before `-` at 9.
+    let (p, bid) = rendered("1. a\n    - b\n");
+    assert_eq!(p.conceals(bid), [replaced(9, 10, "•", None)]);
+}
+
+#[test]
 fn task_boxes_become_checkboxes() {
     // "- [ ] a\n" 0..8, "- [x] b\n" 8..16: bullet and box become one glyph,
     // the space after the box stays.

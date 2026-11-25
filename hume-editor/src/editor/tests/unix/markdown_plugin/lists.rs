@@ -408,9 +408,56 @@ fn deleting_a_word_in_an_items_text_renumbers_nothing() {
 }
 
 #[test]
-fn indenting_an_item_renumbers_the_list_it_left() {
+fn indenting_an_item_numbers_it_in_its_new_list_and_renumbers_the_list_it_left() {
     let p = edited("1. a\n-[2]>. b\n3. c\n", ">");
-    assert_eq!(text(&p.ed), "1. a\n\t2. b\n2. c\n");
+    assert_eq!(text(&p.ed), "1. a\n\t1. b\n2. c\n");
+}
+
+/// [`edited`] with soft indentation `width` columns wide, each key of
+/// `typed` pressed and rendered after in turn.
+fn indented(marked: &str, width: usize, typed: &str) -> Preview {
+    let mut p = editing(marked);
+    let tmp = p.tmp.path().to_path_buf();
+    run(
+        &mut p.ed,
+        &tmp,
+        &format!(r#"(set-option! "indent-style" "soft") (set-option! "indent-width" {width})"#),
+    );
+    for k in typed.chars() {
+        press(&mut p.ed, &k.to_string());
+        p.render();
+    }
+    p
+}
+
+#[test]
+fn indenting_items_into_a_new_nested_list_numbers_them_from_one() {
+    let p = indented("1. a\n2. b\n-[3. c\n4. d]>\n5. e\n", 2, ">>");
+    assert_eq!(text(&p.ed), "1. a\n2. b\n    1. c\n    2. d\n3. e\n");
+}
+
+#[test]
+fn indenting_an_item_into_a_nested_list_counts_on_from_its_items() {
+    let p = indented("1. a\n   1. x\n-[3]>. b\n4. c\n", 3, ">");
+    assert_eq!(text(&p.ed), "1. a\n   1. x\n   2. b\n2. c\n");
+}
+
+#[test]
+fn indenting_an_item_into_a_list_numbered_the_same_gives_it_that_number() {
+    let p = indented("1. a\n   1. x\n   1. y\n-[7]>. b\n", 3, ">");
+    assert_eq!(text(&p.ed), "1. a\n   1. x\n   1. y\n   1. b\n");
+}
+
+#[test]
+fn outdenting_an_item_counts_on_in_the_outer_list() {
+    let p = indented("1. a\n   1. x\n   -[5]>. y\n2. b\n", 3, "<");
+    assert_eq!(text(&p.ed), "1. a\n   1. x\n2. y\n3. b\n");
+}
+
+#[test]
+fn deleting_an_item_indented_unlike_the_rest_renumbers_its_list() {
+    let p = edited("1. a\n  -[2]>. b\n3. c\n", "xd");
+    assert_eq!(text(&p.ed), "1. a\n2. c\n");
 }
 
 /// A list whose items all carry one number.
@@ -438,4 +485,22 @@ fn enter_in_a_list_numbered_the_same_gives_the_new_item_its_number() {
 #[test]
 fn o_in_a_list_numbered_the_same_gives_the_new_item_its_number() {
     assert_eq!(opened("-[1]>. a\n1. b\n", 'o'), "1. a\n1. -[\n]>1. b\n");
+}
+
+/// An item indented past its parent's text: under `2. b`, whose text starts
+/// at column 3, the parser counts the fourth blank as part of the marker.
+const PAST_THE_PARENT: &str = "1. a\n2. b\n    3. c-[\n]>";
+
+#[test]
+fn enter_after_an_item_indented_past_its_parent_continues_it() {
+    assert_eq!(
+        entered(PAST_THE_PARENT),
+        "1. a\n2. b\n    3. c\n    4. -[\n]>"
+    );
+}
+
+#[test]
+fn editing_the_number_of_an_item_indented_past_its_parent_renumbers_its_list() {
+    let p = edited("1. a\n    -[5]>. b\n    6. c\n", "r3");
+    assert_eq!(text(&p.ed), "1. a\n    3. b\n    4. c\n");
 }
