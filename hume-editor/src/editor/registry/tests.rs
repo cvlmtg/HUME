@@ -741,6 +741,7 @@ fn selection_effect_and_recipe_step_match_expected_commands() {
         ("select-all", Establishes, true),
         ("select-all-matches", Establishes, true),
         ("surround-paren", Establishes, true),
+        ("surround-select", Establishes, true),
         ("select-word-nearest-on-line", Establishes, true),
         ("inner-function", Establishes, true),
         // `Establishes`, but reading editor state a replay from a fresh

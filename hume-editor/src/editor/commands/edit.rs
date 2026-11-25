@@ -15,8 +15,8 @@ use hume_ops::surround::wrap_each_selection;
 use super::super::{EditorState, doc_ops};
 use super::{
     CommandPane, ExitCursor, FocusedPane, apply_focused_edit_grouped, apply_pane_edit,
-    apply_pane_motion, begin_insert_session_preserving_register, begin_typed_run, doc, tab_format,
-    word_chars_owned,
+    apply_pane_motion, begin_insert_session_preserving_register, begin_typed_run, doc,
+    seek_pane_motion, tab_format, word_chars_owned,
 };
 use crate::editor::buffer::{Buffer, HistoryWalkResult};
 use crate::editor::error::CommandError;
@@ -471,4 +471,18 @@ pub(in crate::editor) fn cmd_surround_add(
         .unwrap_or((ch, ch));
     apply_pane_edit(state, view, t, |s| wrap_each_selection(s, open, close))?;
     Ok(())
+}
+
+/// Select the pair of `ch` around every selection as two cursors.
+pub(in crate::editor) fn cmd_surround_select(
+    state: &mut EditorState,
+    view: &mut EngineView,
+    t: CommandPane,
+    count: Count,
+    mode: MotionMode,
+    ch: char,
+) -> Result<(), CommandError> {
+    seek_pane_motion(state, view, t, |st| {
+        hume_ops::surround::cmd_surround_select(st, count.get(), mode, ch)
+    })
 }

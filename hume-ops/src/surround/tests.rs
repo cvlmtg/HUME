@@ -109,32 +109,56 @@ fn surround_paren_open_joined_to_a_prepend_mark() {
     );
 }
 
-// ── Quote surround ───────────────────────────────────────────────────────
+// ── Surround of a typed character ────────────────────────────────────────
+
+/// `cmd_surround_select` for the character `ch`.
+fn select(ch: char) -> impl Fn(EditState, usize, MotionMode) -> Option<EditState> {
+    move |state, count, mode| cmd_surround_select(state, count, mode, ch)
+}
 
 #[test]
 fn surround_double_quote() {
-    let sels = run_surround("\"hello\"\n", 3, cmd_surround_double_quote);
+    let sels = run_surround("\"hello\"\n", 3, select('"'));
     assert_eq!(sels, vec![(0, 0), (6, 6)]);
 }
 
 #[test]
 fn surround_single_quote() {
-    let sels = run_surround("'hello'\n", 3, cmd_surround_single_quote);
+    let sels = run_surround("'hello'\n", 3, select('\''));
     assert_eq!(sels, vec![(0, 0), (6, 6)]);
 }
 
 #[test]
 fn surround_backtick() {
-    let sels = run_surround("`hello`\n", 3, cmd_surround_backtick);
+    let sels = run_surround("`hello`\n", 3, select('`'));
+    assert_eq!(sels, vec![(0, 0), (6, 6)]);
+}
+
+#[test]
+fn surround_any_punctuation() {
+    let sels = run_surround("*hello*\n", 3, select('*'));
+    assert_eq!(sels, vec![(0, 0), (6, 6)]);
+}
+
+#[test]
+fn surround_open_paren_finds_the_innermost_nested_pair() {
+    let sels = run_surround("((hello))\n", 4, select('('));
+    assert_eq!(sels, vec![(1, 1), (7, 7)]);
+}
+
+#[test]
+fn surround_close_bracket_finds_its_pair() {
+    let sels = run_surround("[hello]\n", 3, select(']'));
     assert_eq!(sels, vec![(0, 0), (6, 6)]);
 }
 
 #[test]
 fn surround_double_quote_with_no_quotes_finds_nothing() {
-    assert_finds_nothing!("he-[l]>lo\n", |(text, sels)| cmd_surround_double_quote(
+    assert_finds_nothing!("he-[l]>lo\n", |(text, sels)| cmd_surround_select(
         test_fixtures::testing::state(text, sels),
         0,
-        MotionMode::Move
+        MotionMode::Move,
+        '"'
     ));
 }
 

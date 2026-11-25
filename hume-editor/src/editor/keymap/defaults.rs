@@ -74,8 +74,7 @@ macro_rules! key {
 ///    │      ├─ (  → around-paren
 ///    │      ├─ f  → around-function
 ///    │      └─ …
-///    ├─ s ─┬─ (  → surround-paren
-///    │      └─ …
+///    ├─ s + char → surround-select
 ///    ├─ /       → select-all-matches
 ///    ├─ u       → undo-selection-change
 ///    └─ U       → redo-selection-change
@@ -129,33 +128,13 @@ fn build_text_object_trie() -> KeyTrie {
     // other object in `objects` above.
     inner_trie.bind_leaf(key!('i'), cmd!("select-last-insertion"));
 
-    // ── Surround sub-trie ────────────────────────────────────────────────
-    // `ms` + char selects the surrounding delimiters as two cursor
-    // selections, enabling select-then-act composition (e.g. `ms(` → `d`
-    // to delete parens, `ms(` → `r[` to replace with brackets).
-    #[rustfmt::skip]
-    let surround_objects: &[(&[char], &str)] = &[
-        (&['(', ')'], "surround-paren"),
-        (&['[', ']'], "surround-bracket"),
-        (&['{', '}'], "surround-brace"),
-        (&['<', '>'], "surround-angle"),
-        (&['"'],      "surround-double-quote"),
-        (&['\''],     "surround-single-quote"),
-        (&['`'],      "surround-backtick"),
-    ];
-
-    let mut surround_trie = KeyTrie::default();
-    for (chars, name) in surround_objects {
-        for &ch in *chars {
-            let k = KeyEvent::new(KeyCode::Char(ch), Modifiers::NONE);
-            surround_trie.bind_leaf(k, cmd!(*name));
-        }
-    }
-
     let mut match_trie = KeyTrie::default();
     match_trie.bind(key!('i'), KeyTrieNode::Node(inner_trie));
     match_trie.bind(key!('a'), KeyTrieNode::Node(around_trie));
-    match_trie.bind(key!('s'), KeyTrieNode::Node(surround_trie));
+    // `ms` + char selects the pair of that character around each selection
+    // as two cursors, so `ms(` then `d` deletes the parens and `ms(` then
+    // `r[` swaps them for brackets.
+    match_trie.bind_leaf(key!('s'), cmd!("surround-select"));
     match_trie.bind_leaf(key!('w'), cmd!("surround-add"));
     match_trie.bind_leaf(key!('/'), cmd!("select-all-matches"));
     match_trie.bind_leaf(key!('u'), cmd!("undo-selection-change"));

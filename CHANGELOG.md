@@ -4,6 +4,7 @@
 
 ### Breaking changes
 - The `"MiniBuf"` statusline element is gone: remove it from `configure-statusline!`.
+- `surround-double-quote`, `surround-single-quote` and `surround-backtick` are gone: use `surround-select` with the character, as in `(call! "surround-select" pane #\")`.
 - `syntax-captures` and `parsed-text-captures` return one list per match, holding the nodes it captures. For one flat list, write `(call! "stdlib/concat" (syntax-captures ...))`.
 
 ### Editing
@@ -12,6 +13,7 @@
 - `f`, `t`, `=`, `-`, `#`, `{`, `}`, the surround and text-object keys and the structural jumps show "no match" when they find nothing, and leave the selections as they were; `.` then stops instead of editing the selection.
 - `Left` and `Right` move the cursor in a picker's query, so you can type or delete in the middle of it.
 - `Up` and `Down` recall earlier patterns in the `s` prompt.
+- `m s` followed by any character selects the pair of that character around the cursor, such as `m s *` in `*foo*`.
 - After you move the cursor in the `:` or `|` prompt, `Up` keeps walking the same history matches, as in `/`, `?` and `s`.
 - A `/` or `?` pattern you confirm goes into the history even when it is invalid, so `Up` brings it back to fix.
 

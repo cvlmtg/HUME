@@ -112,7 +112,7 @@ When you forward a `count`:
 
 A few built-in commands take one more argument after the optional count and extend flag: what the command acts with. A key press asks for it; a script passes it.
 
-- `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, and `surround-add` take a Scheme character: `(call! "find-forward" pane #\x)`, `(call! "find-forward" pane 2 #\x)`. The character is required: to use one the user types, read it with [`on-next-char!`](#reading-characters) and pass it on. Convert a one-character string with `(string-ref s 0)`.
+- `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, `surround-add`, and `surround-select` take a Scheme character: `(call! "find-forward" pane #\x)`, `(call! "find-forward" pane 2 #\x)`. The character is required: to use one the user types, read it with [`on-next-char!`](#reading-characters) and pass it on. Convert a one-character string with `(string-ref s 0)`.
 - `search-forward`, `search-backward`, and `sift-within` take a pattern, and work as if you had typed it at their prompt and pressed `Enter`, without opening the prompt. The pattern is required: to use one the user types, read it with [`prompt!`](#reading-a-line-of-text) and pass it on. `call!` returns `#f` when:
   - a search finds no match. The pattern still becomes the current search, as after `Enter`.
   - the pattern is invalid or empty. This is also reported in `:messages`, and the current search stays as it was.

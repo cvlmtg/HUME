@@ -50,6 +50,39 @@ fn surround_replace_quote_with_paren() {
     assert_eq!(state(&ed), "-{(}>hello-[)]>\n");
 }
 
+/// `ms*` → `d` deletes the `*` pair around the cursor.
+#[test]
+fn surround_delete_any_punctuation() {
+    let mut ed = editor_from("*fo-[o]>*\n");
+    for ch in "ms*d".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(text(&ed), "foo\n");
+}
+
+/// `ms` then a character no pair surrounds changes nothing.
+#[test]
+fn surround_select_without_a_pair_keeps_the_selection() {
+    let mut ed = editor_from("fo-[o]>\n");
+    for ch in "ms*".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(state(&ed), "fo-[o]>\n");
+}
+
+/// `.` after `ms*` `d` selects the `*` pair at the new place again.
+#[test]
+fn dot_repeats_surround_select_with_its_character() {
+    let mut ed = editor_from("*-[a]>* *b*\n");
+    for ch in "ms*d".chars() {
+        ed.handle_key(key(ch));
+    }
+    for ch in "glh.".chars() {
+        ed.handle_key(key(ch));
+    }
+    assert_eq!(text(&ed), "a b\n");
+}
+
 // ── surround-add (`mw`) ───────────────────────────────────────────────────────
 
 #[test]

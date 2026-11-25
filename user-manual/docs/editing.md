@@ -271,10 +271,10 @@ The surround commands, under the `m` prefix, select or wrap delimiter pairs. See
 
 | Key | Effect |
 |-----|--------|
-| `m s` + char | Select the surrounding delimiter pair (both ends) |
+| `m s` + char | Select the pair of that character around each selection (both ends) |
 | `m w` + char | Wrap each selection with a delimiter pair |
 
-To delete or replace a pair, select it with `m s` and then act: `m s (` then `d` deletes the parentheses, `r` replaces them.
+To delete or replace a pair, select it with `m s` and then act: `m s (` then `d` deletes the parentheses, `r` replaces them. A bracket finds its matching bracket, counting the ones nested inside. Any other character, such as `"` or `*`, pairs with the next one of it on the same line: `m s *` in `*foo*` selects both `*`.
 
 <div class="key-demo">
 <strong>Cursor inside, press <code>m</code> <code>s</code> <code>(</code></strong><br>

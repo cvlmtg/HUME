@@ -60,6 +60,13 @@ fn call_surround_add_wraps_the_selection() {
     assert_eq!(text(&ed), "(h)ello\n");
 }
 
+#[test]
+fn call_surround_select_with_a_steel_char_selects_its_pair() {
+    let mut ed = editor_from("*-[a]>*\n");
+    probe(&mut ed, r#"(call! "surround-select" (focused-pane) #\*)"#);
+    assert_eq!(state(&ed), "-{*}>a-[*]>\n");
+}
+
 // ── Operands that don't fit ─────────────────────────────────────────────────
 
 #[test]

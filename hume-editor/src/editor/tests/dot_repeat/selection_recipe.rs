@@ -410,7 +410,7 @@ fn dot_repeat_whose_step_finds_nothing_leaves_text_and_selections_unchanged() {
         ("find-forward", "-[a]>-b\nxyz\n", "ef-d", "j"),
         ("till-forward", "-[a]>b-c\nxyz\n", "et-d", "j"),
         ("repeat-find-forward", "-[a]>-b-c\nxyz\n", "f-e=d", "j"),
-        ("surround-paren", "(-[a]>)\nxyz\n", "ms(d,", "j"),
+        ("surround-select", "(-[a]>)\nxyz\n", "ms(d,", "j"),
         ("inner-double-quote", "\"-[a]>b\"\nxyz\n", "mi\"d", "j"),
         ("goto-matching-pair", "-[(]>a)\nxyz\n", "e#d", "j"),
         ("inner-paragraph", "-[a]>b\n\nxyz\n", "mipd", ""),

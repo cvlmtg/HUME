@@ -92,7 +92,7 @@ Text objects (use the `m` prefix):
 | `m i i` | `select-last-insertion` |  | Select the text typed during the last insert |
 | `m m` | `select-word` |  | Select the word under the cursor, with the same whitespace rule as `w`/`b` |
 | `M M` | `select-uppercase-word` |  | WORD variant of `m m` |
-| `m s` + char | `surround-paren` (and other `surround-*` delimiters) |  | Select surrounding delimiter pair |
+| `m s` + char | `surround-select` |  | Select the pair of that character around each selection |
 | `m w` + char | `surround-add` |  | Wrap each selection with a delimiter pair |
 | `m /` | `select-all-matches` |  | Turn all search matches in the buffer into selections |
 | `m u` | `undo-selection-change` |  | Go back to the selections last built, then to earlier ones |

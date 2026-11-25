@@ -36,7 +36,7 @@ A `pane` the command can't act on raises an error; the command never falls back 
 
 Some commands also take a value that a key press asks for. From a script, that value is an argument, as each entry says:
 
-- a character: `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace` and `surround-add`
+- a character: `find-forward`, `find-backward`, `till-forward`, `till-backward`, `replace`, `surround-add` and `surround-select`
 - a pattern: `search-forward`, `search-backward` and `sift-within`
 
 ## Motions
@@ -163,13 +163,11 @@ Select or wrap delimiter pairs.
 | Command | Default key | Effect |
 |---------|-------------|--------|
 | `surround-add` | `m w` + char | Wrap each selection with a delimiter pair. Reads the next typed character to determine the pair. From `call!`, pass the character as an argument. |
-| `surround-angle` | `m s <` / `m s >` | Select surrounding `<>` delimiters. |
-| `surround-backtick` | `` m s ` `` | Select surrounding `` ` `` delimiters. |
-| `surround-brace` | `m s {` / `m s }` | Select surrounding `{}` delimiters. |
-| `surround-bracket` | `m s [` / `m s ]` | Select surrounding `[]` delimiters. |
-| `surround-double-quote` | `m s "` | Select surrounding `"` delimiters. |
-| `surround-paren` | `m s (` / `m s )` | Select surrounding `()` delimiters. |
-| `surround-single-quote` | `m s '` | Select surrounding `'` delimiters. |
+| `surround-angle` |  | Select surrounding `<>` delimiters. |
+| `surround-brace` |  | Select surrounding `{}` delimiters. |
+| `surround-bracket` |  | Select surrounding `[]` delimiters. |
+| `surround-paren` |  | Select surrounding `()` delimiters. |
+| `surround-select` | `m s` + char | Select the pair of a character around each selection, as two cursors: the bracket pair it opens or closes, or else two of the character on the line. Reads the next typed character. From `call!`, pass the character as an argument. |
 
 ## Edits
 

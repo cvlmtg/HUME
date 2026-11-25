@@ -145,25 +145,34 @@ fn select_surround(
 // ── Generated surround commands ──────────────────────────────────────────────
 
 macro_rules! surround_cmd {
-    ($name:ident, bracket, $open:literal, $close:literal) => {
+    ($name:ident, $open:literal, $close:literal) => {
         pub fn $name(state: EditState, _count: usize, _mode: MotionMode) -> Option<EditState> {
             select_surround(state, |t, pos| find_bracket_pair(t, pos, $open, $close))
         }
     };
-    ($name:ident, quote, $quote:literal) => {
-        pub fn $name(state: EditState, _count: usize, _mode: MotionMode) -> Option<EditState> {
-            select_surround(state, |t, pos| find_quote_pair(t, pos, $quote))
-        }
-    };
 }
 
-surround_cmd!(cmd_surround_paren, bracket, '(', ')');
-surround_cmd!(cmd_surround_bracket, bracket, '[', ']');
-surround_cmd!(cmd_surround_brace, bracket, '{', '}');
-surround_cmd!(cmd_surround_angle, bracket, '<', '>');
-surround_cmd!(cmd_surround_double_quote, quote, '"');
-surround_cmd!(cmd_surround_single_quote, quote, '\'');
-surround_cmd!(cmd_surround_backtick, quote, '`');
+surround_cmd!(cmd_surround_paren, '(', ')');
+surround_cmd!(cmd_surround_bracket, '[', ']');
+surround_cmd!(cmd_surround_brace, '{', '}');
+surround_cmd!(cmd_surround_angle, '<', '>');
+
+/// Select the pair of `ch` around each selection: the bracket pair `ch`
+/// opens or closes, nesting counted, or else two occurrences of `ch` on the
+/// line, paired in order.
+pub fn cmd_surround_select(
+    state: EditState,
+    _count: usize,
+    _mode: MotionMode,
+    ch: char,
+) -> Option<EditState> {
+    match pair_for_char(ch).filter(|&(open, close)| open != close) {
+        Some((open, close)) => {
+            select_surround(state, |t, pos| find_bracket_pair(t, pos, open, close))
+        }
+        None => select_surround(state, |t, pos| find_quote_pair(t, pos, ch)),
+    }
+}
 
 #[cfg(test)]
 mod tests;
