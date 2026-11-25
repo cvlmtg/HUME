@@ -20,13 +20,9 @@
 (define (md-lists/past-bars bars text)
   (md-preview/skip-blanks text (+ (apply max bars) 1)))
 
-;;; Whether `text` starts, past blanks, with a character a list or quote marker starts with: every
-;;; line with a prefix does.
+;;; Whether `text`'s container prefix holds more than blanks: every line with a list or quote prefix's does.
 (define (md-lists/may-start-prefix? text)
-  (let ([col (md-preview/skip-blanks text 0)])
-    (and (< col (string-length text))
-         (let ([c (string-ref text col)])
-           (or (char-digit? c) (and (memv c '(#\> #\- #\* #\+)) #t))))))
+  (> (md-lists/container-end (md-lists/container-of text)) (md-preview/skip-blanks text 0)))
 
 ;;; See docs/lists.md's "Prefixes".
 (define (md-lists/item info marked quote-prefixes)

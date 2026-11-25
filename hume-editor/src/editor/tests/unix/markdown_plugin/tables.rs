@@ -291,6 +291,34 @@ fn the_first_cell_of_a_list_items_row_leaves_the_marker_out() {
 }
 
 #[test]
+fn the_first_cell_leaves_out_every_kind_of_line_prefix() {
+    let prefixes = [
+        ("> ", "> "),
+        ("> > ", "> > "),
+        ("- ", "  "),
+        ("* ", "  "),
+        ("+ ", "  "),
+        ("1. ", "   "),
+        ("1) ", "   "),
+        ("- > ", "  > "),
+        ("-\t", "  "),
+    ];
+    for (first, rest) in prefixes {
+        let table = |a: &str| format!("{first}{a} | bb\n{rest}-- | --\n{rest}cc | dd\n");
+        assert_eq!(
+            cell(&table("a-[a]>")),
+            table("-[aa]>"),
+            "m i | after {first:?}"
+        );
+        assert_eq!(
+            around(&table("a-[a]>")),
+            format!("{first}-[aa ]>| bb\n{rest}-- | --\n{rest}cc | dd\n"),
+            "m a | after {first:?}"
+        );
+    }
+}
+
+#[test]
 fn deleting_the_first_column_of_a_quoted_table_keeps_the_quote() {
     assert_eq!(
         after("> a-[a]> | bb\n> -- | --\n> cc | dd\n", "m|ma|d"),
