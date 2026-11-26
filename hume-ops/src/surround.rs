@@ -64,15 +64,21 @@ fn is_symmetric(ch: char) -> bool {
 /// selection ends on, and a selection covering only a `\n` has nothing to
 /// wrap.
 ///
+/// `open`/`close` are the delimiter strings to insert either side, so a
+/// caller that wants several delimiter pairs passes one string per side: `N`
+/// pairs of the pair `ch` names are `ch` repeated N times a side. The insert
+/// at the content end lands the cursor before the first inserted close
+/// character, which for one pair is the pair's own close character.
+///
 /// Cursor placement: lands on the `close` character after the wrapped content.
 /// Multi-cursor: each selection is wrapped independently via `apply_edit`.
-pub fn wrap_each_selection(state: EditState, open: char, close: char) -> Edited {
+pub fn wrap_each_selection(state: EditState, open: &str, close: &str) -> Edited {
     apply_edit(state, |b, sel| {
         let Some(content) = sel.content() else {
             return Landing::kept(sel.selection());
         };
-        b.insert(content.start(), open.encode_utf8(&mut [0; 4]));
-        let closer = b.insert(content.end(), close.encode_utf8(&mut [0; 4]));
+        b.insert(content.start(), open);
+        let closer = b.insert(content.end(), close);
         Landing::cursor(closer.start())
     })
 }

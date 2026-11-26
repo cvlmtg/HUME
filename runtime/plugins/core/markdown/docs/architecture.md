@@ -28,10 +28,8 @@
   edit; it moves every selection, so it waits for all of them. Otherwise
   `trim-selection-whitespace` drops the blanks at the selections' ends, since `**foo **`
   is not bold, and the style is added with
-  `surround-add`, once per marker character. Between the two characters of `**` or
-  `~~`, `undo-selection-change` gets the wrapped selection back. Selection undo never
-  stops on a single cursor, so a lone cursor steps back onto the character it wrapped
-  with `move-left` instead.
+  `surround-add`, once with the marker's character and the marker's length as
+  its count.
 
 ## Limitations
 
@@ -51,7 +49,6 @@
   cursor.
 - Lines scrolled into view draw raw until the next render, `hook-viewport-debounce-ms`
   after scrolling stops.
-- Adding bold or strikethrough is two edits, so undoing it takes two `u`.
 - A table or fenced block is fetched and drawn whole by every render that reaches one of
   its rows, so a block longer than the viewport costs its full length each time.
 

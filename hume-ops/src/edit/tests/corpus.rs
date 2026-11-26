@@ -119,7 +119,7 @@ fn wrap_each_selection_surrounds_the_whole_sample() {
     for s in ALL {
         assert_state!(
             &format!("x\n-[{s}]>b\n"),
-            |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
+            |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "(", ")"),
             &format!("x\n({s}-[)]>b\n")
         );
     }

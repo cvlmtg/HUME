@@ -169,6 +169,12 @@ fn one_undo_puts_a_removed_style_back() {
 }
 
 #[test]
+fn one_undo_after_adding_a_style_is_one_undo() {
+    // Adding bold is one edit: one `u` puts what it added back.
+    assert_eq!(after("-[bold]>\n", "MBu"), "-[bold]>\n");
+}
+
+#[test]
 fn m_m_still_selects_the_word() {
     assert_eq!(after("a-[b]>c d\n", "MM"), "-[abc ]>d\n");
 }

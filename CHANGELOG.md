@@ -16,6 +16,7 @@
 - `m s` followed by any character selects the pair of that character around the cursor, such as `m s *` in `*foo*`.
 - After you move the cursor in the `:` or `|` prompt, `Up` keeps walking the same history matches, as in `/`, `?` and `s`.
 - A `/` or `?` pattern you confirm goes into the history even when it is invalid, so `Up` brings it back to fix.
+- `surround-add` takes a count: a count adds that many delimiter pairs around each selection, so `2 m w` followed by a character wraps in two characters, as in `**`, in one edit.
 
 ### Plugins & scripting
 - `core:markdown` turns a URL or a file's path pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
@@ -35,6 +36,7 @@
 - Deleting a `/` or `s` pattern with `Ctrl-w`, or going back down to an empty line in the search history, restores the selections, as Backspace does.
 - A letter held with Alt, Cmd or any modifier but Shift that no key binds types nothing in Insert mode, the `:`, `/` and other prompts, or pickers.
 - The Markdown preview draws a task box with nothing after it, as in `- [ ]`, as a checkbox.
+- Adding a Markdown style whose marker is two characters (`**`, `~~`) is one edit, so undoing it takes one `u`.
 - `(` and `)` take a count.
 - A `:`, `/` or other prompt line wider than the statusline scrolls to keep the cursor in view.
 - A picker whose prompt is wider than its panel still shows the cursor.

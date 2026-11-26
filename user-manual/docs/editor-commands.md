@@ -162,7 +162,7 @@ Select or wrap delimiter pairs.
 
 | Command | Default key | Effect |
 |---------|-------------|--------|
-| `surround-add` | `m w` + char | Wrap each selection with a delimiter pair. Reads the next typed character to determine the pair. From `call!`, pass the character as an argument. |
+| `surround-add` | `m w` + char | Wrap each selection with a delimiter pair. Reads the next typed character to determine the pair. A count adds that many delimiter pairs, so `2 m w` followed by a character wraps in two characters, as in `**`. From `call!`, pass the character as an argument. |
 | `surround-angle` |  | Select surrounding `<>` delimiters. |
 | `surround-brace` |  | Select surrounding `{}` delimiters. |
 | `surround-bracket` |  | Select surrounding `[]` delimiters. |

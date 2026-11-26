@@ -52,7 +52,7 @@ impl CommandRegistry {
         // ── Surround add ──────────────────────────────────────────────────────
         ecmd_pane_char(
             "surround-add",
-            "Wrap each selection with a delimiter pair. Reads the next typed character to determine the pair. From `call!`, pass the character as an argument.",
+            "Wrap each selection with a delimiter pair. Reads the next typed character to determine the pair. A count adds that many delimiter pairs: a count of two with `*` wraps in `**`. From `call!`, pass the character as an argument.",
             cmd_surround_add,
         )
         .repeatable()

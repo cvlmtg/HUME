@@ -93,7 +93,7 @@ Text objects (use the `m` prefix):
 | `m m` | `select-word` |  | Select the word under the cursor, with the same whitespace rule as `w`/`b` |
 | `M M` | `select-uppercase-word` |  | WORD variant of `m m` |
 | `m s` + char | `surround-select` |  | Select the pair of that character around each selection |
-| `m w` + char | `surround-add` |  | Wrap each selection with a delimiter pair |
+| `m w` + char | `surround-add` |  | Wrap each selection with a delimiter pair; a count adds that many |
 | `m /` | `select-all-matches` |  | Turn all search matches in the buffer into selections |
 | `m u` | `undo-selection-change` |  | Go back to the selections last built, then to earlier ones |
 | `m U` | `redo-selection-change` |  | Go forward through the selections `m u` stepped back over |

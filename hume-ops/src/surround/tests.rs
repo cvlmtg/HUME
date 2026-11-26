@@ -323,7 +323,7 @@ fn smart_replace_non_pair_replacement_literal() {
 fn wrap_cursor_selection() {
     assert_state!(
         "-[h]>ello\n",
-        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '[', ']'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "[", "]"),
         "[h-[]]>ello\n"
     );
 }
@@ -332,7 +332,7 @@ fn wrap_cursor_selection() {
 fn wrap_forward_selection() {
     assert_state!(
         "-[hello]>\n",
-        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "(", ")"),
         "(hello-[)]>\n"
     );
 }
@@ -341,7 +341,7 @@ fn wrap_forward_selection() {
 fn wrap_backward_selection() {
     assert_state!(
         "<[hello]-\n",
-        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "(", ")"),
         "(hello-[)]>\n"
     );
 }
@@ -350,7 +350,7 @@ fn wrap_backward_selection() {
 fn wrap_partial_word() {
     assert_state!(
         "foo -[bar]> baz\n",
-        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '[', ']'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "[", "]"),
         "foo [bar-[]]> baz\n"
     );
 }
@@ -359,7 +359,7 @@ fn wrap_partial_word() {
 fn wrap_multi_cursor_selections() {
     assert_state!(
         "-{ab}>c-[de]>f\n",
-        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "(", ")"),
         "(ab-{)}>c(de-[)]>f\n"
     );
 }
@@ -370,7 +370,7 @@ fn wrap_multi_line_selection() {
     // included in the wrap.
     assert_state!(
         "-[foo\nbar]> baz\n",
-        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '"', '"'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "\"", "\""),
         "\"foo\nbar-[\"]> baz\n"
     );
 }
@@ -379,7 +379,7 @@ fn wrap_multi_line_selection() {
 fn wrap_a_selection_ending_on_a_line_break_closes_before_it() {
     assert_state!(
         "-[abc\n]>def\n",
-        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "(", ")"),
         "(abc-[)]>\ndef\n"
     );
 }
@@ -388,7 +388,7 @@ fn wrap_a_selection_ending_on_a_line_break_closes_before_it() {
 fn wrap_a_selection_ending_on_the_last_line_break_closes_before_it() {
     assert_state!(
         "abc\n-[def\n]>",
-        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "(", ")"),
         "abc\n(def-[)]>\n"
     );
 }
@@ -397,7 +397,7 @@ fn wrap_a_selection_ending_on_the_last_line_break_closes_before_it() {
 fn wrap_a_cursor_on_an_empty_line_leaves_it_alone() {
     assert_state!(
         "a\n-[\n]>b\n",
-        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '(', ')'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "(", ")"),
         "a\n-[\n]>b\n"
     );
 }
@@ -423,7 +423,7 @@ fn surround_paren_selects_both_parens_around_every_corpus_sample() {
 fn wrap_each_selection_wraps_a_multi_cluster_selection_whole() {
     assert_state!(
         "-[e\u{301}\u{1f468}\u{200d}\u{1f469}]>x\n",
-        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), '[', ']'),
+        |(text, sels)| wrap_each_selection(test_fixtures::testing::state(text, sels), "[", "]"),
         "[e\u{301}\u{1f468}\u{200d}\u{1f469}-[]]>x\n"
     );
 }

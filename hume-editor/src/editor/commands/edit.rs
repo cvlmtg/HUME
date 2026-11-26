@@ -451,13 +451,18 @@ pub(in crate::editor) fn cmd_delete_word_backward(
     Ok(())
 }
 
-/// Wrap every selection with the pair `ch` opens or closes, or with `ch` on
-/// both sides when it is neither.
+/// Wrap every selection with the delimiter pair `ch` opens or closes, or with
+/// `ch` on both sides when it is neither, adding `count` delimiter pairs.
+///
+/// The count is the number of delimiter pairs added, one when none was typed:
+/// `2` with `*` adds `**` each side, so turning `foo` into `**foo**` is one
+/// edit. The pair-aware lookup comes from the buffer's auto-pairs overrides;
+/// `ch` alone names the pair when it is not one.
 pub(in crate::editor) fn cmd_surround_add(
     state: &mut EditorState,
     view: &mut EngineView,
     t: CommandPane,
-    _count: Count,
+    count: Count,
     _mode: MotionMode,
     ch: char,
 ) -> Result<(), CommandError> {
@@ -469,7 +474,12 @@ pub(in crate::editor) fn cmd_surround_add(
         .find(|p| p.open == ch || p.close == ch)
         .map(|p| (p.open, p.close))
         .unwrap_or((ch, ch));
-    apply_pane_edit(state, view, t, |s| wrap_each_selection(s, open, close))?;
+    let pairs = count.get();
+    let open_str = open.to_string().repeat(pairs);
+    let close_str = close.to_string().repeat(pairs);
+    apply_pane_edit(state, view, t, |s| {
+        wrap_each_selection(s, &open_str, &close_str)
+    })?;
     Ok(())
 }
 

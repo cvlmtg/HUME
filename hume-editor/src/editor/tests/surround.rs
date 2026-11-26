@@ -161,3 +161,14 @@ fn mw_wraps_when_auto_pairs_disabled() {
     ed.handle_key(key('['));
     assert_eq!(state(&ed), "[bar-[]]>\n");
 }
+
+#[test]
+fn mw_with_a_count_adds_that_many_delimiters() {
+    // `2 m w` + `*` adds the delimiter twice, as one edit: one undo.
+    let mut ed = editor_from("-[bar]>\n");
+    ed.handle_key(key('2'));
+    ed.handle_key(key('m'));
+    ed.handle_key(key('w'));
+    ed.handle_key(key('*'));
+    assert_eq!(state(&ed), "**bar-[*]>*\n");
+}

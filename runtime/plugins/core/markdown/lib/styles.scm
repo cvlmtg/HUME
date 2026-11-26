@@ -76,15 +76,7 @@
 
 (define (md-styles/wrap! pane marker)
   (call! "trim-selection-whitespace" pane)
-  (let* ([sels (buffer-selections pane)]
-         [back (if (and (call! "stdlib/single-selection?" sels) (call! "stdlib/all-single-char?" sels))
-                   "move-left"
-                   "undo-selection-change")])
-    (let loop ([chars (string->list marker)])
-      (call! "surround-add" pane (car chars))
-      (unless (null? (cdr chars))
-        (call! back pane)
-        (loop (cdr chars))))))
+  (call! "surround-add" pane (string-length marker) (string-ref marker 0)))
 
 (define (md-styles/toggler style marker)
   (lambda (pane)
