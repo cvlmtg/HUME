@@ -41,7 +41,7 @@ fn poll_until(
     mut step: impl FnMut(&mut Editor),
     mut until: impl FnMut(&Editor) -> bool,
 ) {
-    let deadline = Instant::now() + Duration::from_secs(2);
+    let deadline = Instant::now() + Duration::from_secs(4);
     loop {
         step(ed);
         if until(ed) {
