@@ -44,7 +44,7 @@
 
 (define (md-paths/answer pane)
   (let* ([head (call! "stdlib/cursor-char-offset" (buffer-selections pane))]
-         [line (and head (char-offset->line pane head))]
+         [line (and head (buffer-cursor-line pane))]
          [line-start (and line (line->char-offset pane line))]
          [found (and line
                      (md-paths/destination-before

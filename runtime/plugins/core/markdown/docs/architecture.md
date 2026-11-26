@@ -157,7 +157,7 @@ visible lines an element is fetched:
 ## Overlapping conceals
 
 An escape or entity inside a link's destination or title lies inside the conceal hiding
-that part. `render.scm` sorts conceals by start, longer first, and sets them with
+that part. `render.scm` orders conceals by start, longer first, and sets them with
 `#:overlaps 'drop`, so the conceal hiding more wins and the dropped one lay in hidden text
 anyway.
 

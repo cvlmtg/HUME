@@ -233,16 +233,15 @@
   (let ([waiting (unbox md-links/*waiting*)])
     (when (and waiting (equal? (buffer-key (hash-ref waiting 'pane)) (buffer-key buffer)))
       (md-links/stop-waiting!)
-      (let* ([pane (hash-ref waiting 'pane)]
-             [fragment (hash-ref waiting 'fragment)]
-             [offset (and (pane-live? pane)
-                          (equal? (buffer-generation pane) (hash-ref waiting 'generation))
-                          (= 0 (call! "stdlib/cursor-char-offset" (buffer-selections pane)))
-                          (or (md-links/heading-at pane fragment) 'missed))])
-        (cond
-          [(equal? offset 'missed)
-           (when (hash-ref waiting 'timer) (md-links/warn-missed fragment))]
-          [offset (md-links/goto! pane pane offset)])))))
+      (let ([pane (hash-ref waiting 'pane)]
+            [fragment (hash-ref waiting 'fragment)])
+        (when (and (pane-live? pane)
+                   (equal? (buffer-generation pane) (hash-ref waiting 'generation))
+                   (= 0 (call! "stdlib/cursor-char-offset" (buffer-selections pane))))
+          (let ([offset (md-links/heading-at pane fragment)])
+            (cond
+              [offset (md-links/goto! pane pane offset)]
+              [(hash-ref waiting 'timer) (md-links/warn-missed fragment)])))))))
 
 (define (md-links/follow-target! pane target image?)
   (let ([parts (md-destinations/split target)])

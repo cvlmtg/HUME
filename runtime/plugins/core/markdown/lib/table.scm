@@ -11,6 +11,9 @@
     (cons start
           (+ start (string-length (trim-end (slice start (md-preview/capture-end cell))))))))
 
+;;; A cell's `[start, end)` chars and the width its shown text takes.
+(struct md-preview/measured (start end width))
+
 (define (md-preview/measure-row row cells conceals line-of line-info)
   (let* ([info (md-preview/capture-line row line-of line-info)]
          [slice (md-preview/line-slicer info)]
@@ -19,7 +22,7 @@
                                    conceals
                                    md-preview/char-start)])
     (cons row
-          (map (lambda (s cs) (list (car s) (cdr s) (string-width (md-preview/shown-text s cs slice))))
+          (map (lambda (s cs) (md-preview/measured (car s) (cdr s) (string-width (md-preview/shown-text s cs slice))))
                spans
                owned))))
 
@@ -74,12 +77,12 @@
               out)
         (let* ([cell (car cells)]
                [column (car columns)]
-               [pads (md-preview/pads (cdr column) (- (car column) (list-ref cell 2)))])
-          (loop (list-ref cell 1)
+               [pads (md-preview/pads (cdr column) (- (car column) (md-preview/measured-width cell)))])
+          (loop (md-preview/measured-end cell)
                 (cdr cells)
                 (cdr columns)
                 (string-append (make-string (cdr pads) #\space) " ")
-                (cons (md-preview/table-conceal from (car cell)
+                (cons (md-preview/table-conceal from (md-preview/measured-start cell)
                                                 (string-append lead "│ " (make-string (car pads) #\space))
                                                 reveal)
                       out))))))
@@ -96,7 +99,7 @@
                               (map (lambda (c) (md-preview/alignment c line-of line-info)) (cdr d)))
                             delimiters))]
          [widths (foldl (lambda (r widths)
-                          (md-preview/widen widths (map (lambda (c) (list-ref c 2)) (cdr r))))
+                          (md-preview/widen widths (map md-preview/measured-width (cdr r))))
                         (map (lambda (_) 0) alignments)
                         measured)]
          [line-start (car (line-info (hash-ref reveal 'start-line)))]
@@ -112,9 +115,17 @@
                                                  reveal))
                      delimiters)])
     (hash 'reveal reveal 'widths widths 'indent indent
-          'conceals (foldl (lambda (r out) (md-preview/row-conceals (car r) (cdr r) columns reveal out))
-                           rules
-                           measured))))
+          'conceals (let loop ([rows measured] [rules rules] [out '()])
+                      (cond
+                        [(and (pair? rules)
+                              (or (null? rows)
+                                  (< (md-preview/char-start (car rules)) (md-preview/capture-start (car (car rows))))))
+                         (loop rows (cdr rules) (cons (car rules) out))]
+                        [(pair? rows)
+                         (loop (cdr rows)
+                               rules
+                               (md-preview/row-conceals (car (car rows)) (cdr (car rows)) columns reveal out))]
+                        [else (reverse out)])))))
 
 (define (md-preview/empty-line? line line-info)
   (= 0 (string-length (cdr (line-info line)))))
@@ -132,7 +143,8 @@
 (define (md-preview/in-ranges? line ranges)
   (findf (lambda (r) (and (<= (hash-ref r 'start-line) line) (< line (hash-ref r 'end-line)))) ranges))
 
-(define (md-preview/edges layouts ranges line-info line-count)
+;;; Each layout's conceals between the edges drawn above and below it, in position order.
+(define (md-preview/framed layouts ranges line-info line-count)
   (let* ([bottoms (map (lambda (t)
                          (let ([below (hash-ref (hash-ref t 'reveal) 'end-line)])
                            (and (< below line-count) (md-preview/empty-line? below line-info) below)))
@@ -147,6 +159,7 @@
     (call! "stdlib/concat"
       (map (lambda (t top bottom)
              (append (md-preview/edge t top "┌" "┬" "┐" line-info)
+                     (hash-ref t 'conceals)
                      (md-preview/edge t bottom "└" "┴" "┘" line-info)))
            layouts tops bottoms))))
 
@@ -164,7 +177,6 @@
   (if (null? runs)
       (hash 'conceals '() 'inline inline)
       (let* ([spans (map (lambda (run) (md-preview/extent (car run))) runs)]
-             [inline (sort inline md-preview/conceal-before?)]
              [layouts (map (lambda (run conceals)
                              (let* ([kinds (md-preview/group (cdr run))]
                                     [rows (lambda (name)
@@ -174,7 +186,5 @@
                                                   conceals line-of line-info)))
                            runs
                            (md-preview/bucket spans inline md-preview/char-start))])
-        (hash 'conceals (call! "stdlib/concat"
-                          (cons (md-preview/edges layouts ranges line-info line-count)
-                                (map (lambda (t) (hash-ref t 'conceals)) layouts)))
+        (hash 'conceals (md-preview/framed layouts ranges line-info line-count)
               'inline (md-preview/within-tables spans (map (lambda (t) (hash-ref t 'reveal)) layouts) inline)))))

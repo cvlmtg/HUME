@@ -5,7 +5,7 @@
 
 (provide md-lists/distinct md-lists/may-start-prefix? md-lists/items md-lists/past-prefix? md-lists/empty?
          md-lists/ended-edit
-         md-lists/events md-lists/numbered-lists md-lists/renumber md-lists/prefixes
+         md-lists/numbered-lists md-lists/renumber md-lists/next-prefixes
          md-lists/edited-hunks md-lists/edited-spans md-lists/edited-events md-lists/task-edits
          md-lists/container-of md-lists/container-end)
 
@@ -13,9 +13,6 @@
   (reverse (foldl (lambda (line kept) (if (and (pair? kept) (equal? (car kept) line)) kept (cons line kept)))
                   '()
                   lines)))
-
-(define (md-lists/token-length text col)
-  (- (md-preview/skip-while text col (lambda (c) (not (md-preview/blank? c)))) col))
 
 (define (md-lists/past-bars bars text)
   (md-preview/skip-blanks text (+ (apply max bars) 1)))
@@ -82,7 +79,7 @@
         (cond
           [(equal? capture task) (cons (md-preview/end-col task start text) "[ ]")]
           [(equal? capture marker)
-           (let ([to (+ from (md-lists/token-length text from))])
+           (let ([to (md-preview/skip-while text from (lambda (c) (not (md-preview/blank? c))))])
              (cons to (if number
                           (string-append (number->string number) (substring text (- to 1) to))
                           (substring text from to))))]
@@ -245,10 +242,6 @@
     (cons (unbox edits)
           (map (lambda (e) (hash-try-get (unbox numbers) (car e))) indexed))))
 
-;;; One event of `kind` per item, on its marker, or on `#f` for a line with no prefix.
-(define (md-lists/events items kind)
-  (map (lambda (item) (md-lists/event (and item (hash-ref item 'marker)) kind #f)) items))
-
 ;;; An ordered marker a line's text holds, `delimiter` being `#\.` or `#\)`.
 (struct md-lists/line-marker (col number delimiter))
 
@@ -306,7 +299,7 @@
 ;;; The changes `hunks` made to the numbers their lines' ordered markers hold, each hunk split into
 ;;; the lines it changed. See docs/lists.md's "Renumbering after an edit".
 (define (md-lists/edited-hunks hunks)
-  (define (side-text lines) (apply string-append (map (lambda (line) (string-append line "\n")) lines)))
+  (define (side-text lines) (string-append (string-join lines "\n") "\n"))
   (define (edited hunk)
     (let* ([old-lines (hash-ref hunk 'old-lines)]
            [new-lines (hash-ref hunk 'new-lines)]
@@ -396,9 +389,13 @@
 (define (md-lists/edited-events lists edited)
   (call! "stdlib/concat" (map (lambda (numbered) (md-lists/list-events numbered edited)) lists)))
 
-;;; Per item, its next line's prefix, or `#f` for a line with no prefix.
-(define (md-lists/prefixes items numbers)
-  (map (lambda (item number) (and item (md-lists/next-prefix item number))) items numbers))
+;;; Per item, the prefix of a new line `kind` (`'after` or `'before`) the item's line, numbered in `lists`
+;;; from `md-lists/numbered-lists`, or `#f` for a line with no prefix.
+(define (md-lists/next-prefixes items lists kind)
+  (let ([numbers (cdr (md-lists/renumber
+                        lists
+                        (map (lambda (item) (md-lists/event (and item (hash-ref item 'marker)) kind #f)) items)))])
+    (map (lambda (item number) (and item (md-lists/next-prefix item number))) items numbers)))
 
 ;; ── Task boxes ────────────────────────────────────────────────────────────────
 

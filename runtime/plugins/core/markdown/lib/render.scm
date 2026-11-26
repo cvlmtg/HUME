@@ -94,6 +94,15 @@
 (define (md-preview/drawn line-of line-info conceals)
   (md-preview/clamped line-of line-info (sort conceals md-preview/conceal-before?)))
 
+;;; `a` and `b`, each in `md-preview/conceal-before?` order, as one list in that order, `a`'s first on a tie.
+(define (md-preview/merged a b)
+  (let loop ([a a] [b b] [out '()])
+    (cond
+      [(null? a) (append (reverse out) b)]
+      [(null? b) (append (reverse out) a)]
+      [(md-preview/conceal-before? (car b) (car a)) (loop a (cdr b) (cons (car b) out))]
+      [else (loop (cdr a) b (cons (car a) out))])))
+
 (define (md-preview/elements blocks inline-captures ranges line-of line-info line-count rule-width)
   (let* ([contents (md-preview/fence-contents blocks)]
          [zones (md-preview/fence-zones contents)]
@@ -103,15 +112,18 @@
          [inline-ranges (append ranges
                                 (map (lambda (run) (md-preview/line-span line-of (car run))) table-runs))]
          [inline (if (language-has-grammar? "markdown.inline")
-                     (md-preview/inline-elements
-                       (md-preview/outside-fences (inline-captures inline-ranges) zones contents)
-                       line-of line-info)
+                     (sort (md-preview/inline-elements
+                             (md-preview/outside-fences (inline-captures inline-ranges) zones contents)
+                             line-of line-info)
+                           md-preview/conceal-before?)
                      '())]
          [tables (md-preview/table-elements table-runs inline ranges line-of line-info line-count)])
-    (hash 'conceals (md-preview/drawn line-of line-info
-                                      (append (hash-ref elements 'conceals)
-                                              (hash-ref tables 'conceals)
-                                              (hash-ref tables 'inline)))
+    (hash 'conceals (md-preview/clamped line-of line-info
+                                        (md-preview/merged
+                                          (md-preview/merged
+                                            (sort (hash-ref elements 'conceals) md-preview/conceal-before?)
+                                            (hash-ref tables 'conceals))
+                                          (hash-ref tables 'inline)))
           'bands (hash-ref elements 'bands)
           'highlights (hash-ref elements 'highlights))))
 

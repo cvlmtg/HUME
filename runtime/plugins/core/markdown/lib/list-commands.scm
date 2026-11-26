@@ -11,6 +11,9 @@
     (md-preview/captures pane "markdown" query
                          (map (lambda (span) (hash 'start-line (car span) 'end-line (cdr span))) spans))))
 
+(define (md-lists/line-groups pane lines)
+  (md-lists/groups pane md-lists/query (map (lambda (line) (cons line (+ line 1))) lines)))
+
 (define (md-lists/numbered-lists-of pane groups line-of)
   (md-lists/numbered-lists groups line-of
     (lambda (start end)
@@ -41,16 +44,15 @@
          [heads (map selection-head (buffer-selections pane))]
          [lines (map line-of heads)])
     (if (findf (lambda (line) (md-lists/may-start-prefix? (cdr (line-info line)))) lines)
-        (let* ([groups (md-lists/groups pane md-lists/query (map (lambda (line) (cons line (+ line 1))) lines))]
+        (let* ([groups (md-lists/line-groups pane lines)]
                [items (map (lambda (item head) (and item (md-lists/past-prefix? item head) item))
                            (md-lists/items lines groups line-info)
                            heads)])
           (if (null? (filter (lambda (item) (not (and item (md-lists/empty? item)))) items))
               (edit-text! pane (map md-lists/ended-edit items))
-              (let ([numbers (cdr (md-lists/renumber (md-lists/numbered-lists-of pane groups line-of)
-                                                     (md-lists/events items 'after)))])
+              (let ([prefixes (md-lists/next-prefixes items (md-lists/numbered-lists-of pane groups line-of) 'after)])
                 (insert-key! pane "enter")
-                (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items numbers))))))
+                (edit-text! pane (md-lists/prefix-edits pane prefixes)))))
         (insert-key! pane "enter"))))
 
 ;;; See docs/lists.md's "Order of edits".
@@ -62,12 +64,12 @@
                     (map (lambda (sel)
                            (line-of (if below? (- (selection-end-char sel) 1) (selection-start-char sel))))
                          (buffer-selections pane)))]
-         [groups (md-lists/groups pane md-lists/query (map (lambda (line) (cons line (+ line 1))) sources))]
-         [items (md-lists/items sources groups line-info)]
-         [numbers (cdr (md-lists/renumber (md-lists/numbered-lists-of pane groups line-of)
-                                          (md-lists/events items (if below? 'after 'before))))])
+         [groups (md-lists/line-groups pane sources)]
+         [prefixes (md-lists/next-prefixes (md-lists/items sources groups line-info)
+                                           (md-lists/numbered-lists-of pane groups line-of)
+                                           (if below? 'after 'before))])
     (call! (if below? "open-line-below" "open-line-above") pane)
-    (edit-text! pane (md-lists/prefix-edits pane (md-lists/prefixes items numbers)))))
+    (edit-text! pane (md-lists/prefix-edits pane prefixes))))
 
 ;;; The generation the pass's last edit made. See docs/lists.md's "Renumbering after an edit".
 (define md-lists/*renumbered* (box #f))
