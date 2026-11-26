@@ -54,9 +54,10 @@
                   (cdr span)))
          spans))
 
-;;; `#f` when the primary selection is inside no `style` span. Otherwise `(marks . step-left?)`:
-;;; the delimiters to delete, as `(start . end)` pairs, of the span around every selection inside
-;;; one, and whether every selection's head is on a closing delimiter.
+;;; `#f` when the primary selection is inside no `style` span. Otherwise
+;;; `(marks . step-left?)`: the delimiters to delete, as `(start . end)` pairs,
+;;; of the span around every selection inside one, and whether every selection's
+;;; head is on a closing delimiter.
 (define (md-styles/removal pane style)
   (let* ([sels (buffer-selections pane)]
          [spans (md-styles/spans pane style sels)]
@@ -76,7 +77,13 @@
 
 (define (md-styles/wrap! pane marker)
   (call! "trim-selection-whitespace" pane)
-  (call! "surround-add" pane (string-length marker) (string-ref marker 0)))
+  (let* ([sels (buffer-selections pane)]
+         [back (if (and (call! "stdlib/single-selection?" sels)
+                        (call! "stdlib/all-single-char?" sels))
+                  "move-left"
+                  "undo-selection-change")])
+  (call! "surround-add" pane (string-length marker) (string-ref marker 0))
+  (call! back pane)))
 
 (define (md-styles/toggler style marker)
   (lambda (pane)
