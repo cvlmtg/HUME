@@ -34,6 +34,37 @@ fn m_s_strikes_the_character_under_a_cursor_through() {
 }
 
 #[test]
+fn m_b_leaves_a_word_selection_trailing_blank_outside() {
+    assert_eq!(after("-[foo ]>bar\n", "MB"), "**foo-[*]>* bar\n");
+}
+
+#[test]
+fn m_i_leaves_the_blanks_around_a_selection_outside() {
+    assert_eq!(after("a-[  it ]>b\n", "MI"), "a  *it-[*]> b\n");
+}
+
+#[test]
+fn m_b_on_a_character_and_its_blank_makes_the_character_bold() {
+    assert_eq!(after("-[a ]>b\n", "MB"), "**a-[*]>* b\n");
+}
+
+#[test]
+fn every_selection_leaves_its_blanks_outside() {
+    assert_eq!(
+        after("-[ab ]>-{cd }>e\n", "MS"),
+        "~~ab-[~]>~ ~~cd-{~}>~ e\n"
+    );
+}
+
+#[test]
+fn dot_leaves_the_blank_of_a_word_selection_outside() {
+    assert_eq!(
+        after("-[a ]>x\nb c\n", "MBjghMM."),
+        "**a** x\n**b-[*]>* c\n"
+    );
+}
+
+#[test]
 fn every_selection_gets_the_style() {
     assert_eq!(after("-[ab]> -{cd}>\n", "MB"), "**ab-[*]>* **cd-{*}>*\n");
 }

@@ -75,6 +75,7 @@
                                   (map cons arounds sels)))))))
 
 (define (md-styles/wrap! pane marker)
+  (call! "trim-selection-whitespace" pane)
   (let* ([sels (buffer-selections pane)]
          [back (if (and (call! "stdlib/single-selection?" sels) (call! "stdlib/all-single-char?" sels))
                    "move-left"

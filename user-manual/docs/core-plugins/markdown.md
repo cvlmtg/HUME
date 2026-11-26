@@ -86,7 +86,11 @@ A list numbered `1.`, `1.`, `1.`, or with any one number on every item, keeps it
 
 ## Inline styles
 
-`M B` toggles bold, `M I` italic, `M C` inline code and `M S` strikethrough. When the main selection is inside text with that style, the key removes the style around every selection inside it, and leaves the other selections alone. Otherwise it wraps each selection in `**`, `*`, a backtick or `~~`, and with a bare cursor the character under it gets the style. In `***word***`, `M B` leaves `*word*` and `M I` leaves `**word**`. `.` toggles the style where you are. Adding bold or strikethrough takes two `u` to undo.
+`M B` toggles bold, `M I` italic, `M C` inline code and `M S` strikethrough.
+
+When the main selection is inside text with that style, the key removes the style around every selection inside it, and leaves the other selections alone. Otherwise it wraps each selection in `**`, `*`, a backtick or `~~`, leaving the blanks at its ends outside, so a word selected with its space gets the style without the space.
+
+With a bare cursor the character under it gets the style. In `***word***`, `M B` leaves `*word*` and `M I` leaves `**word**`. `.` toggles the style where you are. Adding bold or strikethrough takes two `u` to undo.
 
 ## Tables
 
@@ -108,7 +112,9 @@ To sort a table's rows by a column, select the column with `m |` and run [`:sort
 
 ### Moving rows and columns
 
-`G T` followed by a direction moves the rows or columns of a table that your selections touch, and your selections move with them. `G T j` and `G T k`, or `G T` and the down or up arrow, move rows down or up. `G T h` and `G T l`, or `G T` and the left or right arrow, move columns left or right, the `---` row included. A cell moves with the blanks around it. `G T j` and `G T k` never move the header row or the `---` row, and do nothing when a selection is on either. Nothing moves when a row or column would pass the edge of the table either. A column moves only when every row has the cells it swaps; if one doesn't, HUME tells you how many rows are short. `.` moves again.
+`G T` followed by a direction moves the rows or columns of a table that your selections touch, and your selections move with them. `G T j` and `G T k`, or `G T` and the down or up arrow, move rows down or up. `G T h` and `G T l`, or `G T` and the left or right arrow, move columns left or right, the `---` row included.
+
+A cell moves with the blanks around it. `G T j` and `G T k` never move the header row or the `---` row, and do nothing when a selection is on either. Nothing moves when a row or column would pass the edge of the table either. A column moves only when every row has the cells it swaps; if one doesn't, HUME tells you how many rows are short. `.` moves again.
 
 After an edit on cells `m |`, `m i |` or `m a |` selected, `.` selects the cells in the same places again rather than the ones at the cursor. So after `m |` and `G T l`, `.` moves back the column that took the moved column's place.
 

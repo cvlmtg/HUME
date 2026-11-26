@@ -25,8 +25,10 @@
   same way, so the span takes along each span of its style whose delimiters touch its own.
   A head on a deleted closing delimiter lands on the character after the text, so when
   every head is on one (a delimiter in its span's second half), `move-left` follows the
-  edit; it moves every selection, so it waits for all of them. Otherwise the style is added
-  with `surround-add`, once per marker character. Between the two characters of `**` or
+  edit; it moves every selection, so it waits for all of them. Otherwise
+  `trim-selection-whitespace` drops the blanks at the selections' ends, since `**foo **`
+  is not bold, and the style is added with
+  `surround-add`, once per marker character. Between the two characters of `**` or
   `~~`, `undo-selection-change` gets the wrapped selection back. Selection undo never
   stops on a single cursor, so a lone cursor steps back onto the character it wrapped
   with `move-left` instead.
