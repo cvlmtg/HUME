@@ -21,28 +21,37 @@
          (filter (lambda (run) (equal? (car (car run)) style))
                  (md-preview/runs (md-preview/captures pane "markdown.inline" md-styles/query ranges))))))
 
-;;; `span` and each span of `spans` nested with it, one character narrower or wider on each side per level.
-(define (md-styles/nested spans span)
-  (define (step s delta)
-    (let ([node (car s)])
-      (findf (lambda (o)
-               (and (= (md-preview/capture-start (car o)) (- (md-preview/capture-start node) delta))
-                    (= (md-preview/capture-end (car o)) (+ (md-preview/capture-end node) delta))))
-             spans)))
-  (let up ([s (let down ([s span]) (let ([inner (step s -1)]) (if inner (down inner) s)))] [chain '()])
-    (let ([outer (step s 1)])
-      (if outer (up outer (cons s chain)) (cons s chain)))))
+;;; Whether delimiter `d` is in the second half of `node`, the span it belongs to.
+(define (md-styles/closer? node d)
+  (>= (* 2 (md-preview/capture-start d)) (+ (md-preview/capture-start node) (md-preview/capture-end node))))
 
-;;; Whether `head` is on one of `spans`' closing delimiters, those in a span's second half.
+;;; The `(end . start)` of `span`'s opening and closing delimiters.
+(define (md-styles/inside span)
+  (let* ([node (car span)]
+         [closers (filter (lambda (d) (md-styles/closer? node d)) (cdr span))]
+         [openers (filter (lambda (d) (not (md-styles/closer? node d))) (cdr span))])
+    (cons (apply max (map md-preview/capture-end openers))
+          (apply min (map md-preview/capture-start closers)))))
+
+;;; `span` and each span of `spans` nested with it, whose delimiters touch its own.
+(define (md-styles/nested spans span)
+  (define (just-inside? inner outer)
+    (let ([inside (md-styles/inside outer)])
+      (and (= (md-preview/capture-start (car inner)) (car inside))
+           (= (md-preview/capture-end (car inner)) (cdr inside)))))
+  (let collect ([s (let up ([s span])
+                     (let ([outer (findf (lambda (o) (just-inside? s o)) spans)]) (if outer (up outer) s)))])
+    (let ([inner (findf (lambda (i) (just-inside? i s)) spans)])
+      (cons s (if inner (collect inner) '())))))
+
+;;; Whether `head` is on one of `spans`' closing delimiters.
 (define (md-styles/on-closer? spans head)
   (findf (lambda (span)
-           (let ([node (car span)])
-             (findf (lambda (d)
-                      (and (>= (* 2 (md-preview/capture-start d))
-                               (+ (md-preview/capture-start node) (md-preview/capture-end node)))
-                           (<= (md-preview/capture-start d) head)
-                           (< head (md-preview/capture-end d))))
-                    (cdr span))))
+           (findf (lambda (d)
+                    (and (md-styles/closer? (car span) d)
+                         (<= (md-preview/capture-start d) head)
+                         (< head (md-preview/capture-end d))))
+                  (cdr span)))
          spans))
 
 ;;; `#f` when the primary selection is inside no `style` span. Otherwise `(marks . step-left?)`:
@@ -53,10 +62,7 @@
          [spans (md-styles/spans pane style sels)]
          [around (lambda (sel)
                    (let ([span (md-preview/innermost spans (selection-start-char sel) (selection-end-char sel) car)])
-                     (cond
-                       [(not span) '()]
-                       [(equal? style "strikethrough") (md-styles/nested spans span)]
-                       [else (list span)])))]
+                     (if span (md-styles/nested spans span) '())))]
          [arounds (map around sels)])
     (and (pair? (around (call! "stdlib/primary-selection" sels)))
          (let ([found (foldl (lambda (span found)

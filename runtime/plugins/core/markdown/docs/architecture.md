@@ -21,11 +21,11 @@
 - **Inline styles** toggle by the `markdown.inline` tree. When the primary selection is
   inside a span of the style (the innermost one that contains it), one `edit-text!`
   deletes the delimiters of the span around every selection inside one. The grammar
-  parses `~~a~~` as a strikethrough inside a strikethrough, so a strikethrough also takes
-  each one nested with it, one character narrower or wider on each side. A head on a deleted closing
-  delimiter lands on the character after the text, so when every head is on one (a
-  delimiter in its span's second half), `move-left` follows the edit; it moves every
-  selection, so it waits for all of them. Otherwise the style is added
+  parses `~~a~~` as a strikethrough inside a strikethrough, and `_*a*_` or `__**a**__` the
+  same way, so the span takes along each span of its style whose delimiters touch its own.
+  A head on a deleted closing delimiter lands on the character after the text, so when
+  every head is on one (a delimiter in its span's second half), `move-left` follows the
+  edit; it moves every selection, so it waits for all of them. Otherwise the style is added
   with `surround-add`, once per marker character. Between the two characters of `**` or
   `~~`, `undo-selection-change` gets the wrapped selection back. Selection undo never
   stops on a single cursor, so a lone cursor steps back onto the character it wrapped

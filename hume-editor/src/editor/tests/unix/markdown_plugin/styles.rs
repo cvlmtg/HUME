@@ -80,6 +80,16 @@ fn m_s_on_the_whole_strikethrough_removes_both_tildes() {
 }
 
 #[test]
+fn m_i_inside_italic_in_italic_removes_both() {
+    assert_eq!(after("_*-[a]>*_\n", "MI"), "-[a]>\n");
+}
+
+#[test]
+fn m_b_inside_bold_in_bold_removes_both() {
+    assert_eq!(after("__**-[c]>**__\n", "MB"), "-[c]>\n");
+}
+
+#[test]
 fn m_b_inside_bold_italic_keeps_the_italic() {
     assert_eq!(after("***-[a]>***\n", "MB"), "*-[a]>*\n");
 }
