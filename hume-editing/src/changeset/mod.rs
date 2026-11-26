@@ -225,8 +225,13 @@ impl<'a> PosMapCursor<'a> {
         let (mapped, anchor_deleted) = match hit {
             Hit::Retained => (self.new + (pos - self.walk.old), false),
             Hit::Deleted => (self.new, true),
-            Hit::InsertPoint(_) if assoc == Assoc::Before => (self.new, false),
-            Hit::InsertPoint(s) => (self.new + s.chars().count(), false),
+            Hit::InsertPoint(s) => {
+                let deleted = self.walk.deletes_after_stop();
+                match assoc {
+                    Assoc::Before => (self.new, deleted),
+                    Assoc::After => (self.new + s.chars().count(), deleted),
+                }
+            }
         };
         MappedPos {
             pos: CharOffset::new(mapped),
@@ -287,6 +292,14 @@ impl<'a> OpWalk<'a> {
         }
         Hit::Retained
     }
+
+    /// Whether the op after the one [`Self::seek`] stopped on deletes the
+    /// character at the stop offset, so a query that stopped on an `Insert`
+    /// there still learns that the character itself is consumed. `Insert`
+    /// consumes no old chars, so the next op starts at the same offset.
+    fn deletes_after_stop(&self) -> bool {
+        matches!(self.ops.get(self.idx + 1), Some(Operation::Delete(_)))
+    }
 }
 
 /// The position an [`OpWalk`] query asks about, in whatever unit the query
@@ -332,7 +345,9 @@ impl Probe for CharProbe<'_> {
 /// Maps content lines of the text before a change into the text after it.
 /// A line is its `\n`: it maps to the line its `\n` lands on, and to `None`
 /// once a deletion consumed that `\n`. Text inserted at the `\n` goes before
-/// it, joining the line's end, and the line maps to where that text starts.
+/// it, joining the line's end, and the line maps to where that text starts;
+/// a `Delete` that follows the insertion consumes that `\n` all the same, so
+/// the line maps to `None` as if the deletion stood alone.
 ///
 /// The answer is the line of the line's `\n` mapped through a
 /// [`PosMapCursor`] with [`Assoc::Before`]: it is the same op walk, asked in
@@ -376,6 +391,7 @@ impl<'a> LineMapCursor<'a> {
         self.probe.line = line.index();
         match self.walk.seek(&mut self.probe) {
             Hit::Deleted => None,
+            Hit::InsertPoint(_) if self.walk.deletes_after_stop() => None,
             Hit::Retained | Hit::InsertPoint(_) => {
                 let probe = &self.probe;
                 Some(ContentLine::new(

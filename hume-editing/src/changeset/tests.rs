@@ -546,6 +546,37 @@ fn map_anchor_is_not_deleted_at_a_retain_or_insert_boundary() {
     }
 }
 
+#[test]
+fn map_anchor_reports_deleted_when_a_delete_follows_an_insert_at_the_anchor() {
+    // Insert("XX"), Delete(2): the walk reaches the insertion first, but the
+    // anchor character is consumed all the same.
+    let mut b = ChangeSetBuilder::new(co(5));
+    b.retain(2);
+    b.insert("XX");
+    b.delete(2);
+    b.retain_rest();
+    let cs = b.finish();
+
+    let mut cursor = PosMapCursor::new(cs.ops());
+    assert_eq!(
+        cursor.map_anchor(co(2), Assoc::Before),
+        MappedPos {
+            pos: co(2),
+            anchor_deleted: true
+        },
+        "the inserted text starts at the anchor's deletion point"
+    );
+    let mut cursor = PosMapCursor::new(cs.ops());
+    assert_eq!(
+        cursor.map_anchor(co(2), Assoc::After),
+        MappedPos {
+            pos: co(4),
+            anchor_deleted: true
+        },
+        "after the insertion is the deletion point's other neighbour"
+    );
+}
+
 // ── map_positions tests ───────────────────────────────────────────────────
 
 #[test]
@@ -1597,5 +1628,37 @@ fn from_ops_rejects_ops_that_do_not_fit_or_are_not_normalized() {
     assert_eq!(
         ChangeSet::from_ops(vec![Retain(usize::MAX), Retain(1)], 3),
         None
+    );
+}
+
+// ── Line mapping tests ───────────────────────────────────────────────────
+
+/// A replacement's undo inserts the replaced text first, then deletes the
+/// replacement, so the `\n` the replacement inserted is consumed after the
+/// insertion. The line that `\n` ended is gone; the next line survives.
+#[test]
+fn map_line_drops_a_line_whose_break_is_deleted_after_text_is_inserted_at_it() {
+    use crate::edit::TextChange;
+
+    let before = BufferText::from("\nb\n");
+    let mut b = ChangeSetBuilder::new(co(3));
+    b.insert("a");
+    b.delete(1);
+    b.retain_rest();
+    let cs = b.finish();
+    let after = cs.apply(&before).expect("the change applies");
+    assert_eq!(after.rope().to_string(), "ab\n", "sanity: the lines merge");
+
+    let change = TextChange::new(&before, &after, &cs);
+    let mut cursor = change.line_cursor();
+    assert_eq!(
+        cursor.map_line(ContentLine::new(0)),
+        None,
+        "the break that ended line 0 is consumed"
+    );
+    assert_eq!(
+        cursor.map_line(ContentLine::new(1)),
+        Some(ContentLine::new(0)),
+        "line 1 survives as the merged line"
     );
 }

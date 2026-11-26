@@ -1289,3 +1289,22 @@ mod remap_lines_matches_the_per_entry_rule {
         }
     }
 }
+
+/// A replacement's undo inserts the replaced text first, then deletes the
+/// replacement, so a break the replacement inserted is consumed after the
+/// insertion. The lines it ended merge, and the source keeps one sign for
+/// the merged line.
+#[test]
+fn remapping_signs_through_an_insert_then_delete_at_a_break_keeps_one_per_line() {
+    let mut store = DecorationStores::default();
+    let (a, _) = make_two_bids();
+    store.set_signs("s".to_string(), a, vec![sign(0, "a"), sign(1, "b")]);
+
+    remap(&mut store, a, "a\nb\n", |b| {
+        b.retain_to(co(1));
+        b.insert(" ");
+        b.delete_to(co(2));
+    });
+
+    assert_eq!(sign_lines(&store, "s", a), vec![(0, "b")]);
+}
