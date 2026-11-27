@@ -1,7 +1,7 @@
 pub(crate) mod highlight;
 use highlight::HighlightStack;
-pub use highlight::TierBufs;
 use highlight::rebuild_line_decorations;
+pub use highlight::{TierBufs, scopes_at_byte};
 
 use hume_grid::Rgb;
 use hume_rope::cluster::ClusterStart;

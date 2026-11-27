@@ -35,6 +35,19 @@ pub enum HighlightTier {
     BracketMatch = 4,
 }
 
+impl HighlightTier {
+    /// The name shown when a tier contributes to a theme-inspection report.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Syntax => "syntax",
+            Self::Extra => "extra",
+            Self::SearchMatch => "search-match",
+            Self::Diagnostic => "diagnostic",
+            Self::BracketMatch => "bracket-match",
+        }
+    }
+}
+
 // Syntax source
 
 /// Per-buffer source of syntax-derived per-line facts, implemented outside

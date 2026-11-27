@@ -189,7 +189,7 @@ impl CommandRegistry {
         .reg(self);
         typed(
             "theme-debug",
-            "Show resolved styles for key UI scopes of the active theme.",
+            "Show the theme scopes and keys that color the text under the cursor.",
             &[],
             NativeTyped::Bare(typed_theme_debug),
         )

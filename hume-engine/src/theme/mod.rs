@@ -137,15 +137,15 @@ impl ScopeRegistry {
 /// The dot-notation fallback chain for `scope`, most specific first:
 /// `"keyword.function"` yields `"keyword.function"`, then `"keyword"`.
 ///
-/// `Theme::resolve_raw` takes the first name with an entry; `:theme-debug`
-/// reports every name that has one.
+/// `Theme::resolve_raw` takes the first name with an entry; a theme-inspection
+/// report prints the whole chain so the reader can see which keys to edit.
 pub fn fallback_chain(scope: &str) -> impl Iterator<Item = &str> {
     std::iter::successors(Some(scope), |cur| cur.rfind('.').map(|dot| &cur[..dot]))
 }
 
 /// The three cursor modes a theme's `ui.cursor*` scopes distinguish, as
 /// `(display label, mode scope, primary mode scope)`, shared by
-/// `Theme::compute_ui` and `:theme-debug`.
+/// `Theme::compute_ui`.
 pub const CURSOR_MODES: [(&str, &str, &str); 3] = [
     ("normal", "ui.cursor.normal", "ui.cursor.primary.normal"),
     ("insert", "ui.cursor.insert", "ui.cursor.primary.insert"),
@@ -154,8 +154,7 @@ pub const CURSOR_MODES: [(&str, &str, &str); 3] = [
 ];
 
 /// The (secondary, primary) rung lists `Theme::cursor_ladder` resolves, for
-/// one mode's own scope names. Public so `:theme-debug` can report which
-/// rung matched.
+/// one mode's own scope names.
 pub fn cursor_ladder_ids(
     mode_scope: &'static str,
     primary_mode_scope: &'static str,

@@ -413,40 +413,160 @@ fn bundled_theme_mode_scopes_are_pairwise_distinct() {
     }
 }
 
-/// `:theme-debug`'s cursor rows must name a real rung chain. The bundled
-/// `gruvbox` theme sets `ui.cursor.normal` directly, so that row's chain must
-/// say so, not print a placeholder word. Pinned to `gruvbox` rather than `sand`:
-/// gruvbox mirrors an established upstream Helix theme and isn't expected to
-/// change, where `sand` is HUME's own theme and still gets retuned: a
-/// fixture that happens to rely on one of its rungs would drift out from
-/// under this test with no relation to what it actually checks. There is
-/// no assertion that a theme's cursor colors differ across
-/// modes: which modes get a distinct cursor cue, if any, is the theme
-/// author's call, not a bundled-theme requirement.
-#[test]
-fn theme_debug_cursor_rows_show_a_real_chain_not_a_placeholder() {
-    let mut ed = editor_from("-[a]>b\n");
-    // `load_theme_by_name` resolves through the real XDG theme dirs, which
-    // this unit test has no fixture for, so load straight from the repo's
-    // `runtime/themes`, the same path `load_bundled_themes` above uses.
-    let themes_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../runtime/themes");
-    ed.view.theme = hume_engine::theme::loader::load_theme("gruvbox", &[themes_dir])
-        .expect("bundled theme 'gruvbox' must load")
-        .theme;
+/// A Rust buffer with the real `rust` grammar fixture attached and parsed, so
+/// `:theme-debug` has highlight spans to read.
+fn rust_editor(initial: &str) -> Editor {
+    let mut ed =
+        super::structural::grammar_editor_undrained("rust", "tree_sitter_rust", &[], initial);
+    ed.reparse_stale_buffers();
+    ed
+}
+
+/// `:theme-debug`'s statusline line for `initial`, with a theme whose only
+/// entry is `keyword`, so a capture below it falls back to `default`.
+fn theme_debug_message(initial: &str) -> String {
+    let mut ed = rust_editor(initial);
+    ed.view.theme = hume_engine::theme::Theme::new(std::collections::HashMap::from([(
+        "keyword",
+        hume_engine::types::ResolvedStyle {
+            fg: Some(hume_grid::Rgb(0x44, 0x55, 0x66)),
+            ..Default::default()
+        },
+    )]));
     ed.execute_typed("theme-debug", None)
         .expect(":theme-debug must succeed");
-    let text = ed
-        .state
+    ed.state
         .status_msg
         .text()
-        .expect(":theme-debug reports Info, which lands in status_msg");
-    assert!(
-        text.contains("cursor (normal): chain=ui.cursor.normal"),
-        "expected the normal cursor row to name its defined rung, got: {text}"
+        .expect(":theme-debug reports Info, which lands in status_msg")
+        .to_owned()
+}
+
+/// The line names the syntax scope under the cursor and the theme keys that
+/// resolve it. `fn` is `keyword.function`, which falls back to the theme's
+/// `keyword`; `main` is `function`, which has no entry at all.
+#[test]
+fn theme_debug_reports_the_scope_under_the_cursor() {
+    assert_eq!(
+        theme_debug_message("-[f]>n main() {}\n"),
+        "syntax: keyword.function → keyword fg=#445566 bg=- | effective fg=#445566 bg=-"
     );
-    assert!(
-        !text.contains("resolved"),
-        "cursor rows must not print the literal placeholder word, got: {text}"
+    assert_eq!(
+        theme_debug_message("fn -[m]>ain() {}\n"),
+        "syntax: function → default fg=- bg=- | effective fg=- bg=-"
+    );
+}
+
+#[test]
+fn theme_debug_reports_no_scope_when_no_tier_is_active() {
+    let mut ed = editor_from("-[a]>b\n");
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some("no highlight scope at cursor")
+    );
+}
+
+#[test]
+fn theme_debug_reports_no_scope_on_whitespace() {
+    assert_eq!(
+        theme_debug_message("fn -[ ]>main() {}\n"),
+        "no highlight scope at cursor"
+    );
+}
+
+/// A plugin span over bytes 0..2 of line 0, in the Extra tier.
+struct ProbeExtra(hume_engine::types::ScopeId);
+
+impl hume_engine::providers::DecorationSource for ProbeExtra {
+    fn kinds(&self) -> hume_engine::providers::DecorationKinds {
+        hume_engine::providers::DecorationKinds::HIGHLIGHT
+    }
+
+    fn decorations_for_line(
+        &self,
+        line: hume_rope::line::ContentLine,
+        out: &mut Vec<hume_engine::providers::Decoration>,
+    ) {
+        if line.index() == 0 {
+            out.push(hume_engine::providers::Decoration::Highlight {
+                range: hume_rope::offset::ExclusiveRange::new(
+                    hume_rope::column::ByteCol::new(0),
+                    hume_rope::column::ByteCol::new(2),
+                ),
+                scope: self.0,
+                tier: hume_engine::providers::HighlightTier::Extra,
+            });
+        }
+    }
+}
+
+#[test]
+fn theme_debug_reports_every_active_layer() {
+    let mut ed = rust_editor("-[f]>n main() {}\n");
+    let scope = ed.view.registry.intern("plugin.mark");
+    ed.view.theme = hume_engine::theme::Theme::new(std::collections::HashMap::from([
+        (
+            "keyword",
+            hume_engine::types::ResolvedStyle {
+                fg: Some(hume_grid::Rgb(0x44, 0x55, 0x66)),
+                ..Default::default()
+            },
+        ),
+        (
+            "plugin.mark",
+            hume_engine::types::ResolvedStyle {
+                bg: Some(hume_grid::Rgb(0x11, 0x22, 0x33)),
+                modifiers: hume_engine::types::Modifiers::BOLD,
+                ..Default::default()
+            },
+        ),
+    ]));
+    let pid = ed.view.focused_pane();
+    ed.view.panes[pid]
+        .providers
+        .add_decoration_source(Box::new(ProbeExtra(scope)));
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some(
+            "syntax: keyword.function → keyword fg=#445566 bg=- | \
+             extra: plugin.mark → plugin fg=- bg=#112233 modifiers BOLD | \
+             effective fg=#445566 bg=#112233 modifiers BOLD"
+        )
+    );
+}
+
+#[test]
+fn theme_debug_uses_script_styles_in_the_chain() {
+    let mut ed = rust_editor("-[f]>n main() {}\n");
+    ed.view.theme = hume_engine::theme::Theme::new(std::collections::HashMap::from([(
+        "keyword",
+        hume_engine::types::ResolvedStyle {
+            fg: Some(hume_grid::Rgb(0x44, 0x55, 0x66)),
+            ..Default::default()
+        },
+    )]));
+    // No install pending: the script's style must land on the theme on screen.
+    ed.state.settings.theme = ed.state.shown_theme.clone();
+    crate::editor::theme::set_scope_styles(
+        &mut ed.state,
+        &mut ed.view,
+        &[hume_core::ScopeStyleInput {
+            scope: "keyword".to_owned(),
+            fg: Some("#aabbcc".to_owned()),
+            ..Default::default()
+        }],
+        hume_core::ConfigOrigin::User,
+    )
+    .expect("script style must apply");
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some("syntax: keyword.function → keyword fg=#aabbcc bg=- | effective fg=#aabbcc bg=-")
     );
 }
 

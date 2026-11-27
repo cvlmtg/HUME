@@ -141,7 +141,7 @@ See [Settings](settings.md) for every option.
 | Command | Effect |
 |---------|--------|
 | `:theme <name>` | Load a theme; with no argument, show the current one |
-| `:theme-debug` | Show the resolved styles for the main UI scopes |
+| `:theme-debug` | Show the theme scopes and keys that color the text under the cursor |
 | `:wrap`, `:toggle-soft-wrap` | Toggle line wrapping in this pane. See [wrap styles](settings.md#text-wrap) |
 | `:mes`, `:messages` | Show the message log in a read-only buffer |
 

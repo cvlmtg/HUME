@@ -2,8 +2,11 @@ use std::time::Duration;
 
 use hume_core::{BufferId, Severity};
 use hume_engine::pipeline::{Cycle, Direction, EngineView};
+use hume_engine::providers::HighlightTier;
+use hume_engine::types::{ResolvedStyle, ScopeId};
 use hume_grid::Rgb;
 use hume_platform::path::AbsolutePath;
+use hume_rope::line::ContentLine;
 
 use super::super::Editor;
 use super::super::EditorState;
@@ -13,6 +16,7 @@ use crate::editor::error::CommandError;
 use crate::editor::input_stack::DrawerLayer;
 use crate::editor::registry::ArgError;
 use crate::editor::settings::{THEME, TableKey};
+use crate::editor::syntax::{SyntaxUse, ensure_syntax_current};
 use hume_ops::edit::{SortOpts, SortRefusal, sort_lines};
 
 // ── Message log ──────────────────────────────────────────────────────────────
@@ -212,9 +216,8 @@ pub(in crate::editor) fn typed_tabprev(
 }
 
 /// The active theme's display name: the `theme` setting, or the label standing
-/// in for the compiled-in default when it is unset. Both `:theme` and
-/// `:theme-debug` open with this, and they must agree on what "no theme set"
-/// is called.
+/// in for the compiled-in default when it is unset. `:theme` with no argument
+/// reports this.
 fn active_theme_name(ed: &Editor) -> &str {
     if ed.state.settings.theme.is_empty() {
         super::FALLBACK_THEME_LABEL
@@ -249,15 +252,16 @@ pub(in crate::editor) fn typed_theme(
     .map_err(CommandError::new)
 }
 
-/// `:theme-debug`: print what the active theme resolves for key UI surfaces.
+/// `:theme-debug`: name the theme scopes that color the text under the cursor.
 ///
-/// Cursor rows report the pre-resolved style the renderer reads; every other
-/// row (bracket/search match, selection, cursorline, statusline) reports its
-/// resolved style plus every name on its dot-notation chain with an entry,
-/// from the theme file or a script.
+/// One statusline line: every highlight tier active at the primary head,
+/// lowest priority first, each with the dot-notation chain of theme keys
+/// that resolves its style, then the style the layers produce together.
+/// Tiers with no span at the cursor are omitted; with none active the line
+/// says so.
 pub(in crate::editor) fn typed_theme_debug(
     ed: &mut Editor,
-    _fp: FocusedPane,
+    fp: FocusedPane,
 ) -> Result<(), CommandError> {
     fn color_str(c: Option<Rgb>) -> String {
         match c {
@@ -266,101 +270,75 @@ pub(in crate::editor) fn typed_theme_debug(
         }
     }
 
-    /// Every name in `names` with an entry, from the theme file or a script,
-    /// in the order given, not necessarily the resolution path: both a
-    /// dot-notation lookup and a cursor ladder stop at the *first* match, so
-    /// a later name here is only what it would have fallen through to next.
-    /// `empty_label` covers the "none of them has an entry" case, which
-    /// reads differently for an ordinary scope (`"{scope} → default"`, from
-    /// `fallback_chain`, which always yields `scope` itself first) than for
-    /// a cursor ladder's rung list (`"default"`: the rungs are never
-    /// dot-trimmed from one shared name, so there's no single name to report
-    /// finding nothing for).
-    fn defined_chain<'a>(
-        theme: &hume_engine::theme::Theme,
-        names: impl Iterator<Item = &'a str>,
-        empty_label: &str,
-    ) -> String {
-        let chain: Vec<&str> = names.filter(|key| theme.has_entry(key)).collect();
-        if chain.is_empty() {
-            empty_label.to_owned()
+    fn style_str(style: ResolvedStyle) -> String {
+        let modifiers = if style.modifiers.is_empty() {
+            String::new()
         } else {
-            chain.join(" → ")
-        }
-    }
-
-    fn style_line(label: &str, chain: &str, style: hume_engine::types::ResolvedStyle) -> String {
+            let names: Vec<&str> = style.modifiers.iter_names().map(|(name, _)| name).collect();
+            format!(" modifiers {}", names.join(","))
+        };
         format!(
-            "  {label}: chain={chain} fg={} bg={}{}",
+            "fg={} bg={}{}",
             color_str(style.fg),
             color_str(style.bg),
-            if style.modifiers.is_empty() {
-                String::new()
-            } else {
-                format!(" modifiers={:?}", style.modifiers)
-            },
+            modifiers,
         )
     }
 
-    let theme = &ed.view.theme;
-    let mut lines = vec![format!("Theme: {}", active_theme_name(ed))];
-
-    // Cursor rows report the style the renderer will actually layer, taken
-    // from the same pre-resolved `ui` fields it reads, one (secondary,
-    // primary) pair per mode in `CURSOR_MODES`, the single source of the
-    // mode↔scope-name pairing `Theme::compute_ui` itself resolves against.
-    // Their chains aren't plain dot-notation (a primary ladder reaches a key
-    // dot-trimming skips (`ui.cursor.primary.insert` never trims to
-    // `ui.cursor.insert`), so each row's chain comes from the explicit rung
-    // list `cursor_ladder_ids` builds.
-    // Destructured irrefutably, not zipped: a fourth entry in `CURSOR_MODES`
-    // has to fail to compile here, the way it already does in
-    // `Theme::compute_ui`, which destructures the same const, rather than
-    // being silently dropped by `zip` stopping at the shorter side and leaving
-    // the new mode missing from this listing.
-    let [normal, insert, select] = hume_engine::theme::CURSOR_MODES;
-    let ui = theme.ui();
-    for ((label, mode_scope, primary_mode_scope), style, primary_style) in [
-        (normal, ui.cursor, ui.cursor_primary),
-        (insert, ui.cursor_insert, ui.cursor_insert_primary),
-        (select, ui.cursor_select, ui.cursor_select_primary),
-    ] {
-        let (ids, primary_ids) =
-            hume_engine::theme::cursor_ladder_ids(mode_scope, primary_mode_scope);
-        lines.push(style_line(
-            &format!("cursor ({label})"),
-            &defined_chain(theme, ids.into_iter(), "default"),
-            style,
-        ));
-        lines.push(style_line(
-            &format!("cursor primary ({label})"),
-            &defined_chain(theme, primary_ids.into_iter(), "default"),
-            primary_style,
-        ));
+    let bid = fp.bid(&ed.view);
+    let pane = fp.pane().pid();
+    // A position read goes through the layers, so a reparse the worker has
+    // pending has to land before the spans it would answer with are read.
+    ensure_syntax_current(
+        &mut ed.state,
+        &mut ed.view.registry,
+        bid,
+        SyntaxUse::Highlights,
+    );
+    let active: Vec<(HighlightTier, ScopeId)> = {
+        let buf = ed.state.buffers.get(bid);
+        let text = buf.text();
+        let head = super::pane_view(&ed.state, &ed.view, fp.pane())
+            .primary()
+            .head();
+        let (ropey_line, byte) = hume_rope::lines::char_to_line_byte(text.rope(), head.offset());
+        // The head is a real cluster, never the phantom trailing line.
+        let line = ContentLine::new(ropey_line.index());
+        hume_engine::style::scopes_at_byte(
+            line,
+            byte,
+            buf.syntax_source(),
+            &ed.view.panes[pane].providers,
+            text.rope(),
+        )
+    };
+    if active.is_empty() {
+        ed.report(Severity::Info, "no highlight scope at cursor");
+        return Ok(());
     }
 
-    // Ordinary dot-notation scopes: the chain is the whole story.
-    for scope in [
-        hume_engine::theme::CURSOR_MATCH,
-        hume_engine::theme::CURSOR_MATCH_SEARCH,
-        hume_engine::theme::ui_scopes::SELECTION,
-        hume_engine::theme::ui_scopes::SELECTION_PRIMARY,
-        hume_engine::theme::ui_scopes::CURSORLINE_PRIMARY,
-        hume_engine::theme::ui_scopes::STATUSLINE,
-    ] {
-        let style = theme.resolve_by_name(hume_engine::types::Scope(scope));
-        lines.push(style_line(
-            scope,
-            &defined_chain(
-                theme,
-                hume_engine::theme::fallback_chain(scope),
-                &format!("{scope} → default"),
-            ),
-            style,
+    ed.view.theme.bake_if_stale(&ed.view.registry);
+    let mut parts = Vec::new();
+    let mut effective = ed.view.theme.default_style();
+    for (tier, id) in active {
+        let name = ed.view.registry.name_of(id);
+        let style = ed.view.theme.resolve(id);
+        effective = effective.layer(style);
+        let chain: Vec<&str> = hume_engine::theme::fallback_chain(name).collect();
+        let chain_text = if chain.iter().any(|key| ed.view.theme.has_entry(key)) {
+            chain.join(" → ")
+        } else {
+            format!("{name} → default")
+        };
+        parts.push(format!(
+            "{}: {} {}",
+            tier.label(),
+            chain_text,
+            style_str(style)
         ));
     }
-
-    ed.report(Severity::Info, lines.join("\n"));
+    parts.push(format!("effective {}", style_str(effective)));
+    ed.report(Severity::Info, parts.join(" | "));
     Ok(())
 }
 

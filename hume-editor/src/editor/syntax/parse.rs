@@ -277,6 +277,11 @@ pub(in crate::editor) enum SyntaxUse {
     Folds,
     /// The captures of a script's query over the layers of this language.
     Captures(LanguageId),
+    /// The highlight scope a position read resolves through: the root
+    /// language's layers and any it injects. A highlight query ships with
+    /// every bundle, so a pending reparse can change those spans and this
+    /// read always waits for it.
+    Highlights,
 }
 
 /// Bring `bid`'s committed tree up to date with its current text,
@@ -352,6 +357,7 @@ pub(in crate::editor) fn ensure_syntax_current(
             SyntaxUse::Captures(id) => {
                 syn.bundle().language == id || syn.bundle().injections.is_some()
             }
+            SyntaxUse::Highlights => true,
         };
     if !can_change {
         return;

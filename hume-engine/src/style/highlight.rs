@@ -165,5 +165,37 @@ pub(crate) fn rebuild_line_decorations(
     tint
 }
 
+/// The scope active at `byte` in each highlight tier of `line`, lowest
+/// priority first. Tiers with no span covering `byte` are absent.
+///
+/// Theme inspection outside rendering uses this to name every scope that
+/// contributes to a cell's color; the render path layers the same tiers
+/// through `HighlightStack` on its own scratch.
+pub fn scopes_at_byte(
+    line: hume_rope::line::ContentLine,
+    byte: ByteCol,
+    syntax: Option<&dyn SyntaxSource>,
+    providers: &ProviderSet,
+    rope: &ropey::Rope,
+) -> Vec<(HighlightTier, ScopeId)> {
+    let mut scratch = StyleScratch::new();
+    rebuild_line_decorations(line, syntax, providers, rope, &mut scratch);
+    const TIERS: [HighlightTier; TIER_COUNT] = [
+        HighlightTier::Syntax,
+        HighlightTier::Extra,
+        HighlightTier::SearchMatch,
+        HighlightTier::Diagnostic,
+        HighlightTier::BracketMatch,
+    ];
+    TIERS
+        .into_iter()
+        .zip(scratch.tier_bufs.0.iter())
+        .filter_map(|(tier, intervals)| {
+            let (_, id) = intervals.iter().find(|(range, _)| range.contains(byte))?;
+            Some((tier, *id))
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests;
