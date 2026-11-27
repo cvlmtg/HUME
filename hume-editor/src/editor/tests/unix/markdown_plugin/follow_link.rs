@@ -223,6 +223,9 @@ fn parse_now(p: &mut Preview) {
         },
         |ed| ed.state.buffers.get(bid).current_layers().is_some(),
     );
+    // Installing the tree queues OnSyntaxChanged, which the next settle drains.
+    // Callers assert on what that hook does, so wait for it here.
+    p.ed.settle();
 }
 
 /// Moves `p`'s held clock on by `ms` and settles.
