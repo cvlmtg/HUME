@@ -1,3 +1,5 @@
+# License: licenses/workbench.license
+
 "ui.background" = { bg = "blue" }
 "ui.text" = { fg = "white" }
 "ui.text.focus" = { fg = "orange", bg = "black", modifiers = ["bold"] }

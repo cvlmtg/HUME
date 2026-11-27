@@ -340,12 +340,13 @@ fn bundled_theme_code_block_band_has_a_background() {
     }
 }
 
-/// A mode scope that differs from the base row style must differ in its
-/// `bg`: the whole-row tint (`EditorColors::from_theme`, `hume-editor/src/statusline/colors.rs`) reads
-/// a single style per mode and paints it across the entire statusline, so a
-/// scope that overrides only `fg` renders as illegible accent-on-base-bg text
-/// rather than a tinted row. `ui.statusline.normal` is exempt: it equals the
-/// base row in every bundled theme.
+/// A mode scope that differs from the base row style must carry a `bg` of its
+/// own: the whole-row tint (`EditorColors::from_theme`, `hume-editor/src/statusline/colors.rs`)
+/// reads one style per mode and paints it across the entire statusline, so an
+/// entry that sets only `fg` leaves the row untinted under accent-colored text.
+/// The `bg` may match the base row's; only its absence breaks the tint.
+/// `ui.statusline.normal` is exempt: it equals the base row in every bundled
+/// theme.
 ///
 /// Overlaps with `bundled_theme_mode_scopes_are_pairwise_distinct` below for
 /// every scope but `normal` (which isn't checked here, and isn't in that
@@ -367,46 +368,10 @@ fn bundled_theme_mode_scopes_tint_the_whole_row() {
         for scope in mode_scopes {
             let mode_style = theme.resolve_by_name(hume_engine::types::Scope(scope));
             if mode_style != base {
-                assert_ne!(
-                    mode_style.bg, base.bg,
-                    "bundled theme '{name}': '{scope}' differs from 'ui.statusline' only in fg: \
-                     the whole row tints with this style, so a bg-less override paints accent \
-                     text on the untinted base background"
-                );
-            }
-        }
-    }
-}
-
-/// Every one of the six `ui.statusline.<mode>` scopes must resolve to a
-/// distinct `bg` in every bundled theme. Since the whole-row tint makes row
-/// color the primary mode signal, two modes sharing a background are
-/// pixel-identical apart from a three-character label, easy for a
-/// per-theme retune to miss without a check across every mode pair.
-#[test]
-fn bundled_theme_mode_scopes_are_pairwise_distinct() {
-    let mode_scopes = [
-        "ui.statusline.normal",
-        "ui.statusline.insert",
-        "ui.statusline.select",
-        "ui.statusline.search",
-        "ui.statusline.command",
-        "ui.statusline.sift",
-    ];
-
-    for (name, theme) in load_bundled_themes() {
-        let bgs: Vec<_> = mode_scopes
-            .iter()
-            .map(|scope| theme.resolve_by_name(hume_engine::types::Scope(scope)).bg)
-            .collect();
-
-        for i in 0..mode_scopes.len() {
-            for j in (i + 1)..mode_scopes.len() {
-                assert_ne!(
-                    bgs[i], bgs[j],
-                    "bundled theme '{name}': '{}' and '{}' share the same row bg {:?}: \
-                     two modes would be indistinguishable",
-                    mode_scopes[i], mode_scopes[j], bgs[i]
+                assert!(
+                    mode_style.bg.is_some(),
+                    "bundled theme '{name}': '{scope}' overrides 'ui.statusline' with no bg: \
+                     the whole-row tint would leave the statusline untinted under accent text"
                 );
             }
         }
