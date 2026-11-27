@@ -1,43 +1,43 @@
-"ui.background" = { bg = "bg" }
-"ui.text" = { fg = "fg" }
-"ui.text.focus" = { fg = "bright_fg", bg = "plum" }
+"ui.background" = { bg = "brown" }
+"ui.text" = { fg = "white" }
+"ui.text.focus" = { fg = "bright_white", bg = "plum" }
 "ui.window" = { fg = "surface" }
 "ui.window.focused" = { fg = "sand" }
-"ui.popup" = { fg = "fg", bg = "surface" }
+"ui.popup" = { fg = "white", bg = "surface" }
 "ui.popup.scroll" = { fg = "sand", bg = "surface" }
-"ui.context" = { bg = "context" }
-"ui.menu" = { fg = "fg", bg = "surface" }
-"ui.menu.selected" = { fg = "bright_fg", bg = "plum" }
+"ui.menu" = { fg = "white", bg = "surface" }
+"ui.menu.selected" = { fg = "bright_white", bg = "plum" }
 "ui.menu.scroll" = { fg = "sand", bg = "surface" }
-"ui.drawer" = { fg = "fg", bg = "surface" }
-"ui.selection" = { fg = "bg", bg = "fg" }
-"ui.selection.primary" = { fg = "fg", bg = "plum" }
-"ui.cursor" = { fg = "fg", bg = "muted" }
-"ui.cursor.insert" = { fg = "bg", bg = "sand" }
-"ui.cursor.primary" = { fg = "fg", bg = "dark_plum" }
-"ui.cursor.primary.insert" = { fg = "bg", bg = "gold" }
-"ui.cursor.match" = { fg = "bg", bg = "fg" }
-"ui.cursor.match.search" = { fg = "bg", bg = "sand" }
+"ui.context" = { bg = "context" }
+"ui.drawer" = { fg = "white", bg = "surface" }
+"ui.selection" = { fg = "brown", bg = "white" }
+"ui.selection.primary" = { fg = "white", bg = "plum" }
+"ui.cursor" = { fg = "white", bg = "muted" }
+"ui.cursor.insert" = { fg = "brown", bg = "sand" }
+"ui.cursor.primary" = { fg = "white", bg = "dark_plum" }
+"ui.cursor.primary.insert" = { fg = "brown", bg = "gold" }
+"ui.cursor.match" = { fg = "brown", bg = "white" }
+"ui.cursor.match.search" = { fg = "brown", bg = "sand" }
 "ui.cursorline.primary" = { bg = "surface" }
 "ui.linenr" = { fg = "muted" }
 "ui.linenr.selected" = { fg = "sand" }
-"ui.statusline" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
+"ui.statusline" = { fg = "brown", bg = "sand", modifiers = [ "bold" ] }
 "ui.statusline.separator" = { fg = "surface", modifiers = [ "bold" ] }
-"ui.statusline.normal" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
-"ui.statusline.select" = { fg = "bg", bg = "gold", modifiers = [ "bold" ] }
-"ui.statusline.insert" = { fg = "bg", bg = "plum", modifiers = [ "bold" ] }
-"ui.statusline.search" = { fg = "bg", bg = "muted", modifiers = [ "bold" ] }
-"ui.statusline.command" = { fg = "bg", bg = "green", modifiers = [ "bold" ] }
-"ui.statusline.sift" = { fg = "bg", bg = "blue", modifiers = [ "bold" ] }
+"ui.statusline.normal" = { fg = "brown", bg = "sand", modifiers = [ "bold" ] }
+"ui.statusline.select" = { fg = "brown", bg = "gold", modifiers = [ "bold" ] }
+"ui.statusline.insert" = { fg = "brown", bg = "plum", modifiers = [ "bold" ] }
+"ui.statusline.search" = { fg = "brown", bg = "muted", modifiers = [ "bold" ] }
+"ui.statusline.command" = { fg = "brown", bg = "green", modifiers = [ "bold" ] }
+"ui.statusline.sift" = { fg = "brown", bg = "blue", modifiers = [ "bold" ] }
 "ui.tabline" = { fg = "muted", bg = "context" }
-"ui.tabline.active" = { fg = "bg", bg = "sand", modifiers = [ "bold" ] }
+"ui.tabline.active" = { fg = "brown", bg = "sand", modifiers = [ "bold" ] }
 "ui.virtual" = { fg = "muted" }
 "ui.virtual.whitespace" = { fg = "surface" }
 "ui.virtual.indent-guide" = { fg = "muted" }
 # The `<200b>` stand-in for a character the terminal must not be shown.
 # Deliberately not muted like the rest of `ui.virtual`: a bidi override
 # hiding in source is exactly what this has to catch the eye for.
-"ui.virtual.invisible" = { fg = "bg", bg = "red" }
+"ui.virtual.invisible" = { fg = "brown", bg = "red" }
 "ui.virtual.inlay-hint" = { fg = "muted" }
 "diagnostic.error" = { fg = "red", modifiers = [ "underlined" ] }
 "diagnostic.warning" = { fg = "sand", modifiers = [ "underlined" ] }
@@ -49,10 +49,10 @@
 "warning.diagnostic.inline" = { fg = "sand" }
 "info.diagnostic.inline" = { fg = "blue" }
 "hint.diagnostic.inline" = { fg = "green" }
-"diagnostic.error.message" = { fg = "bg", bg = "red" }
-"diagnostic.warning.message" = { fg = "bg", bg = "sand" }
-"diagnostic.info.message" = { fg = "bg", bg = "blue" }
-"diagnostic.hint.message" = { fg = "bg", bg = "green" }
+"diagnostic.error.message" = { fg = "brown", bg = "red" }
+"diagnostic.warning.message" = { fg = "brown", bg = "sand" }
+"diagnostic.info.message" = { fg = "brown", bg = "blue" }
+"diagnostic.hint.message" = { fg = "brown", bg = "green" }
 "diagnostic.error.message-text" = { fg = "red" }
 "diagnostic.warning.message-text" = { fg = "sand" }
 "diagnostic.info.message-text" = { fg = "blue" }
@@ -66,10 +66,10 @@
 "diff.delta" = { fg = "blue" }
 # HUME's own whole-line diff tint.
 "diff.plus.line" = { bg = "diff_plus_bg" }
-"diff.minus.line" = { fg = "fg", bg = "diff_minus_bg" }
+"diff.minus.line" = { fg = "white", bg = "diff_minus_bg" }
 "diff.delta.line" = { bg = "diff_delta_bg" }
-"diff.plus.word" = { fg = "fg", bg = "diff_plus_word_bg", modifiers = [ "bold" ] }
-"diff.minus.word" = { fg = "fg", bg = "diff_minus_word_bg", modifiers = [ "bold", "crossed_out" ] }
+"diff.plus.word" = { fg = "white", bg = "diff_plus_word_bg", modifiers = [ "bold" ] }
+"diff.minus.word" = { fg = "white", bg = "diff_minus_word_bg", modifiers = [ "bold", "crossed_out" ] }
 "markup.heading" = { fg = "sand", modifiers = [ "bold" ] }
 "markup.heading.1" = { fg = "sand", modifiers = [ "bold" ] }
 "markup.heading.2" = { fg = "sand", modifiers = [ "bold" ] }
@@ -87,7 +87,7 @@
 "markup.link.label" = { fg = "plum" }
 "markup.quote" = { fg = "muted", modifiers = [ "italic" ] }
 "markup.raw" = { fg = "plum" }
-"markup.raw.block" = { fg = "fg" }
+"markup.raw.block" = { fg = "white" }
 "markup.raw.inline" = { fg = "plum" }
 "markup.list" = { fg = "sand" }
 "markup.list.checked" = { fg = "green" }
@@ -117,11 +117,11 @@
 "comment.line" = { fg = "muted", modifiers = [ "italic" ] }
 "comment.block" = { fg = "muted", modifiers = [ "italic" ] }
 "comment.block.documentation" = { fg = "muted", modifiers = [ "italic" ] }
-"variable" = { fg = "fg" }
+"variable" = { fg = "white" }
 "variable.builtin" = { fg = "sand" }
-"variable.parameter" = { fg = "fg" }
-"variable.other" = { fg = "fg" }
-"variable.other.member" = { fg = "fg" }
+"variable.parameter" = { fg = "white" }
+"variable.other" = { fg = "white" }
+"variable.other.member" = { fg = "white" }
 "label" = { fg = "sand" }
 "punctuation" = { fg = "muted" }
 "punctuation.bracket" = { fg = "sand" }
@@ -149,8 +149,8 @@
 "tag" = { fg = "sand" }
 "tag.builtin" = { fg = "sand" }
 "tag.attribute" = { fg = "sand" }
-"namespace" = { fg = "fg" }
-"module" = { fg = "fg" }
+"namespace" = { fg = "white" }
+"module" = { fg = "white" }
 "special" = { fg = "sand" }
 # HUME's markdown preview: heading level, heading text, heading band and code-block band.
 "markup.heading.1.marker" = { fg = "sand" }
@@ -174,10 +174,10 @@
 "markup.raw.block.line" = { bg = "code_block_bg" }
 
 [palette]
-"bg" = "#140e0a"
+"brown" = "#140e0a"
 "context" = "#2D211A"
 "surface" = "#3C2E20"
-"fg" = "#F4EADC"
+"white" = "#F4EADC"
 "muted" = "#927C5F"
 "sand" = "#D4A373"
 "plum" = "#AD7CA8"
@@ -186,7 +186,7 @@
 "green" = "#94B36A"
 "blue" = "#6FA8C7"
 "gold" = "#EFD98A"
-"bright_fg" = "#F5ECDE"
+"bright_white" = "#F5ECDE"
 "diff_plus_bg" = "#1D3018"
 "diff_plus_word_bg" = "#255226"
 "diff_minus_bg" = "#351A17"
