@@ -18,6 +18,13 @@
 - A `/` or `?` pattern you confirm goes into the history even when it is invalid, so `Up` brings it back to fix.
 - `surround-add` takes a count: a count adds that many delimiter pairs around each selection, so `2 m w` followed by a character wraps in two characters, as in `**`, in one edit.
 
+### Panes & interface
+- Added a new theme: workbench
+
+<p align="center">
+  <img src="user-manual/docs/public/workbench.png" alt="Workbench theme" width="200" />
+</p>
+
 ### Plugins & scripting
 - `core:markdown` turns a URL or a file's path pasted over selected text into a link, and `Ctrl-Space` in a link's destination lists the files next to the Markdown file.
 - `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and keeps a numbered list in order as you add, renumber, delete, indent or outdent items.

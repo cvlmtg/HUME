@@ -1,0 +1,101 @@
+"ui.background" = { bg = "blue" }
+"ui.text" = { fg = "white" }
+"ui.text.focus" = { fg = "orange", bg = "black", modifiers = ["bold"] }
+"ui.window.focused" = { fg = "orange" }
+"ui.popup" = { fg = "blue", bg = "white" }
+"ui.popup.scroll" = { fg = "orange", bg = "white" }
+"ui.menu" = { fg = "blue", bg = "white" }
+"ui.menu.selected" = { fg = "orange", bg = "black", modifiers = ["bold"] }
+"ui.menu.scroll" = { fg = "orange", bg = "white" }
+"ui.context" = { bg = "darker_blue" }
+"ui.drawer" = { fg = "white", bg = "blue" }
+"ui.selection" = { fg = "white", bg = "black" }
+"ui.selection.primary" = { fg = "orange", bg = "black" }
+"ui.cursor" = { fg = "black", bg = "white" }
+"ui.cursor.primary" = { fg = "black", bg = "orange", modifiers = ["bold"] }
+"ui.cursor.match" = { fg = "orange", bg = "white", modifiers = ["bold"] }
+"ui.cursor.match.search" = { fg = "black", bg = "purple", modifiers = ["bold"] }
+"ui.cursorline" = { bg = "darker_blue" }
+"ui.linenr" = { fg = "white" }
+"ui.linenr.selected" = { fg = "orange", modifiers = ["bold"] }
+"ui.statusline" = { fg = "blue", bg = "white", modifiers = ["bold"] }
+"ui.statusline.command" = { fg = "white", bg = "darker_blue", modifiers = ["bold"] }
+"ui.statusline.select" = { fg = "orange", bg = "white", modifiers = ["bold"] }
+"ui.statusline.search" = { fg = "orange", bg = "black", modifiers = ["bold"] }
+"ui.statusline.sift" = { fg = "orange", bg = "black", modifiers = ["bold"] }
+"ui.tabline" = { fg = "blue", bg = "white", modifiers = ["bold"] }
+"ui.tabline.active" = { fg = "orange", bg = "black", modifiers = ["bold"] }
+"ui.virtual" = { fg = "white" }
+"ui.virtual.indent-guide" = { fg = "black" }
+"ui.virtual.inlay-hint" = { fg = "black" }
+"ui.virtual.invisible" = { fg = "white", bg = "red" }
+
+"attribute" = { fg = "white", modifiers = ["italic"] }
+"comment" = { fg = "black", modifiers = ["italic"] }
+"constant" = { fg = "white", modifiers = ["bold"] }
+"constructor" = { fg = "white", modifiers = ["bold", "italic"] }
+"function" = { fg = "white", modifiers = ["bold"] }
+"keyword" = { fg = "orange", modifiers = ["bold"] }
+"operator" = { fg = "orange" }
+"special" = { fg = "purple" }
+"string" = { fg = "orange" }
+"tag" = { fg = "orange" }
+"variable" = { fg = "white", modifiers = ["italic"] }
+
+"markup.link.url" = { fg = "white", modifiers = ["underlined", "italic"] }
+"markup.link.text" = { fg = "orange" }
+"markup.quote" = { fg = "black", modifiers = ["italic"] }
+"markup.heading" = { fg = "orange", bg = "darker_blue", modifiers = [ "bold" ] }
+"markup.list" = { fg = "white" }
+"markup.list.checked" = { fg = "orange" }
+"markup.raw.block" = { bg = "darker_blue" }
+"markup.raw.inline" = { fg = "orange", bg = "darker_blue" }
+
+"diagnostic" = { underline = { color = "orange", style = "curl" } }
+"diagnostic.deprecated" = { modifiers = ["crossed_out"] }
+"diagnostic.error" = { fg = "red", underline = { color = "red", style = "curl" } }
+"diagnostic.hint" = { fg = "purple", underline = { color = "darker_blue", style = "curl" } }
+"diagnostic.info" = { fg = "green", underline = { color = "green", style = "curl" } }
+"diagnostic.warning" = { fg = "orange", underline = { color = "orange", style = "curl" } }
+
+"error" = { fg = "red" }
+"hint" = { fg = "purple" }
+"info" = { fg = "green" }
+"warning" = { fg = "orange" }
+
+"diff.delta" = { fg = "purple" }
+"diff.minus" = { fg = "red" }
+"diff.plus" = { fg = "green" }
+
+# ── HUME additions ─────────────────────────────────────────────────────────
+
+"error.diagnostic.inline" = { fg = "red" }
+"warning.diagnostic.inline" = { fg = "orange" }
+"info.diagnostic.inline" = { fg = "green" }
+
+"diagnostic.error.message" = { fg = "black", bg = "red" }
+"diagnostic.warning.message" = { fg = "black", bg = "orange" }
+"diagnostic.info.message" = { fg = "black", bg = "green" }
+"diagnostic.hint.message" = { fg = "black", bg = "purple" }
+"diagnostic.error.message-text" = { fg = "red" }
+"diagnostic.warning.message-text" = { fg = "orange" }
+"diagnostic.info.message-text" = { fg = "green" }
+"diagnostic.hint.message-text" = { fg = "purple" }
+
+"diff.plus.line" = { bg = "green" }
+"diff.minus.line" = { fg = "white", bg = "red" }
+"diff.delta.line" = { bg = "darker_blue" }
+"diff.plus.word" = { fg = "black", bg = "green", modifiers = ["bold"] }
+"diff.minus.word" = { fg = "black", bg = "red", modifiers = ["bold", "crossed_out"] }
+
+
+[palette]
+black = "#000022"
+blue = "#0055AA"
+darker_blue = "#004B96"
+white = "#FFFFFF"
+orange = "#FF8800"
+
+red = "#FF4444"
+green = "#22AA55"
+purple = "#BB66DD"
