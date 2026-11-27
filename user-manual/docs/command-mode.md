@@ -141,9 +141,11 @@ See [Settings](settings.md) for every option.
 | Command | Effect |
 |---------|--------|
 | `:theme <name>` | Load a theme; with no argument, show the current one |
-| `:theme-debug` | Show the theme scopes and keys that color the text under the cursor |
+| `:theme-debug` | Show the theme keys behind the highlight under the cursor |
 | `:wrap`, `:toggle-soft-wrap` | Toggle line wrapping in this pane. See [wrap styles](settings.md#text-wrap) |
 | `:mes`, `:messages` | Show the message log in a read-only buffer |
+
+`:theme-debug` prints one line, strongest highlight first. Each highlight under the cursor is shown as its chain of theme keys followed by the style the chain resolves to, for example `comment.line.documentation → comment.line #927c5f/- italic`. The chain stops at the first key that has an entry in your theme or a script style; that last key is the one setting the style. A `-` means that key leaves the channel unset, so a lower highlight, then the theme's `ui.text`, then the terminal's default show through. Modifiers follow the colors, then an underline the key sets as `underline=<shape>[/#rrggbb]` in the theme file's shape words, for example `markup.link.url -/- underline=line`. When no key on the chain has an entry, the line ends with `(no entry)` and `ui.text` colors the text. Only highlights are reported: the cursor, selection and cursorline are painted separately. A `…` marks where the line was cut to fit the statusline; weaker highlights are dropped first.
 
 ## Navigation
 

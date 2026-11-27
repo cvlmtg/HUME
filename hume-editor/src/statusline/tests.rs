@@ -62,6 +62,23 @@ fn pad_right_empty_is_noop() {
     assert!(spans.is_empty());
 }
 
+// ── text_area ─────────────────────────────────────────────────────────────
+
+#[test]
+fn text_area_insets_the_left_edge_only() {
+    let area = text_area(Rect::new(0, 23, 80, 1));
+    assert_eq!(area.x, 1);
+    assert_eq!(area.width, 79);
+    assert_eq!(area.right(), 80, "the row's right edge is unchanged");
+    assert_eq!(area.y, 23);
+}
+
+#[test]
+fn text_area_keeps_a_row_narrower_than_the_inset_empty() {
+    assert_eq!(text_area(Rect::new(0, 0, 0, 1)).width, 0);
+    assert_eq!(text_area(Rect::new(0, 0, 1, 1)).width, 0);
+}
+
 // ── MacroRecording element ────────────────────────────────────────────────
 
 fn test_editor() -> crate::editor::Editor {

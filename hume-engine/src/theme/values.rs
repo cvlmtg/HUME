@@ -102,6 +102,16 @@ pub(super) fn parse_modifier(key: &str, s: &str) -> Result<Modifiers, ThemeError
         })
 }
 
+/// The theme-file words for the modifiers set in `mods`, in `MODIFIER_NAMES`
+/// order: the inverse of `parse_modifier` for every flag the table names.
+/// `crossed_out` is the word for `Modifiers::STRIKETHROUGH`.
+pub fn modifier_names(mods: Modifiers) -> impl Iterator<Item = &'static str> {
+    MODIFIER_NAMES
+        .iter()
+        .filter(move |(_, flag)| mods.contains(*flag))
+        .map(|(name, _)| *name)
+}
+
 /// `parse_underline`'s vocabulary as a table, for the same reason as
 /// [`MODIFIER_NAMES`].
 pub(super) const UNDERLINE_NAMES: [(&str, UnderlineStyle); 5] = [
@@ -111,6 +121,15 @@ pub(super) const UNDERLINE_NAMES: [(&str, UnderlineStyle); 5] = [
     ("dashed", UnderlineStyle::Dashed),
     ("double_line", UnderlineStyle::Double),
 ];
+
+/// The theme-file word for `style`, `None` for `UnderlineStyle::None`, which
+/// no table word names. The inverse of `parse_underline`.
+pub fn underline_name(style: UnderlineStyle) -> Option<&'static str> {
+    UNDERLINE_NAMES
+        .iter()
+        .find(|(_, u)| *u == style)
+        .map(|&(name, _)| name)
+}
 
 pub(super) fn parse_underline(key: &str, s: &str) -> Result<UnderlineStyle, ThemeError> {
     UNDERLINE_NAMES

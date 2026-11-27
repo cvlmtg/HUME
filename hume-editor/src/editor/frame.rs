@@ -644,7 +644,7 @@ impl Editor {
         // rows render first: a failed render closes layers these views show.
         let picker_geometry = hume_ui::picker_panel::panel_geometry(screen.pane_area());
         self.prepare_picker_window(picker_geometry.as_ref());
-        let minibuf_area = crate::statusline::minibuf_input_area(screen.statusline_area());
+        let minibuf_area = crate::statusline::text_area(screen.statusline_area());
         let minibuf = self
             .state
             .input

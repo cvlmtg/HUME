@@ -6,6 +6,8 @@ pub mod style_spec;
 pub mod ui_scopes;
 mod values;
 
+pub use values::{modifier_names, underline_name};
+
 use std::collections::HashMap;
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -137,8 +139,9 @@ impl ScopeRegistry {
 /// The dot-notation fallback chain for `scope`, most specific first:
 /// `"keyword.function"` yields `"keyword.function"`, then `"keyword"`.
 ///
-/// `Theme::resolve_raw` takes the first name with an entry; a theme-inspection
-/// report prints the whole chain so the reader can see which keys to edit.
+/// `Theme::resolve_raw` takes the first name with an entry;
+/// `Theme::matching_entry` names that key, and the chain itself gives every
+/// key a lookup may consult.
 pub fn fallback_chain(scope: &str) -> impl Iterator<Item = &str> {
     std::iter::successors(Some(scope), |cur| cur.rfind('.').map(|dot| &cur[..dot]))
 }
@@ -351,7 +354,7 @@ impl Theme {
 
     /// The style used when no scope matches: the `ui.text` entry, or empty.
     #[inline]
-    pub fn default_style(&self) -> ResolvedStyle {
+    pub(crate) fn default_style(&self) -> ResolvedStyle {
         self.default
     }
 
@@ -478,9 +481,18 @@ impl Theme {
         self.lookup(s).unwrap_or(self.default)
     }
 
+    /// The first key on `scope`'s fallback chain with an entry, and the style
+    /// that entry sets. `None` when no key on the chain is defined.
+    ///
+    /// Reads the live entries, the same ones a bake resolves from, so a style
+    /// applied since the last frame is included.
+    pub fn matching_entry<'a>(&self, scope: &'a str) -> Option<(&'a str, ResolvedStyle)> {
+        fallback_chain(scope).find_map(|key| self.entry(key).map(|style| (key, style)))
+    }
+
     /// The style of the first name on `s`'s fallback chain with an entry.
     fn lookup(&self, s: &str) -> Option<ResolvedStyle> {
-        fallback_chain(s).find_map(|key| self.entry(key))
+        self.matching_entry(s).map(|(_, style)| style)
     }
 
     fn compute_ui(&self) -> UiScopes {

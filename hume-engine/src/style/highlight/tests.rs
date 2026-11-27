@@ -85,12 +85,12 @@ fn rebuild_line_decorations_buckets_one_sources_spans_by_tier() {
     );
 
     assert_eq!(
-        scratch.tier_bufs.0[HighlightTier::Syntax as usize],
+        scratch.tier_bufs.0[HighlightTier::Syntax.index()],
         vec![span(0, 1, scope)],
         "the Syntax-tier span lands in the Syntax bucket"
     );
     assert_eq!(
-        scratch.tier_bufs.0[HighlightTier::Diagnostic as usize],
+        scratch.tier_bufs.0[HighlightTier::Diagnostic.index()],
         vec![span(2, 3, scope)],
         "the Diagnostic-tier span from the same source lands in a different bucket"
     );

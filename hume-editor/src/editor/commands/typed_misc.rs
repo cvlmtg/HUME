@@ -1,12 +1,12 @@
 use std::time::Duration;
 
-use hume_core::{BufferId, Severity};
+use hume_core::{BufferId, Severity, TruncateEnd};
 use hume_engine::pipeline::{Cycle, Direction, EngineView};
-use hume_engine::providers::HighlightTier;
-use hume_engine::types::{ResolvedStyle, ScopeId};
+use hume_engine::types::ResolvedStyle;
 use hume_grid::Rgb;
 use hume_platform::path::AbsolutePath;
 use hume_rope::line::ContentLine;
+use hume_rope::width::{chrome_width, truncate_marked};
 
 use super::super::Editor;
 use super::super::EditorState;
@@ -252,17 +252,21 @@ pub(in crate::editor) fn typed_theme(
     .map_err(CommandError::new)
 }
 
-/// `:theme-debug`: name the theme scopes that color the text under the cursor.
+/// `:theme-debug`: name the theme key that colors the text under the cursor.
 ///
-/// One statusline line: every highlight tier active at the primary head,
-/// lowest priority first, each with the dot-notation chain of theme keys
-/// that resolves its style, then the style the layers produce together.
-/// Tiers with no span at the cursor are omitted; with none active the line
-/// says so.
+/// One statusline line, strongest highlight first. Each tier prints its
+/// fallback chain up to the first key with an entry, then that entry's style
+/// as `<fg>/<bg>[ modifiers][ underline=<shape>[/#rrggbb]]`; `-` is a channel
+/// the key leaves unset. A tier whose chain has no entry prints the whole
+/// chain and `(no entry)`. Entries are cut to the statusline's text area,
+/// marked with `…`, so the weakest tiers are the ones lost. Only highlight
+/// tiers are reported; the cursor, selection and cursorline paint are not.
 pub(in crate::editor) fn typed_theme_debug(
     ed: &mut Editor,
     fp: FocusedPane,
 ) -> Result<(), CommandError> {
+    const SEP: &str = " | ";
+
     fn color_str(c: Option<Rgb>) -> String {
         match c {
             Some(Rgb(r, g, b)) => format!("#{r:02x}{g:02x}{b:02x}"),
@@ -271,18 +275,29 @@ pub(in crate::editor) fn typed_theme_debug(
     }
 
     fn style_str(style: ResolvedStyle) -> String {
-        let modifiers = if style.modifiers.is_empty() {
-            String::new()
-        } else {
-            let names: Vec<&str> = style.modifiers.iter_names().map(|(name, _)| name).collect();
-            format!(" modifiers {}", names.join(","))
-        };
-        format!(
-            "fg={} bg={}{}",
-            color_str(style.fg),
-            color_str(style.bg),
-            modifiers,
-        )
+        let mut text = format!("{}/{}", color_str(style.fg), color_str(style.bg));
+        let modifiers: Vec<&str> = hume_engine::theme::modifier_names(style.modifiers).collect();
+        if !modifiers.is_empty() {
+            text.push(' ');
+            text.push_str(&modifiers.join(","));
+        }
+        if let Some(shape) = hume_engine::theme::underline_name(style.underline) {
+            text.push_str(" underline=");
+            text.push_str(shape);
+            if let Some(color) = style.underline_color {
+                text.push('/');
+                text.push_str(&color_str(Some(color)));
+            }
+        }
+        text
+    }
+
+    /// `scope`'s fallback chain up to and including `key`, most specific
+    /// first: the keys a theme edit may touch, ending at the one that applies.
+    fn chain_through<'a>(scope: &'a str, key: &'a str) -> impl Iterator<Item = &'a str> {
+        hume_engine::theme::fallback_chain(scope)
+            .take_while(move |name| *name != key)
+            .chain(std::iter::once(key))
     }
 
     let bid = fp.bid(&ed.view);
@@ -295,7 +310,7 @@ pub(in crate::editor) fn typed_theme_debug(
         bid,
         SyntaxUse::Highlights,
     );
-    let active: Vec<(HighlightTier, ScopeId)> = {
+    let active = {
         let buf = ed.state.buffers.get(bid);
         let text = buf.text();
         let head = super::pane_view(&ed.state, &ed.view, fp.pane())
@@ -317,28 +332,42 @@ pub(in crate::editor) fn typed_theme_debug(
         return Ok(());
     }
 
-    ed.view.theme.bake_if_stale(&ed.view.registry);
-    let mut parts = Vec::new();
-    let mut effective = ed.view.theme.default_style();
-    for (tier, id) in active {
+    // The status message fills the statusline's text area, which the renderer
+    // clips at the same right edge.
+    let statusline = ed.state.screen_layout(&ed.view).statusline_area();
+    let capacity = usize::from(crate::statusline::text_area(statusline).width);
+    let mut msg = String::new();
+    for (_, id) in active.into_iter().rev() {
         let name = ed.view.registry.name_of(id);
-        let style = ed.view.theme.resolve(id);
-        effective = effective.layer(style);
-        let chain: Vec<&str> = hume_engine::theme::fallback_chain(name).collect();
-        let chain_text = if chain.iter().any(|key| ed.view.theme.has_entry(key)) {
-            chain.join(" → ")
-        } else {
-            format!("{name} → default")
+        let entry = match ed.view.theme.matching_entry(name) {
+            Some((key, style)) => format!(
+                "{} {}",
+                chain_through(name, key).collect::<Vec<_>>().join(" → "),
+                style_str(style)
+            ),
+            None => format!(
+                "{} (no entry)",
+                hume_engine::theme::fallback_chain(name)
+                    .collect::<Vec<_>>()
+                    .join(" → ")
+            ),
         };
-        parts.push(format!(
-            "{}: {} {}",
-            tier.label(),
-            chain_text,
-            style_str(style)
-        ));
+        let sep = if msg.is_empty() { 0 } else { chrome_width(SEP) };
+        let remaining = capacity.saturating_sub(chrome_width(&msg) + sep);
+        let fitted = truncate_marked(&entry, remaining, TruncateEnd::Tail);
+        if fitted.is_empty() {
+            break;
+        }
+        if !msg.is_empty() {
+            msg.push_str(SEP);
+        }
+        let cut = fitted.len() < entry.len();
+        msg.push_str(&fitted);
+        if cut {
+            break;
+        }
     }
-    parts.push(format!("effective {}", style_str(effective)));
-    ed.report(Severity::Info, parts.join(" | "));
+    ed.report(Severity::Info, msg);
     Ok(())
 }
 

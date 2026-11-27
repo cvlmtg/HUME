@@ -387,8 +387,9 @@ fn rust_editor(initial: &str) -> Editor {
     ed
 }
 
-/// Theme entries for the `:theme-debug` tests: `keyword` is defined, so a
-/// capture with no entry of its own falls back to `default`.
+/// Theme entries for the `:theme-debug` tests: `keyword` is defined, so
+/// `keyword.function` falls back to it. A capture with no entry on its chain
+/// reports `(no entry)`.
 fn keyword_entries() -> std::collections::HashMap<&'static str, hume_engine::types::ResolvedStyle> {
     std::collections::HashMap::from([(
         "keyword",
@@ -412,18 +413,145 @@ fn theme_debug_message(initial: &str) -> String {
         .to_owned()
 }
 
-/// The line names the syntax scope under the cursor and the theme keys that
-/// resolve it. `fn` is `keyword.function`, which falls back to the theme's
-/// `keyword`; `main` is `function`, which has no entry at all.
+/// The columns a status message may fill in `ed`.
+fn statusline_capacity(ed: &Editor) -> usize {
+    let statusline = ed.state.screen_layout(&ed.view).statusline_area();
+    usize::from(crate::statusline::text_area(statusline).width)
+}
+
+/// The line lists the theme keys to look up for the text under the cursor,
+/// stopping at the key that has an entry. `fn` is `keyword.function`, which
+/// falls back to `keyword`; `main` is `function`, which has none.
 #[test]
-fn theme_debug_reports_the_scope_under_the_cursor() {
+fn theme_debug_reports_the_chain_for_the_scope_under_the_cursor() {
     assert_eq!(
         theme_debug_message("-[f]>n main() {}\n"),
-        "syntax: keyword.function → keyword fg=#445566 bg=- | effective fg=#445566 bg=-"
+        "keyword.function → keyword #445566/-"
     );
     assert_eq!(
         theme_debug_message("fn -[m]>ain() {}\n"),
-        "syntax: function → default fg=- bg=- | effective fg=- bg=-"
+        "function (no entry)"
+    );
+}
+
+/// With nothing defined for the scope or any ancestor, the whole chain is
+/// printed, so the keys that could gain an entry are visible.
+#[test]
+fn theme_debug_prints_the_whole_chain_when_nothing_is_defined() {
+    assert_eq!(
+        theme_debug_message("fn main(-[x]>: u32) {}\n"),
+        "variable.parameter → variable (no entry)"
+    );
+}
+
+/// `keyword.function` has an entry of its own, so the chain stops there and
+/// the reader does not have to check the theme file to see which key won.
+#[test]
+fn theme_debug_stops_at_the_key_that_applies() {
+    let mut ed = rust_editor("-[f]>n main() {}\n");
+    let mut entries = keyword_entries();
+    entries.insert(
+        "keyword.function",
+        hume_engine::types::ResolvedStyle {
+            fg: Some(hume_grid::Rgb(0x11, 0x22, 0x33)),
+            ..Default::default()
+        },
+    );
+    ed.view.theme = hume_engine::theme::Theme::new(entries);
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some("keyword.function #112233/-")
+    );
+}
+
+/// Sand defines `comment.line` but not `comment.line.documentation`: the
+/// chain stops at `comment.line`, the key to edit.
+#[test]
+fn theme_debug_stops_at_the_key_sand_defines_for_a_doc_comment() {
+    let mut ed = rust_editor("/// -[D]>oc line\n");
+    ed.view.theme = hume_engine::theme::loader::load_theme("sand", &[bundled_themes_dir()])
+        .expect("bundled theme 'sand' must load")
+        .theme;
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    let msg = ed
+        .state
+        .status_msg
+        .text()
+        .expect(":theme-debug reports Info");
+    assert!(
+        msg.starts_with("comment.line.documentation → comment.line #"),
+        "the chain must stop at the defined key with its color: {msg}"
+    );
+    assert!(msg.ends_with("/- italic"), "{msg}");
+}
+
+#[test]
+fn theme_debug_compacts_modifiers() {
+    let mut ed = rust_editor("-[f]>n main() {}\n");
+    let mut entries = keyword_entries();
+    entries.insert(
+        "keyword",
+        hume_engine::types::ResolvedStyle {
+            fg: Some(hume_grid::Rgb(0x44, 0x55, 0x66)),
+            modifiers: hume_engine::types::Modifiers::BOLD
+                | hume_engine::types::Modifiers::ITALIC
+                | hume_engine::types::Modifiers::STRIKETHROUGH,
+            ..Default::default()
+        },
+    );
+    ed.view.theme = hume_engine::theme::Theme::new(entries);
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some("keyword.function → keyword #445566/- bold,italic,crossed_out")
+    );
+}
+
+#[test]
+fn theme_debug_reports_the_underline_shape_and_color() {
+    let mut ed = rust_editor("-[f]>n main() {}\n");
+    let mut entries = keyword_entries();
+    entries.insert(
+        "keyword",
+        hume_engine::types::ResolvedStyle {
+            fg: Some(hume_grid::Rgb(0x44, 0x55, 0x66)),
+            underline: hume_engine::types::UnderlineStyle::Wavy,
+            underline_color: Some(hume_grid::Rgb(0x01, 0x02, 0x03)),
+            ..Default::default()
+        },
+    );
+    ed.view.theme = hume_engine::theme::Theme::new(entries);
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some("keyword.function → keyword #445566/- underline=curl/#010203")
+    );
+}
+
+/// A key whose only style is `underlined` resolves to a solid underline with
+/// no color, as `github_dark`'s `markup.link.url` does.
+#[test]
+fn theme_debug_reports_an_underline_with_no_color() {
+    let mut ed = rust_editor("-[f]>n main() {}\n");
+    let mut entries = keyword_entries();
+    entries.insert(
+        "keyword",
+        hume_engine::types::ResolvedStyle {
+            underline: hume_engine::types::UnderlineStyle::Solid,
+            ..Default::default()
+        },
+    );
+    ed.view.theme = hume_engine::theme::Theme::new(entries);
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some("keyword.function → keyword -/- underline=line")
     );
 }
 
@@ -446,10 +574,15 @@ fn theme_debug_reports_no_scope_on_whitespace() {
     );
 }
 
-/// A plugin span over bytes 0..2 of line 0, in the Extra tier.
-struct ProbeExtra(hume_engine::types::ScopeId);
+/// One highlight span over bytes 0..2 of line 0 per `(scope, tier)`.
+struct ProbeTiers(
+    Vec<(
+        hume_engine::types::ScopeId,
+        hume_engine::providers::HighlightTier,
+    )>,
+);
 
-impl hume_engine::providers::DecorationSource for ProbeExtra {
+impl hume_engine::providers::DecorationSource for ProbeTiers {
     fn kinds(&self) -> hume_engine::providers::DecorationKinds {
         hume_engine::providers::DecorationKinds::HIGHLIGHT
     }
@@ -459,23 +592,37 @@ impl hume_engine::providers::DecorationSource for ProbeExtra {
         line: hume_rope::line::ContentLine,
         out: &mut Vec<hume_engine::providers::Decoration>,
     ) {
-        if line.index() == 0 {
+        if line.index() != 0 {
+            return;
+        }
+        for &(scope, tier) in &self.0 {
             out.push(hume_engine::providers::Decoration::Highlight {
                 range: hume_rope::offset::ExclusiveRange::new(
                     hume_rope::column::ByteCol::new(0),
                     hume_rope::column::ByteCol::new(2),
                 ),
-                scope: self.0,
-                tier: hume_engine::providers::HighlightTier::Extra,
+                scope,
+                tier,
             });
         }
     }
 }
 
+fn probe_tiers(ed: &mut Editor, probes: &[(&'static str, hume_engine::providers::HighlightTier)]) {
+    let scopes: Vec<_> = probes
+        .iter()
+        .map(|(name, tier)| (ed.view.registry.intern(name), *tier))
+        .collect();
+    let pid = ed.view.focused_pane();
+    ed.view.panes[pid]
+        .providers
+        .add_decoration_source(Box::new(ProbeTiers(scopes)));
+}
+
 #[test]
-fn theme_debug_reports_every_active_layer() {
+fn theme_debug_shows_each_tiers_own_style() {
+    use hume_engine::providers::HighlightTier;
     let mut ed = rust_editor("-[f]>n main() {}\n");
-    let scope = ed.view.registry.intern("plugin.mark");
     let mut entries = keyword_entries();
     entries.insert(
         "plugin.mark",
@@ -486,20 +633,118 @@ fn theme_debug_reports_every_active_layer() {
         },
     );
     ed.view.theme = hume_engine::theme::Theme::new(entries);
-    let pid = ed.view.focused_pane();
-    ed.view.panes[pid]
-        .providers
-        .add_decoration_source(Box::new(ProbeExtra(scope)));
+    probe_tiers(&mut ed, &[("plugin.mark", HighlightTier::Extra)]);
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    // Highest priority first: the extra tier's chain comes before the syntax tier's.
+    assert_eq!(
+        ed.state.status_msg.text(),
+        Some("plugin.mark -/#112233 bold | keyword.function → keyword #445566/-")
+    );
+}
+
+#[test]
+fn theme_debug_lists_every_active_tier_strongest_first() {
+    use hume_engine::providers::HighlightTier;
+    let mut ed = rust_editor("-[f]>n main() {}\n");
+    // Wider than 80 columns: the report must use the room, not a fixed cap.
+    ed.resize_terminal(140, 25);
+    ed.view.theme = hume_engine::theme::Theme::new(keyword_entries());
+    probe_tiers(
+        &mut ed,
+        &[
+            ("pextra", HighlightTier::Extra),
+            ("psearch", HighlightTier::SearchMatch),
+            ("pdiagnostic", HighlightTier::Diagnostic),
+            ("pbracket", HighlightTier::BracketMatch),
+        ],
+    );
     ed.execute_typed("theme-debug", None)
         .expect(":theme-debug must succeed");
     assert_eq!(
         ed.state.status_msg.text(),
         Some(
-            "syntax: keyword.function → keyword fg=#445566 bg=- | \
-             extra: plugin.mark → plugin fg=- bg=#112233 modifiers BOLD | \
-             effective fg=#445566 bg=#112233 modifiers BOLD"
+            "pbracket (no entry) | pdiagnostic (no entry) | psearch (no entry) | \
+             pextra (no entry) | keyword.function → keyword #445566/-"
         )
     );
+}
+
+/// The strongest chain is cut to the statusline, marked with `…`, before any
+/// weaker tier is considered.
+#[test]
+fn theme_debug_cuts_the_strongest_chain_to_the_statusline() {
+    use hume_engine::providers::HighlightTier;
+    let mut ed = rust_editor("-[f]>n main() {}\n");
+    ed.resize_terminal(40, 12);
+    probe_tiers(
+        &mut ed,
+        &[
+            ("plugin.diagnostic.tier", HighlightTier::Diagnostic),
+            (
+                "plugin.long.scope.name.for.the.bracket.tier",
+                HighlightTier::BracketMatch,
+            ),
+        ],
+    );
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    let msg = ed
+        .state
+        .status_msg
+        .text()
+        .expect(":theme-debug reports Info")
+        .to_owned();
+    let capacity = statusline_capacity(&ed);
+    assert_eq!(
+        hume_rope::width::chrome_width(&msg),
+        capacity,
+        "the line must fill the statusline: {msg}"
+    );
+    assert!(
+        msg.ends_with(hume_rope::width::ELLIPSIS),
+        "a cut chain must be marked: {msg}"
+    );
+    assert!(
+        msg.starts_with("plugin.long.scope.name.for.the.bracket"),
+        "the strongest scope must survive: {msg}"
+    );
+    assert!(!msg.contains("plugin.diagnostic"), "{msg}");
+}
+
+/// A weaker tier fills the columns left after the stronger ones instead of
+/// being dropped whole.
+#[test]
+fn theme_debug_fills_the_line_before_cutting() {
+    use hume_engine::providers::HighlightTier;
+    let mut ed = rust_editor("-[f]>n main() {}\n");
+    ed.resize_terminal(31, 12);
+    probe_tiers(
+        &mut ed,
+        &[
+            ("pb", HighlightTier::BracketMatch),
+            ("plugin.diagnostic.tier", HighlightTier::Diagnostic),
+        ],
+    );
+    ed.execute_typed("theme-debug", None)
+        .expect(":theme-debug must succeed");
+    let msg = ed
+        .state
+        .status_msg
+        .text()
+        .expect(":theme-debug reports Info")
+        .to_owned();
+    let capacity = statusline_capacity(&ed);
+    assert_eq!(
+        hume_rope::width::chrome_width(&msg),
+        capacity,
+        "the weaker tier must use the remaining columns: {msg}"
+    );
+    assert!(
+        msg.starts_with("pb (no entry) | plugin.diagno"),
+        "the weaker tier's first columns must show: {msg}"
+    );
+    assert!(msg.ends_with(hume_rope::width::ELLIPSIS), "{msg}");
 }
 
 #[test]
@@ -523,7 +768,7 @@ fn theme_debug_uses_script_styles_in_the_chain() {
         .expect(":theme-debug must succeed");
     assert_eq!(
         ed.state.status_msg.text(),
-        Some("syntax: keyword.function → keyword fg=#aabbcc bg=- | effective fg=#aabbcc bg=-")
+        Some("keyword.function → keyword #aabbcc/-")
     );
 }
 

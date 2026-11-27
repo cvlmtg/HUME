@@ -21,11 +21,11 @@ use elements::{
     StatuslineElement,
 };
 
-/// The cells an open minibuffer's text gets on the statusline row
-/// `statusline`: all of it after the left [`EDGE_PAD`]. The text is drawn at
-/// the column its [`MinibufView`] resolved from this, the one the terminal
-/// cursor and the completion popup are placed from.
-pub(crate) fn minibuf_input_area(statusline: Rect) -> Rect {
+/// The cells statusline text gets on the row `statusline`: all of it after
+/// the left [`EDGE_PAD`]. An open minibuffer's input and a status message both
+/// draw here. The column a [`MinibufView`] resolves from, the terminal cursor
+/// and the completion popup all come from this one rect.
+pub(crate) fn text_area(statusline: Rect) -> Rect {
     let pad = chrome_width(EDGE_PAD) as u16;
     Rect {
         x: statusline.x + pad,
@@ -406,12 +406,13 @@ impl hume_engine::providers::ChromeProvider for HumeStatusline<'_> {
         // answerable right now.
         if let Some(confirm) = editor.state.confirm() {
             fill_row_colors(canvas, &colors, area, y);
+            let text = text_area(area);
             canvas.write_text_run(
-                area.x + 1,
+                text.x,
                 y,
                 &confirm.render_line(),
                 colors.statusline,
-                area.right(),
+                text.right(),
             );
             return;
         }
@@ -436,7 +437,8 @@ impl hume_engine::providers::ChromeProvider for HumeStatusline<'_> {
 
             if let Some(msg) = display_msg {
                 fill_row_colors(canvas, &colors, area, y);
-                canvas.write_text_run(area.x + 1, y, msg, colors.statusline, area.right());
+                let text = text_area(area);
+                canvas.write_text_run(text.x, y, msg, colors.statusline, text.right());
                 return;
             }
         }

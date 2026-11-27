@@ -26,18 +26,19 @@ pub type ProviderId = u16;
 /// not a per-provider property: one source can emit spans at different tiers.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum HighlightTier {
-    Syntax = 0,
+    Syntax,
     /// Generic plugin-supplied spans (`set-extra-highlights!`): beat syntax,
     /// lose to search matches, diagnostics, and bracket matches.
-    Extra = 1,
-    SearchMatch = 2,
-    Diagnostic = 3,
-    BracketMatch = 4,
+    Extra,
+    SearchMatch,
+    Diagnostic,
+    BracketMatch,
 }
 
 impl HighlightTier {
-    /// Every tier in layering order, lowest priority first. The arrays indexed
-    /// by `tier as usize` in the style stage rely on this order.
+    /// Every tier in layering order, lowest priority first. The arrays sized
+    /// by `TIER_COUNT` are indexed by [`Self::index`], so this must list every
+    /// tier in that order.
     pub(crate) const ALL: [Self; 5] = [
         Self::Syntax,
         Self::Extra,
@@ -46,17 +47,31 @@ impl HighlightTier {
         Self::BracketMatch,
     ];
 
-    /// The name shown when a tier contributes to a theme-inspection report.
-    pub fn label(self) -> &'static str {
+    /// This tier's slot in the arrays sized by `TIER_COUNT` and its position
+    /// in [`Self::ALL`]. An exhaustive match, so a new variant fails to
+    /// compile until it is given a slot.
+    pub(crate) const fn index(self) -> usize {
         match self {
-            Self::Syntax => "syntax",
-            Self::Extra => "extra",
-            Self::SearchMatch => "search-match",
-            Self::Diagnostic => "diagnostic",
-            Self::BracketMatch => "bracket-match",
+            Self::Syntax => 0,
+            Self::Extra => 1,
+            Self::SearchMatch => 2,
+            Self::Diagnostic => 3,
+            Self::BracketMatch => 4,
         }
     }
 }
+
+// The tier arrays are indexed by `index()`. A new variant trips that match;
+// an `ALL` that was reordered, or left shorter than the highest tier's slot,
+// trips here.
+const _: () = {
+    assert!(HighlightTier::ALL.len() == HighlightTier::BracketMatch.index() + 1);
+    let mut i = 0;
+    while i < HighlightTier::ALL.len() {
+        assert!(HighlightTier::ALL[i].index() == i);
+        i += 1;
+    }
+};
 
 // Syntax source
 

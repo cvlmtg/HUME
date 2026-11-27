@@ -44,14 +44,15 @@ impl<'a> IntervalCursor<'a> {
 // ── Highlight stack ────────────────────────────────────────────────────────────
 
 /// Number of highlight tiers, from the one ordered list. The tier arrays in
-/// [`HighlightStack`] and [`TierBufs`] are indexed by `tier as usize`, so
-/// [`HighlightTier::ALL`] must stay in discriminant order.
+/// [`HighlightStack`] and [`TierBufs`] are indexed by
+/// [`HighlightTier::index`], so [`HighlightTier::ALL`] must list every tier in
+/// that same order.
 const TIER_COUNT: usize = HighlightTier::ALL.len();
 
 /// Aggregated highlight intervals for one buffer line, one cursor per tier.
 /// Built once before iterating graphemes, queried per grapheme in O(1) amortised.
 ///
-/// Indexed by `HighlightTier as usize`, so iterating `tiers` in order visits
+/// Indexed by [`HighlightTier::index`], so iterating `tiers` in order visits
 /// tiers from lowest to highest layering priority (see [`HighlightTier`]).
 pub(super) struct HighlightStack<'a> {
     tiers: [IntervalCursor<'a>; TIER_COUNT],
@@ -67,6 +68,14 @@ impl<'a> HighlightStack<'a> {
         }
     }
 
+    /// The scope active at `byte_offset` in each tier, or `None` where no
+    /// span covers it, indexed by [`HighlightTier::index`]. One lookup per
+    /// tier; both the render path and theme inspection read it so they cannot
+    /// disagree about which scope is active.
+    fn active_at(&mut self, byte_offset: ByteCol) -> [Option<ScopeId>; TIER_COUNT] {
+        std::array::from_fn(|i| self.tiers[i].scope_at(byte_offset))
+    }
+
     /// Layer all active highlight tiers at `byte_offset` into `base`, lowest
     /// priority first (`Syntax`) through highest (`BracketMatch`).
     ///
@@ -78,10 +87,8 @@ impl<'a> HighlightStack<'a> {
         mut base: ResolvedStyle,
         theme: &Theme,
     ) -> ResolvedStyle {
-        for cursor in &mut self.tiers {
-            if let Some(id) = cursor.scope_at(byte_offset) {
-                base = base.layer(theme.resolve(id));
-            }
+        for id in self.active_at(byte_offset).into_iter().flatten() {
+            base = base.layer(theme.resolve(id));
         }
         base
     }
@@ -92,7 +99,7 @@ impl<'a> HighlightStack<'a> {
 ///
 /// Each interval is `(range, ScopeId)`; the `ScopeId` maps to
 /// a pre-baked [`ResolvedStyle`] via an O(1) `Vec` index in [`Theme::resolve`].
-/// Indexed by `HighlightTier as usize`; see `HighlightStack`.
+/// Indexed by `HighlightTier::index`; see `HighlightStack`.
 #[derive(Default)]
 pub struct TierBufs([Vec<(ExclusiveRange<ByteCol>, ScopeId)>; TIER_COUNT]);
 
@@ -104,7 +111,7 @@ impl TierBufs {
     }
 
     fn tier_mut(&mut self, tier: HighlightTier) -> &mut Vec<(ExclusiveRange<ByteCol>, ScopeId)> {
-        &mut self.0[tier as usize]
+        &mut self.0[tier.index()]
     }
 
     fn sort_all(&mut self) {
@@ -180,13 +187,11 @@ pub fn scopes_at_byte(
 ) -> Vec<(HighlightTier, ScopeId)> {
     let mut scratch = StyleScratch::new();
     rebuild_line_decorations(line, syntax, providers, rope, &mut scratch);
+    let mut stack = HighlightStack::new(&scratch.tier_bufs);
     HighlightTier::ALL
         .into_iter()
-        .zip(scratch.tier_bufs.0.iter())
-        .filter_map(|(tier, intervals)| {
-            let (_, id) = intervals.iter().find(|(range, _)| range.contains(byte))?;
-            Some((tier, *id))
-        })
+        .zip(stack.active_at(byte))
+        .filter_map(|(tier, id)| id.map(|id| (tier, id)))
         .collect()
 }
 

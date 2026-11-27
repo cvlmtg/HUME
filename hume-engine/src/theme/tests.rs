@@ -158,6 +158,67 @@ fn resolve_still_gives_the_default_for_an_unthemed_scope() {
     assert_eq!(theme.resolve(id), colored_default());
 }
 
+// ── Theme::matching_entry (the key that applies) ─────────────────────
+
+#[test]
+fn matching_entry_is_none_when_no_key_on_the_chain_is_defined() {
+    let theme = make_theme();
+    assert_eq!(theme.matching_entry("markup.italic"), None);
+}
+
+#[test]
+fn matching_entry_returns_the_exact_key_when_it_is_defined() {
+    let theme = make_theme();
+    assert_eq!(
+        theme.matching_entry("keyword"),
+        Some(("keyword", fg(Rgb(0, 0, 255))))
+    );
+}
+
+#[test]
+fn matching_entry_returns_the_most_specific_defined_ancestor() {
+    let theme = make_theme();
+    assert_eq!(
+        theme.matching_entry("keyword.operator.assignment"),
+        Some(("keyword.operator", fg(Rgb(0, 255, 255))))
+    );
+}
+
+// ── modifier_names and underline_name (theme-file spelling) ───────────
+
+#[test]
+fn modifier_names_are_the_theme_file_words_in_table_order() {
+    let names: Vec<&str> =
+        modifier_names(crate::types::Modifiers::STRIKETHROUGH | crate::types::Modifiers::BOLD)
+            .collect();
+    assert_eq!(names, ["bold", "crossed_out"]);
+}
+
+#[test]
+fn every_modifier_word_round_trips_through_the_parser() {
+    for (word, flag) in crate::theme::values::MODIFIER_NAMES {
+        let parsed =
+            crate::theme::values::parse_modifier("test", word).expect("a table word must parse");
+        assert_eq!(parsed, flag);
+        assert_eq!(modifier_names(flag).collect::<Vec<_>>(), vec![word]);
+    }
+}
+
+#[test]
+fn every_underline_word_round_trips_through_the_parser() {
+    for (word, style) in crate::theme::values::UNDERLINE_NAMES {
+        let parsed =
+            crate::theme::values::parse_underline("test", word).expect("a table word must parse");
+        assert_eq!(parsed, style);
+        assert_eq!(underline_name(style), Some(word));
+    }
+}
+
+#[test]
+fn underline_name_is_none_for_no_underline() {
+    assert_eq!(underline_name(crate::types::UnderlineStyle::None), None);
+}
+
 // ── Theme::resolve_by_name (slow path, no bake needed) ───────────────
 
 #[test]
@@ -797,6 +858,19 @@ mod scope_styles {
             Restyle::All,
         );
         assert!(theme.has_entry("ui.statusline.separator"));
+    }
+
+    #[test]
+    fn matching_entry_names_a_script_styled_key() {
+        let mut theme = theme_with([("keyword", fg(RED))]);
+        let _ = theme.apply_scope_styles(
+            &styles(&[("keyword.operator", fg_spec(GREEN), ConfigOrigin::User)]),
+            Restyle::All,
+        );
+        assert_eq!(
+            theme.matching_entry("keyword.operator.assignment"),
+            Some(("keyword.operator", fg(GREEN)))
+        );
     }
 }
 

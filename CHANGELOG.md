@@ -38,7 +38,7 @@
 - A search or sift a script runs with `call!` stays out of the prompt history. It still sets the search register and the jump list.
 
 ### Fixes
-- `:theme-debug` now names every theme scope that colors the text under the cursor, with the keys to edit and the resulting style.
+- `:theme-debug` now lists the theme keys behind the highlight under the cursor and stops at the one that applies, in one short statusline line.
 - Undo no longer crashes the editor when it merges two lines and a gutter sign sits on one of them.
 - `Ctrl-w` deletes the word before the cursor in pickers.
 - Deleting a `/` or `s` pattern with `Ctrl-w`, or going back down to an empty line in the search history, restores the selections, as Backspace does.
