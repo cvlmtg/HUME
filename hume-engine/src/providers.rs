@@ -36,6 +36,16 @@ pub enum HighlightTier {
 }
 
 impl HighlightTier {
+    /// Every tier in layering order, lowest priority first. The arrays indexed
+    /// by `tier as usize` in the style stage rely on this order.
+    pub(crate) const ALL: [Self; 5] = [
+        Self::Syntax,
+        Self::Extra,
+        Self::SearchMatch,
+        Self::Diagnostic,
+        Self::BracketMatch,
+    ];
+
     /// The name shown when a tier contributes to a theme-inspection report.
     pub fn label(self) -> &'static str {
         match self {

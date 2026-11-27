@@ -43,10 +43,10 @@ impl<'a> IntervalCursor<'a> {
 
 // ── Highlight stack ────────────────────────────────────────────────────────────
 
-/// Number of [`HighlightTier`] variants. The tier arrays in [`HighlightStack`]
-/// and [`TierBufs`] are indexed by `tier as usize`, so this must track the
-/// enum exactly (see `HighlightTier`'s doc for the discriminant assignments).
-const TIER_COUNT: usize = 5;
+/// Number of highlight tiers, from the one ordered list. The tier arrays in
+/// [`HighlightStack`] and [`TierBufs`] are indexed by `tier as usize`, so
+/// [`HighlightTier::ALL`] must stay in discriminant order.
+const TIER_COUNT: usize = HighlightTier::ALL.len();
 
 /// Aggregated highlight intervals for one buffer line, one cursor per tier.
 /// Built once before iterating graphemes, queried per grapheme in O(1) amortised.
@@ -180,14 +180,7 @@ pub fn scopes_at_byte(
 ) -> Vec<(HighlightTier, ScopeId)> {
     let mut scratch = StyleScratch::new();
     rebuild_line_decorations(line, syntax, providers, rope, &mut scratch);
-    const TIERS: [HighlightTier; TIER_COUNT] = [
-        HighlightTier::Syntax,
-        HighlightTier::Extra,
-        HighlightTier::SearchMatch,
-        HighlightTier::Diagnostic,
-        HighlightTier::BracketMatch,
-    ];
-    TIERS
+    HighlightTier::ALL
         .into_iter()
         .zip(scratch.tier_bufs.0.iter())
         .filter_map(|(tier, intervals)| {

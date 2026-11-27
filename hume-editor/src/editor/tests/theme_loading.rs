@@ -422,17 +422,22 @@ fn rust_editor(initial: &str) -> Editor {
     ed
 }
 
-/// `:theme-debug`'s statusline line for `initial`, with a theme whose only
-/// entry is `keyword`, so a capture below it falls back to `default`.
-fn theme_debug_message(initial: &str) -> String {
-    let mut ed = rust_editor(initial);
-    ed.view.theme = hume_engine::theme::Theme::new(std::collections::HashMap::from([(
+/// Theme entries for the `:theme-debug` tests: `keyword` is defined, so a
+/// capture with no entry of its own falls back to `default`.
+fn keyword_entries() -> std::collections::HashMap<&'static str, hume_engine::types::ResolvedStyle> {
+    std::collections::HashMap::from([(
         "keyword",
         hume_engine::types::ResolvedStyle {
             fg: Some(hume_grid::Rgb(0x44, 0x55, 0x66)),
             ..Default::default()
         },
-    )]));
+    )])
+}
+
+/// `:theme-debug`'s statusline line for `initial` under the keyword fixture.
+fn theme_debug_message(initial: &str) -> String {
+    let mut ed = rust_editor(initial);
+    ed.view.theme = hume_engine::theme::Theme::new(keyword_entries());
     ed.execute_typed("theme-debug", None)
         .expect(":theme-debug must succeed");
     ed.state
@@ -506,23 +511,16 @@ impl hume_engine::providers::DecorationSource for ProbeExtra {
 fn theme_debug_reports_every_active_layer() {
     let mut ed = rust_editor("-[f]>n main() {}\n");
     let scope = ed.view.registry.intern("plugin.mark");
-    ed.view.theme = hume_engine::theme::Theme::new(std::collections::HashMap::from([
-        (
-            "keyword",
-            hume_engine::types::ResolvedStyle {
-                fg: Some(hume_grid::Rgb(0x44, 0x55, 0x66)),
-                ..Default::default()
-            },
-        ),
-        (
-            "plugin.mark",
-            hume_engine::types::ResolvedStyle {
-                bg: Some(hume_grid::Rgb(0x11, 0x22, 0x33)),
-                modifiers: hume_engine::types::Modifiers::BOLD,
-                ..Default::default()
-            },
-        ),
-    ]));
+    let mut entries = keyword_entries();
+    entries.insert(
+        "plugin.mark",
+        hume_engine::types::ResolvedStyle {
+            bg: Some(hume_grid::Rgb(0x11, 0x22, 0x33)),
+            modifiers: hume_engine::types::Modifiers::BOLD,
+            ..Default::default()
+        },
+    );
+    ed.view.theme = hume_engine::theme::Theme::new(entries);
     let pid = ed.view.focused_pane();
     ed.view.panes[pid]
         .providers
@@ -542,13 +540,7 @@ fn theme_debug_reports_every_active_layer() {
 #[test]
 fn theme_debug_uses_script_styles_in_the_chain() {
     let mut ed = rust_editor("-[f]>n main() {}\n");
-    ed.view.theme = hume_engine::theme::Theme::new(std::collections::HashMap::from([(
-        "keyword",
-        hume_engine::types::ResolvedStyle {
-            fg: Some(hume_grid::Rgb(0x44, 0x55, 0x66)),
-            ..Default::default()
-        },
-    )]));
+    ed.view.theme = hume_engine::theme::Theme::new(keyword_entries());
     // No install pending: the script's style must land on the theme on screen.
     ed.state.settings.theme = ed.state.shown_theme.clone();
     crate::editor::theme::set_scope_styles(
