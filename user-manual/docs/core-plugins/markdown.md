@@ -90,7 +90,7 @@ A list numbered `1.`, `1.`, `1.`, or with any one number on every item, keeps it
 
 When the main selection is inside text with that style, the key removes the style around every selection inside it, and leaves the other selections alone. Otherwise it wraps each selection in `**`, `*`, a backtick or `~~`, leaving the blanks at its ends outside, so a word selected with its space gets the style without the space.
 
-With a bare cursor the character under it gets the style. In `***word***`, `M B` leaves `*word*` and `M I` leaves `**word**`. `.` toggles the style where you are. Adding bold or strikethrough takes two `u` to undo.
+With a bare cursor the character under it gets the style. In `***word***`, `M B` leaves `*word*` and `M I` leaves `**word**`. `.` toggles the style where you are. Adding bold or strikethrough takes one `u` to undo.
 
 ## Tables
 

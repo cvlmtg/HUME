@@ -10,7 +10,7 @@ To see which themes are available, type `:theme ` and press `Tab`.
 
 ## Bundled themes
 
-HUME ships 35 themes. `sand` is the default.
+HUME ships 36 themes. `sand` is the default.
 
 | Family | Themes |
 |--------|--------|
@@ -25,6 +25,7 @@ HUME ships 35 themes. `sand` is the default.
 | Sand | `sand` |
 | Solarized | `solarized_dark`, `solarized_light` |
 | Tokyo Night | `tokyonight_day`, `tokyonight_moon`, `tokyonight_night`, `tokyonight_storm` |
+| Workbench | `workbench` |
 
 HUME falls back to a built-in theme when no `sand` theme is found or when the theme set in `init.scm` fails to load.
 
