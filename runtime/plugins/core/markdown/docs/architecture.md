@@ -68,6 +68,7 @@
 | `lib/destinations.scm`, `lib/links.scm`, `lib/paths.scm` | Link destinations, link paste, link-path completion and following links: [`links.md`](links.md) |
 | `lib/lists.scm` | List prefixes, ending a list, renumbering, task boxes: [`lists.md`](lists.md) |
 | `lib/list-commands.scm` | Enter, `o`, `O`, task toggles and the renumbering pass, applied to a buffer |
+| `lib/headings.scm` | The ATX heading a line holds, and the edit that sets or removes it |
 | `lib/styles.scm` | The inline-style query, the delimiters a toggle deletes, and the toggle |
 | `lib/cells.scm`, `lib/moves.scm` | Reading table rows, and the edits that move rows and columns: [`tables.md`](tables.md) |
 | `lib/table-commands.scm` | Selecting cells and columns, and moving rows and columns, applied to a buffer |

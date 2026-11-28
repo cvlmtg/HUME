@@ -4,9 +4,9 @@ Draws Markdown without its syntax, in the style of Obsidian's live preview: the 
 selection touches show their source, and a code block or table shows its source whole
 while a selection is inside it. It also edits Markdown: a URL or path pasted over text
 becomes a link, link destinations complete paths, Enter, `o` and `O` continue lists and
-quotes, ordered lists renumber, `G X` toggles task boxes, `M B`, `M I`, `M C` and `M S`
-toggle bold, italic, code and strikethrough, and table keys select cells and columns and
-move rows and columns.
+quotes, ordered lists renumber, `G X` toggles task boxes, `G H` sets or removes a heading,
+`M B`, `M I`, `M C` and `M S` toggle bold, italic, code and strikethrough, and table keys
+select cells and columns and move rows and columns.
 
 ## Usage
 
@@ -46,6 +46,7 @@ Enter, `o` and `O` are bound only with `'continue-lists` on.
 | Normal | `o`, `O` | `markdown/open-below`, `markdown/open-above` | Open a line continuing the list or quote |
 | Normal | `g d` | `markdown/follow-link` | Follow the link under the primary cursor; a wiki or reference link runs `lsp/goto-definition` |
 | Normal | `G X` | `markdown/toggle-task` | Check or uncheck task boxes |
+| Normal | `G H` | `markdown/heading` | Toggle each line between body text and `# `, or set its level with a count |
 | Normal | `M B`, `M I` | `markdown/bold`, `markdown/italic` | Toggle bold or italic |
 | Normal | `M C`, `M S` | `markdown/code`, `markdown/strikethrough` | Toggle inline code or strikethrough |
 | Normal | `m i \|`, `m a \|` | `markdown/select-cell`, `markdown/select-around-cell` | Select the cell's text, or the cell with its pipe |

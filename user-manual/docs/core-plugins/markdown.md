@@ -2,7 +2,7 @@
 
 <img src="/core_markdown_preview.png" alt="core:markdown in action" />
 
-Draws Markdown without its syntax, in the style of a rendered preview, right in the buffer you edit, and helps you write links, lists, task boxes and tables.
+Draws Markdown without its syntax, in the style of a rendered preview, right in the buffer you edit, and helps you write headings, links, lists, task boxes and tables.
 
 ```scheme
 (load-plugin! "core:stdlib")
@@ -84,6 +84,12 @@ A list numbered `1.`, `1.`, `1.`, or with any one number on every item, keeps it
 
 `G X` checks the task boxes on the lines your selections touch, or unchecks them all when the first box on the main selection's lines is checked. When the main selection's lines have no box, the first box of all decides. Lines without a box don't change.
 
+## Headings
+
+`G H` turns the lines your selections touch into headings, or back into body text. Bare, each line toggles: a line that starts with one to six `#`s and a space loses them, and one that doesn't gets `# `. With a count, every line becomes a heading of that level instead, so `3 G H` gives `### `, and a count above six gives `###### `.
+
+The marker follows the line's indentation, and a blank line is left alone. One `u` takes back the whole change.
+
 ## Inline styles
 
 `M B` toggles bold, `M I` italic, `M C` inline code and `M S` strikethrough.
@@ -131,6 +137,7 @@ With a Markdown [language server](../lsp.md#install-a-server) installed (`:lsp-i
 | `markdown/enter` | What `Enter` does in a Markdown buffer |
 | `markdown/open-below`, `markdown/open-above` | What `o` and `O` do in a Markdown buffer |
 | `markdown/toggle-task` | What `G X` does in a Markdown buffer |
+| `markdown/heading` | What `G H` does in a Markdown buffer |
 | `markdown/bold`, `markdown/italic` | What `M B` and `M I` do in a Markdown buffer |
 | `markdown/code`, `markdown/strikethrough` | What `M C` and `M S` do in a Markdown buffer |
 | `markdown/follow-link` | What `g d` does in a Markdown buffer. Called with `call!`, it returns `#f`, doing nothing, when the cursor is on no link, or on a wiki or reference link with no `lsp/goto-definition` command, so a key can run another command after it |

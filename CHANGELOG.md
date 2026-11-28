@@ -30,6 +30,7 @@
 - `core:markdown` continues a list or quote when you press `Enter`, `o` or `O` on one, and keeps a numbered list in order as you add, renumber, delete, indent or outdent items.
 - `core:markdown` checks or unchecks a list's task boxes with `G X`.
 - `core:markdown` toggles bold, italic, inline code and strikethrough with `M B`, `M I`, `M C` and `M S`.
+- `core:markdown` turns the lines your selections touch into a heading with `G H`, or back into body text; a count sets the level.
 - `core:markdown` follows the link under the cursor with `g d`.
 - `core:markdown` selects a table cell with `m i |` or `m a |`, and a table column with `m |`.
 - `core:markdown` moves table rows with `G T j`/`G T k` and columns with `G T h`/`G T l`.

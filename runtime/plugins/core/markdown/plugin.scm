@@ -6,6 +6,7 @@
 (require "lib/links.scm")
 (require "lib/paths.scm")
 (require "lib/list-commands.scm")
+(require "lib/headings.scm")
 (require "lib/table-commands.scm")
 (require "lib/styles.scm")
 
@@ -103,6 +104,15 @@
   #:repeatable #t)
 
 (bind-key! 'normal "G X" "markdown/toggle-task" #:keymap md-preview/keymap)
+
+;; ── Headings ─────────────────────────────────────────────────────────────────
+
+(define-command! "markdown/heading"
+  "Toggle each line a selection touches between plain text and a level-one heading; with a count, every line becomes a heading of that level (up to 6). Blank lines are left alone."
+  (lambda (pane count) (md-headings/set! pane (if (= count 0) 0 (min 6 count))))
+  #:repeatable #t)
+
+(bind-key! 'normal "G H" "markdown/heading" #:keymap md-preview/keymap)
 
 ;; ── Inline styles ─────────────────────────────────────────────────────────────
 
